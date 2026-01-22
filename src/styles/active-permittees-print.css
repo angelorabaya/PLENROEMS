@@ -1,0 +1,312 @@
+/**
+ * Active Permittees Report - Print Styles
+ * Legal landscape layout optimized for printing
+ */
+
+/* ============================================
+   PRINT-SPECIFIC STYLES
+   ============================================ */
+
+@media print {
+    @page permittees-report {
+        size: legal landscape;
+        margin: 10mm 12mm;
+    }
+
+    .active-permittees-report {
+        page: permittees-report;
+    }
+
+    * {
+        overflow: visible !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    body * {
+        visibility: hidden;
+    }
+
+    .active-permittees-report,
+    .active-permittees-report * {
+        visibility: visible;
+    }
+
+    .active-permittees-report {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        background: white !important;
+        color: black !important;
+    }
+
+    .permittees-print-toolbar {
+        display: none !important;
+    }
+
+    .permittees-report-container {
+        padding: 0 !important;
+        margin: 0 !important;
+        max-width: 100% !important;
+        box-shadow: none !important;
+        background: white !important;
+    }
+
+    .permittees-report-paper {
+        box-shadow: none !important;
+        padding: 0 !important;
+        min-height: auto !important;
+    }
+
+    .permittees-table {
+        font-size: 8pt !important;
+    }
+
+    .permittees-table th {
+        padding: 4px 6px !important;
+        font-size: 8pt !important;
+    }
+
+    .permittees-table td {
+        padding: 3px 6px !important;
+        font-size: 8pt !important;
+    }
+
+    .permittees-report-header {
+        margin-bottom: 4mm !important;
+        padding-bottom: 2mm !important;
+    }
+
+    .permittees-report-title {
+        margin-bottom: 4mm !important;
+    }
+}
+
+/* ============================================
+   SCREEN STYLES (Preview Mode)
+   ============================================ */
+
+.active-permittees-report {
+    min-height: 100vh;
+    background: #0a0a0b;
+    color: #fafafa;
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+}
+
+.permittees-print-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background: #1a1a1a;
+    border-bottom: 1px solid #333;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.permittees-print-toolbar .toolbar-actions {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.permittees-print-toolbar .toolbar-meta {
+    font-size: 0.875rem;
+    color: #9ca3af;
+}
+
+/* Report Container - Legal Landscape */
+.permittees-report-container {
+    max-width: 355.6mm;
+    /* Legal width */
+    margin: 2rem auto;
+    padding: 0 1rem;
+}
+
+.permittees-report-paper {
+    background: #ffffff;
+    color: #111;
+    padding: 15mm 12mm;
+    border-radius: 4px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    min-height: 200mm;
+    box-sizing: border-box;
+    position: relative;
+}
+
+/* ============================================
+   HEADER STYLES
+   ============================================ */
+
+.permittees-report-header {
+    text-align: center;
+    margin-bottom: 8mm;
+    padding-bottom: 4mm;
+    border-bottom: 2px solid #000;
+}
+
+.permittees-report-header h3 {
+    font-size: 12pt;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: 0.5px;
+}
+
+.permittees-report-header h4 {
+    font-size: 11pt;
+    font-weight: 600;
+    margin: 2mm 0 0 0;
+}
+
+.permittees-report-header .office-name {
+    color: #2d5a27;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-size: 10pt;
+    margin-top: 3mm;
+    letter-spacing: 0.3px;
+}
+
+.permittees-report-header .office-address {
+    font-size: 9pt;
+    color: #555;
+    margin-top: 2mm;
+    font-style: italic;
+}
+
+/* ============================================
+   TITLE STYLES
+   ============================================ */
+
+.permittees-report-title {
+    text-align: center;
+    margin-bottom: 8mm;
+}
+
+.permittees-report-title h1 {
+    font-size: 14pt;
+    font-weight: 800;
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #2d5a27;
+}
+
+.permittees-report-title .report-count {
+    font-size: 10pt;
+    color: #555;
+    margin-top: 2mm;
+}
+
+/* ============================================
+   TABLE STYLES
+   ============================================ */
+
+.permittees-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    font-size: 9pt;
+    border: 1px solid #000;
+}
+
+.permittees-table th {
+    background: linear-gradient(180deg, #2d5a27 0%, #245020 100%);
+    color: #fff;
+    font-weight: 700;
+    text-align: center;
+    padding: 8px 10px;
+    border: 1px solid #000;
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+}
+
+.permittees-table td {
+    padding: 6px 10px;
+    border: 1px solid #333;
+    font-size: 9pt;
+    background: #fff;
+    color: #111;
+    vertical-align: middle;
+}
+
+.permittees-table td.name-cell {
+    font-weight: 500;
+}
+
+.permittees-table td.center-cell {
+    text-align: center;
+}
+
+.permittees-table tbody tr:nth-child(even) {
+    background: #f9f9f9;
+}
+
+.permittees-table tbody tr:nth-child(even) td {
+    background: #f9f9f9;
+}
+
+/* ============================================
+   SIGNATURE SECTION
+   ============================================ */
+
+.permittees-signature-section {
+    margin-top: 15mm;
+}
+
+.permittees-signature-section p {
+    margin: 0;
+    font-size: 10pt;
+    color: #111;
+}
+
+.permittees-signature-section .signature-name {
+    font-weight: 700;
+    margin-top: 8mm;
+    border: none;
+}
+
+.permittees-signature-section .signature-title {
+    color: #555;
+}
+
+/* ============================================
+   FOOTER STYLES
+   ============================================ */
+
+.permittees-report-footer {
+    margin-top: 10mm;
+    padding-top: 4mm;
+    border-top: 1px solid #555;
+    text-align: center;
+}
+
+.permittees-report-footer p {
+    margin: 0.5mm 0;
+    font-size: 8pt;
+    color: #555;
+    font-style: italic;
+}
+
+/* ============================================
+   LOADING & ERROR STATES
+   ============================================ */
+
+.permittees-report-loading,
+.permittees-report-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+    color: #a1a1aa;
+    gap: 1rem;
+}
+
+.permittees-report-error {
+    color: #ef4444;
+}

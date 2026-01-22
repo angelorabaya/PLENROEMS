@@ -1,0 +1,297 @@
+/**
+ * Barangay Share Report - Print Styles
+ * A4 portrait layout optimized for printing
+ */
+
+/* ============================================
+   PRINT-SPECIFIC STYLES
+   ============================================ */
+
+@media print {
+    @page barangay-report {
+        size: A4 portrait;
+        margin: 0.75in;
+    }
+
+    .barangay-share-report {
+        page: barangay-report;
+    }
+
+    * {
+        overflow: visible !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    body * {
+        visibility: hidden;
+    }
+
+    .barangay-share-report,
+    .barangay-share-report * {
+        visibility: visible;
+    }
+
+    .barangay-share-report {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        background: white !important;
+        color: black !important;
+    }
+
+    .barangay-print-toolbar {
+        display: none !important;
+    }
+
+    .barangay-report-container {
+        padding: 0 !important;
+        margin: 0 !important;
+        max-width: 100% !important;
+        box-shadow: none !important;
+        background: white !important;
+    }
+
+    .barangay-report-paper {
+        box-shadow: none !important;
+        padding: 0 !important;
+    }
+}
+
+/* ============================================
+   SCREEN STYLES (Preview Mode)
+   ============================================ */
+
+.barangay-share-report {
+    min-height: 100vh;
+    background: #0a0a0b;
+    color: #fafafa;
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+}
+
+.barangay-print-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background: linear-gradient(180deg, rgba(28, 28, 30, 0.98) 0%, rgba(28, 28, 30, 0.95) 100%);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(139, 92, 246, 0.15);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.barangay-print-toolbar .toolbar-actions {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.barangay-print-toolbar .toolbar-meta {
+    font-size: 0.875rem;
+    color: #a1a1aa;
+}
+
+/* Report Container */
+.barangay-report-container {
+    max-width: 210mm;
+    margin: 2rem auto;
+    padding: 0 1rem;
+}
+
+.barangay-report-paper {
+    background: #ffffff;
+    color: #111;
+    padding: 20mm 15mm;
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    width: 210mm;
+    min-height: 297mm;
+    box-sizing: border-box;
+    position: relative;
+}
+
+/* ============================================
+   HEADER STYLES
+   ============================================ */
+
+.barangay-report-header {
+    text-align: center;
+    margin-bottom: 8mm;
+    padding-bottom: 4mm;
+    border-bottom: 2px solid #000;
+}
+
+.barangay-report-header h3 {
+    font-size: 0.875rem;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: 0.5px;
+}
+
+.barangay-report-header h4 {
+    font-size: 0.8rem;
+    font-weight: 400;
+    margin: 0.25rem 0;
+}
+
+.barangay-report-header .office-name {
+    color: #2d5a27;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    margin-top: 0.5rem;
+}
+
+.barangay-report-header .office-address {
+    font-size: 0.75rem;
+    color: #555;
+    margin-top: 0.25rem;
+}
+
+/* ============================================
+   TITLE STYLES
+   ============================================ */
+
+.barangay-report-title {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.barangay-report-title h1 {
+    font-size: 14pt;
+    font-weight: 800;
+    margin: 0 0 0.5rem 0;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #2d5a27;
+}
+
+.barangay-report-title .location-subtitle {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #333;
+}
+
+/* ============================================
+   TABLE STYLES
+   ============================================ */
+
+.barangay-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.5rem 0 3rem 0;
+}
+
+.barangay-table th {
+    background: linear-gradient(180deg, #2d5a27 0%, #245020 100%);
+    color: #fff;
+    font-weight: 700;
+    text-align: center;
+    padding: 10px 16px;
+    border: 1px solid #000;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.barangay-table td {
+    padding: 8px 16px;
+    border: 1px solid #333;
+    font-size: 0.85rem;
+    background: #fff;
+    color: #111;
+}
+
+.barangay-table td.month-cell {
+    text-align: left;
+}
+
+.barangay-table td.amount-cell {
+    text-align: right;
+}
+
+.barangay-table tr.total-row {
+    font-weight: 700;
+}
+
+.barangay-table tr.total-row td {
+    border: 1px solid #333;
+    border-top: 2px solid #333;
+}
+
+/* ============================================
+   SIGNATURE SECTION
+   ============================================ */
+
+.barangay-signature-section {
+    margin-top: 3rem;
+}
+
+.barangay-signature-section .signature-label {
+    font-size: 0.8rem;
+    color: #111;
+    margin: 0 !important;
+    text-decoration: none;
+    border: none;
+    border-bottom: none;
+}
+
+.barangay-signature-section .signature-name {
+    font-size: 0.9rem;
+    font-weight: 700;
+    margin: 0;
+    border: none;
+}
+
+.barangay-signature-section .signature-title {
+    font-size: 0.8rem;
+    color: #555;
+    margin: 0;
+}
+
+/* ============================================
+   FOOTER STYLES
+   ============================================ */
+
+.barangay-report-footer {
+    position: absolute;
+    bottom: 2rem;
+    left: 0;
+    right: 0;
+    text-align: center;
+    padding-top: 1rem;
+    border-top: 2px solid #2d5a27;
+}
+
+.barangay-report-footer p {
+    margin: 0.25rem 0;
+    font-size: 0.7rem;
+    color: #555;
+}
+
+.barangay-report-footer p:first-child {
+    color: #2d5a27;
+    font-weight: 600;
+}
+
+/* ============================================
+   LOADING & ERROR STATES
+   ============================================ */
+
+.barangay-report-loading,
+.barangay-report-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+    color: #a1a1aa;
+    gap: 1rem;
+}
+
+.barangay-report-error {
+    color: #ef4444;
+}

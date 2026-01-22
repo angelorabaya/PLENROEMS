@@ -1,0 +1,548 @@
+/**
+ * Modal Component Styles
+ * Radix UI Dialog styling following shadcn/ui design system
+ */
+
+/* ==========================================================================
+   DIALOG OVERLAY
+   ========================================================================== */
+
+.dialog-overlay {
+    background-color: rgba(0, 0, 0, 0.8);
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    animation: overlay-show 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes overlay-show {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+/* ==========================================================================
+   DIALOG CONTENT
+   ========================================================================== */
+
+.dialog-content {
+    background-color: var(--card);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.5);
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90vw;
+    max-width: 500px;
+    max-height: 85vh;
+    z-index: 50;
+    animation: content-show 150ms cubic-bezier(0.16, 1, 0.3, 1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.dialog-content-lg {
+    max-width: 600px;
+}
+
+.dialog-content-sm {
+    max-width: 400px;
+}
+
+@keyframes content-show {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -48%) scale(0.96);
+    }
+
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+.dialog-content:focus {
+    outline: none;
+}
+
+/* Form inside dialog needs flex layout */
+.dialog-content form {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* ==========================================================================
+   DIALOG HEADER
+   ========================================================================== */
+
+.dialog-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.dialog-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--foreground);
+    margin: 0;
+}
+
+.dialog-close {
+    height: 1.75rem;
+    width: 1.75rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: transparent;
+    color: var(--muted-foreground);
+    cursor: pointer;
+    transition:
+        background-color 0.2s,
+        color 0.2s;
+}
+
+.dialog-close:hover {
+    background-color: var(--accent);
+    color: var(--foreground);
+}
+
+.dialog-close:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--ring);
+}
+
+/* ==========================================================================
+   DIALOG BODY
+   ========================================================================== */
+
+.dialog-body {
+    padding: 1rem;
+    overflow-y: auto;
+    flex: 1;
+}
+
+/* ==========================================================================
+   DIALOG FOOTER
+   ========================================================================== */
+
+.dialog-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-top: 1px solid var(--border);
+    background-color: var(--secondary);
+}
+
+/* ==========================================================================
+   FORM STYLES
+   ========================================================================== */
+
+.form-group {
+    margin-bottom: 0.75rem;
+}
+
+.form-label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--foreground);
+    margin-bottom: 0.25rem;
+}
+
+.form-label-required::after {
+    content: ' *';
+    color: var(--destructive);
+}
+
+.form-input {
+    display: flex;
+    height: 2.25rem;
+    width: 100%;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--input);
+    background: transparent;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--foreground);
+    transition:
+        box-shadow 0.2s,
+        border-color 0.2s;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: var(--ring);
+    box-shadow: 0 0 0 2px rgb(from var(--ring) r g b / 0.2);
+}
+
+.form-input::placeholder {
+    color: var(--muted-foreground);
+}
+
+.form-input:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+/* ==========================================================================
+   FORM SECTION
+   ========================================================================== */
+
+.form-section {
+    background-color: var(--secondary);
+    padding: 0.75rem;
+    border-radius: var(--radius-md);
+    margin-bottom: 0.75rem;
+}
+
+.form-section-title {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+    margin-bottom: 0.5rem;
+    letter-spacing: 0.05em;
+}
+
+/* ==========================================================================
+   FORM GRID
+   ========================================================================== */
+
+.form-grid {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.form-grid-2 {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+.form-grid-3 {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.form-grid-4 {
+    grid-template-columns: repeat(4, 1fr);
+}
+
+/* ==========================================================================
+   CHECKBOX STYLES (Radix)
+   ========================================================================== */
+
+.checkbox-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.checkbox-root {
+    width: 1.125rem;
+    height: 1.125rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--input);
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition:
+        background-color 0.2s,
+        border-color 0.2s;
+}
+
+.checkbox-root:hover {
+    border-color: var(--ring);
+}
+
+.checkbox-root:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgb(from var(--ring) r g b / 0.2);
+}
+
+.checkbox-root[data-state='checked'] {
+    background-color: var(--primary);
+    border-color: var(--primary);
+}
+
+.checkbox-indicator {
+    color: var(--primary-foreground);
+}
+
+.checkbox-label {
+    font-size: 0.875rem;
+    color: var(--foreground);
+    cursor: pointer;
+    user-select: none;
+}
+
+/* ==========================================================================
+   SELECT STYLES (Radix)
+   ========================================================================== */
+
+.select-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 2.25rem;
+    width: 100%;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--input);
+    background: transparent;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--foreground);
+    cursor: pointer;
+    transition:
+        box-shadow 0.2s,
+        border-color 0.2s;
+}
+
+.select-trigger:focus {
+    outline: none;
+    border-color: var(--ring);
+    box-shadow: 0 0 0 2px rgb(from var(--ring) r g b / 0.2);
+}
+
+.select-trigger[data-placeholder] {
+    color: var(--muted-foreground);
+}
+
+.select-icon {
+    color: var(--muted-foreground);
+}
+
+.select-content {
+    overflow: hidden;
+    background-color: var(--popover);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    box-shadow:
+        0 10px 38px -10px rgba(22, 23, 24, 0.35),
+        0 10px 20px -15px rgba(22, 23, 24, 0.2);
+    z-index: 100;
+}
+
+.select-viewport {
+    padding: 0.25rem;
+}
+
+.select-item {
+    font-size: 0.875rem;
+    color: var(--foreground);
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    height: 2rem;
+    padding: 0 0.75rem 0 1.5rem;
+    position: relative;
+    user-select: none;
+    cursor: pointer;
+    outline: none;
+}
+
+.select-item[data-highlighted] {
+    background-color: var(--accent);
+    color: var(--accent-foreground);
+}
+
+.select-item-indicator {
+    position: absolute;
+    left: 0.5rem;
+    width: 1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ==========================================================================
+   BUTTON STYLES (for modals)
+   ========================================================================== */
+
+.btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    white-space: nowrap;
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    font-weight: 500;
+    height: 2.25rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+    background: transparent;
+    color: var(--foreground);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition:
+        background-color 0.2s,
+        border-color 0.2s;
+}
+
+.btn-secondary:hover {
+    background-color: var(--accent);
+    border-color: var(--accent);
+}
+
+.btn-secondary:disabled {
+    pointer-events: none;
+    opacity: 0.5;
+}
+
+.btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    white-space: nowrap;
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    font-weight: 500;
+    height: 2.25rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border: 1px solid var(--primary);
+    cursor: pointer;
+    transition:
+        background-color 0.2s,
+        border-color 0.2s,
+        opacity 0.2s;
+}
+
+.btn-primary:hover {
+    opacity: 0.9;
+}
+
+.btn-primary:disabled {
+    pointer-events: none;
+    opacity: 0.5;
+}
+
+.btn-sm {
+    height: 2rem;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+    font-size: 0.8125rem;
+}
+
+.btn-loading {
+    position: relative;
+    color: transparent !important;
+}
+
+.btn-loading::after {
+    content: '';
+    position: absolute;
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid transparent;
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
+
+.btn-primary.btn-loading::after {
+    border-top-color: var(--primary-foreground);
+}
+
+/* ==========================================================================
+   TAGS (Autocomplete)
+   ========================================================================== */
+
+.tags-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.tag-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    cursor: pointer;
+    font-size: 0.875rem;
+    line-height: 1;
+    padding: 0;
+}
+
+.tag-close:hover {
+    background: rgba(255, 255, 255, 0.4);
+}
+
+/* ==========================================================================
+   AUTOCOMPLETE
+   ========================================================================== */
+
+.autocomplete-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.autocomplete-list {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 0.25rem;
+    padding: 0.25rem;
+    background-color: var(--popover);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    z-index: 50;
+    list-style: none;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.autocomplete-item {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--foreground);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: background-color 0.2s;
+}
+
+.autocomplete-item:hover {
+    background-color: var(--accent);
+    color: var(--accent-foreground);
+}

@@ -1,0 +1,504 @@
+/**
+ * Revenue Collection Report — Formal Print Styles
+ * A4 Portrait | Swiss/International Aesthetic
+ * Print-first design for government documents
+ */
+
+/* ============================================
+   DESIGN TOKENS
+   ============================================ */
+:root {
+    --rcr-font-primary: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    --rcr-color-ink: #000;
+    --rcr-color-text: #111;
+    --rcr-color-muted: #555;
+    --rcr-color-accent: #2d5a27;
+    --rcr-color-header-bg: linear-gradient(180deg, #2d5a27 0%, #245020 100%);
+    --rcr-paper-bg: #fff;
+    --rcr-border: 1px solid #ccc;
+}
+
+/* ============================================
+   PRINT CONFIGURATION
+   ============================================ */
+@media print {
+    @page revenue-report {
+        size: A4 portrait;
+        margin: 10mm 12mm 10mm 12mm;
+    }
+
+    .revenue-collection-report {
+        page: revenue-report;
+    }
+
+    /* Force print backgrounds */
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    /* Hide everything except report */
+    body * {
+        visibility: hidden;
+    }
+
+    .revenue-collection-report,
+    .revenue-collection-report * {
+        visibility: visible;
+    }
+
+    .revenue-collection-report {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        background: white !important;
+    }
+
+    /* Hide toolbar */
+    .revenue-print-toolbar {
+        display: none !important;
+    }
+
+    /* Reset container for print */
+    .revenue-report-container {
+        padding: 0 !important;
+        margin: 0 !important;
+        max-width: none !important;
+        background: white !important;
+    }
+
+    .revenue-report-paper {
+        padding: 0 !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+    }
+
+    /* Compact header for print */
+    .revenue-report-header {
+        margin-bottom: 4mm !important;
+        padding-bottom: 2mm !important;
+    }
+
+    .header-text h3 {
+        font-size: 10pt !important;
+    }
+
+    .header-text h4 {
+        font-size: 9pt !important;
+        margin: 1mm 0 0 0 !important;
+    }
+
+    .header-text h4.office-name {
+        font-size: 9pt !important;
+        margin-top: 2mm !important;
+    }
+
+    .header-text .office-address {
+        font-size: 8pt !important;
+        margin: 1mm 0 0 0 !important;
+    }
+
+    /* Compact title */
+    .revenue-report-title {
+        margin: 4mm 0 4mm 0 !important;
+    }
+
+    .revenue-report-title h1 {
+        font-size: 12pt !important;
+    }
+
+    .revenue-report-title .report-date {
+        font-size: 9pt !important;
+        margin: 1mm 0 0 0 !important;
+    }
+
+    /* Compact tables */
+    .revenue-table {
+        margin-bottom: 4mm !important;
+        font-size: 9pt !important;
+    }
+
+    .revenue-table thead th {
+        padding: 1.5mm 3mm !important;
+        font-size: 8pt !important;
+    }
+
+    .revenue-table tbody td {
+        padding: 1mm 3mm !important;
+        font-size: 8pt !important;
+    }
+
+    .revenue-table tbody tr.total-row td {
+        font-size: 9pt !important;
+        padding: 1.5mm 3mm !important;
+    }
+
+    .breakdown-table {
+        margin-top: 3mm !important;
+    }
+
+    /* Compact signature section */
+    .signature-section {
+        margin: 5mm 5% 0 5% !important;
+        page-break-inside: avoid !important;
+    }
+
+    .signature-label {
+        font-size: 8pt !important;
+        margin-bottom: 6mm !important;
+    }
+
+    .signature-name {
+        font-size: 9pt !important;
+    }
+
+    .signature-title {
+        font-size: 8pt !important;
+    }
+
+    /* Compact footer */
+    .revenue-report-footer {
+        margin-top: 4mm !important;
+        padding-top: 2mm !important;
+        page-break-inside: avoid !important;
+    }
+
+    .revenue-report-footer p {
+        font-size: 7pt !important;
+        margin: 0 !important;
+    }
+
+    /* Critical: Remove screen-only styles */
+    .revenue-collection-report {
+        min-height: auto !important;
+        padding-bottom: 0 !important;
+    }
+
+    .revenue-report-container {
+        min-height: auto !important;
+    }
+
+    .revenue-report-paper {
+        min-height: auto !important;
+    }
+}
+
+/* ============================================
+   SCREEN PREVIEW CONTAINER
+   ============================================ */
+.revenue-collection-report {
+    min-height: 100vh;
+    background: #0a0a0b;
+    color: #fafafa;
+    font-family: var(--rcr-font-primary);
+    padding-bottom: 2rem;
+}
+
+/* Toolbar - Preview only */
+.revenue-print-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.875rem 1.5rem;
+    background: #1a1a1a;
+    border-bottom: 1px solid #333;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.toolbar-actions {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.toolbar-actions .btn {
+    padding: 0.5rem 1.25rem;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition:
+        background 0.2s,
+        transform 0.1s;
+}
+
+.toolbar-actions .btn:hover {
+    transform: translateY(-1px);
+}
+
+.toolbar-actions .btn-primary {
+    background: #2563eb;
+    color: white;
+}
+
+.toolbar-actions .btn-primary:hover {
+    background: #1d4ed8;
+}
+
+.toolbar-actions .btn-secondary {
+    background: #374151;
+    color: white;
+}
+
+.toolbar-actions .btn-secondary:hover {
+    background: #4b5563;
+}
+
+.toolbar-meta {
+    font-size: 0.875rem;
+    color: #9ca3af;
+    font-weight: 500;
+}
+
+/* ============================================
+   PAPER CONTAINER
+   ============================================ */
+.revenue-report-container {
+    max-width: 210mm;
+    /* A4 width */
+    margin: 1.5rem auto;
+    padding: 0 1rem;
+}
+
+.revenue-report-paper {
+    background: var(--rcr-paper-bg);
+    color: var(--rcr-color-ink);
+    padding: 12mm 15mm;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    border-radius: 2px;
+    min-height: 280mm;
+    /* ~A4 height */
+}
+
+/* ============================================
+   HEADER SECTION
+   ============================================ */
+.revenue-report-header {
+    text-align: center;
+    margin-bottom: 8mm;
+    padding-bottom: 4mm;
+    border-bottom: 2px solid var(--rcr-color-ink);
+}
+
+.header-text h3 {
+    font-family: var(--rcr-font-primary);
+    font-size: 12pt;
+    font-weight: 700;
+    margin: 0;
+    color: var(--rcr-color-ink);
+    letter-spacing: 0.5px;
+}
+
+.header-text h4 {
+    font-family: var(--rcr-font-primary);
+    font-size: 11pt;
+    font-weight: 600;
+    margin: 2mm 0 0 0;
+    color: var(--rcr-color-text);
+}
+
+.header-text h4.office-name {
+    font-family: var(--rcr-font-primary);
+    font-size: 10pt;
+    font-weight: 800;
+    color: var(--rcr-color-accent);
+    margin-top: 3mm;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.header-text .office-address {
+    font-family: var(--rcr-font-primary);
+    font-size: 9pt;
+    color: var(--rcr-color-muted);
+    margin: 2mm 0 0 0;
+    font-style: italic;
+}
+
+/* ============================================
+   TITLE SECTION
+   ============================================ */
+.revenue-report-title {
+    text-align: center;
+    margin: 8mm 0 6mm 0;
+}
+
+.revenue-report-title h1 {
+    font-family: var(--rcr-font-primary);
+    font-size: 14pt;
+    font-weight: 800;
+    color: var(--rcr-color-accent);
+    margin: 0;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.revenue-report-title .report-date {
+    font-family: var(--rcr-font-primary);
+    font-size: 11pt;
+    color: var(--rcr-color-text);
+    margin: 2mm 0 0 0;
+    font-weight: 600;
+}
+
+/* ============================================
+   TABLES — FORMAL LEGAL STYLE
+   ============================================ */
+.revenue-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 6mm;
+    font-family: var(--rcr-font-primary);
+    font-size: 10pt;
+    border: 1px solid #000;
+}
+
+.revenue-table thead .table-header {
+    background: linear-gradient(180deg, #2d5a27 0%, #245020 100%);
+}
+
+.revenue-table thead th {
+    color: #fff;
+    font-weight: 700;
+    text-align: center;
+    padding: 3mm 4mm;
+    font-size: 10pt;
+    border: 1px solid #000;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.revenue-table tbody td {
+    padding: 2.5mm 4mm;
+    color: var(--rcr-color-ink);
+    border: 1px solid #000;
+    vertical-align: middle;
+    background: #fff;
+}
+
+.revenue-table tbody td:first-child {
+    font-weight: 500;
+}
+
+.revenue-table tbody td.amount {
+    text-align: right;
+    font-family: var(--rcr-font-primary);
+    font-weight: 600;
+}
+
+/* Total Row */
+.revenue-table tbody tr.total-row {
+    background: #f5f5f5;
+}
+
+.revenue-table tbody tr.total-row td {
+    font-weight: 800;
+    font-size: 11pt;
+    border-top: 2px solid var(--rcr-color-ink);
+    padding: 3mm 4mm;
+}
+
+/* Breakdown Table Spacing */
+.breakdown-table {
+    margin-top: 8mm;
+}
+
+/* ============================================
+   SIGNATURE SECTION
+   ============================================ */
+.signature-section {
+    display: flex;
+    justify-content: space-between;
+    margin: 15mm 8% 0 8%;
+    page-break-inside: avoid;
+}
+
+.signature-block {
+    text-align: center;
+    min-width: 55mm;
+}
+
+.signature-label {
+    font-size: 10pt;
+    color: var(--rcr-color-text);
+    margin: 0 0 12mm 0;
+    text-align: left;
+    font-weight: 500;
+}
+
+.signature-name {
+    font-size: 11pt;
+    font-weight: 800;
+    color: var(--rcr-color-ink);
+    margin: 0;
+    text-transform: uppercase;
+    border-top: 1px solid var(--rcr-color-ink);
+    padding-top: 2mm;
+}
+
+.signature-title {
+    font-size: 10pt;
+    color: var(--rcr-color-text);
+    margin: 1mm 0 0 0;
+    font-weight: 500;
+}
+
+/* ============================================
+   FOOTER
+   ============================================ */
+.revenue-report-footer {
+    text-align: center;
+    margin-top: 12mm;
+    padding-top: 4mm;
+    border-top: 1px solid var(--rcr-color-muted);
+    page-break-inside: avoid;
+}
+
+.revenue-report-footer p {
+    font-size: 8pt;
+    color: var(--rcr-color-muted);
+    margin: 0.5mm 0;
+    font-style: italic;
+}
+
+/* ============================================
+   LOADING & ERROR STATES
+   ============================================ */
+.report-loading,
+.report-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+    color: #666;
+    gap: 1rem;
+    font-family: var(--rcr-font-body);
+}
+
+.report-loading .spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid #ddd;
+    border-top-color: #2563eb;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.report-error {
+    color: #dc2626;
+}
+
+.report-error .btn {
+    margin-top: 0.5rem;
+}

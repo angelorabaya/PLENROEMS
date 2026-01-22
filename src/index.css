@@ -1,0 +1,1254 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html,
+body {
+    width: 100%;
+    height: 100%;
+    font-family:
+        'Inter',
+        -apple-system,
+        BlinkMacSystemFont,
+        'Segoe UI',
+        Roboto,
+        sans-serif;
+    color: var(--foreground);
+    background: var(--background);
+}
+
+body {
+    /* background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); */
+    min-height: 100vh;
+    /* display: flex; */
+    /* align-items: center; */
+    /* justify-content: center; */
+}
+
+#root {
+    width: 100%;
+    height: 100%;
+}
+
+.page-header {
+    margin-bottom: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.page-title-section {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.page-logo {
+    width: 52px;
+    height: 52px;
+    object-fit: contain;
+}
+
+.page-title {
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--foreground);
+}
+
+.header-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-primary {
+    background: #208080;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #1a6666;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(32, 128, 128, 0.3);
+}
+
+.btn-secondary {
+    background: #e8e8e8;
+    color: #333;
+}
+
+.btn-secondary:hover {
+    background: #d0d0d0;
+}
+
+.btn-danger {
+    background: #e74c3c;
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #c0392b;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.table-container {
+    background: var(--card);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    overflow: auto;
+    max-height: calc(100vh - 140px);
+    display: flex;
+    flex-direction: column;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    background-color: var(--card);
+}
+
+thead {
+    background: var(--muted);
+    border-bottom: 1px solid var(--border);
+}
+
+th {
+    padding: 16px;
+    text-align: left;
+    font-weight: 500;
+    color: var(--muted-foreground);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    color: var(--foreground);
+}
+
+tbody tr:hover {
+    background: var(--accent);
+}
+
+tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.action-buttons .btn,
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 12px;
+}
+
+.loading-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    padding: 48px;
+    gap: 16px;
+}
+
+.header-title {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.header-logo {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+}
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    padding: 16px;
+    border-top: 1px solid #27272a;
+    background: transparent;
+}
+
+.pagination-btn {
+    padding: 8px 12px;
+    border: 1px solid #27272a;
+    background: transparent;
+    color: #a1a1aa;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pagination-btn:hover:not(:disabled) {
+    background: #242427;
+    color: #ffffff;
+    border-color: #3f3f46;
+}
+
+.pagination-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.pagination-info {
+    font-size: 13px;
+    color: #666;
+    margin: 0 16px;
+}
+
+.placeholder-page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    /* background: linear-gradient(135deg, #f5f5f5 0%, #ffffff 100%); */
+}
+
+.placeholder-content {
+    text-align: center;
+}
+
+.placeholder-icon {
+    font-size: 64px;
+    margin-bottom: 20px;
+}
+
+.placeholder-title {
+    font-size: 24px;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 12px;
+}
+
+.placeholder-text {
+    font-size: 16px;
+    color: #666;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.no-data {
+    text-align: center;
+    padding: 48px 16px;
+    color: #999;
+}
+
+.loading-text {
+    text-align: center;
+    padding: 32px;
+    color: #666;
+}
+
+.spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid #f0f0f0;
+    border-top-color: #208080;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.spin {
+    animation: spin 0.8s linear infinite;
+}
+
+.success-message {
+    background: #d4edda;
+    color: #155724;
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin-bottom: 16px;
+    border-left: 4px solid #28a745;
+}
+
+.error-alert {
+    background: #f8d7da;
+    color: #721c24;
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin-bottom: 16px;
+    border-left: 4px solid #dc3545;
+}
+
+.search-box {
+    position: relative;
+}
+
+.search-box input {
+    padding: 10px 16px 10px 40px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+    width: 250px;
+    transition: border-color 0.3s ease;
+}
+
+.search-box input:focus {
+    outline: none;
+    border-color: #208080;
+    box-shadow: 0 0 0 3px rgba(32, 128, 128, 0.1);
+}
+
+.search-box::before {
+    content: '🔍';
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 14px;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.status-active {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.status-expired {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+/* Home Page Features Section */
+.features-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+    margin-top: 40px;
+    text-align: left;
+}
+
+.feature-card {
+    background: #1c1c1e;
+    padding: 24px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    border-top: 4px solid #6366f1;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.feature-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    background: #242427;
+}
+
+.feature-icon {
+    font-size: 32px;
+    margin-bottom: 16px;
+    background: rgba(32, 128, 128, 0.1);
+    width: 56px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+.feature-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #2c3e50;
+    margin-bottom: 8px;
+}
+
+.feature-desc {
+    font-size: 14px;
+    color: #666;
+    line-height: 1.6;
+}
+
+/* Home Page Styles */
+.transactions-compact-form {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+}
+
+.transactions-compact-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.transactions-compact-label {
+    display: block;
+    font-weight: 500;
+    color: var(--foreground);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.transactions-compact-input {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: inherit;
+    background: var(--input);
+    color: var(--foreground);
+}
+
+.transactions-compact-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+}
+
+.transactions-compact-input[readonly] {
+    background-color: var(--muted);
+    cursor: not-allowed;
+    color: var(--muted-foreground);
+}
+
+.transactions-grid-section {
+    margin-top: 0;
+}
+
+/* Assessment (native form) */
+.assessment-page {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.assessment-grid {
+    display: grid;
+    gap: 8px;
+}
+
+.assessment-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    padding: 12px 16px;
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    color: var(--card-foreground);
+}
+
+.assessment-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.assessment-card h3 {
+    margin: 0;
+    color: var(--card-foreground);
+    font-size: 13px;
+    text-shadow: none;
+}
+
+.assessment-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 8px;
+}
+
+.assessment-field label {
+    display: block;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--foreground);
+    margin-bottom: 2px;
+}
+
+.assessment-input,
+.assessment-select,
+.assessment-textarea {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--input);
+    color: var(--foreground);
+    font-size: 12px;
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Date picker icon visibility for assessment inputs */
+.assessment-input::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.assessment-input::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+}
+
+[data-theme='light'] .assessment-input::-webkit-calendar-picker-indicator {
+    filter: invert(0);
+}
+
+.assessment-input:focus,
+.assessment-select:focus,
+.assessment-textarea:focus {
+    outline: none;
+    border-color: var(--ring);
+    box-shadow: 0 0 0 1px var(--ring);
+    background: var(--input);
+}
+
+.assessment-select {
+    /* height: 30px; */
+    /* Removed to match input height dynamically */
+}
+
+.assessment-select option {
+    background: var(--popover);
+    color: var(--popover-foreground);
+}
+
+.assessment-textarea {
+    min-height: 50px;
+    resize: vertical;
+}
+
+.assessment-inline {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.assessment-slim-text {
+    color: var(--muted-foreground);
+    font-size: 10px;
+    margin-top: 1px;
+}
+
+.assessment-chip {
+    background: var(--secondary);
+    color: var(--foreground);
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 11px;
+    border: 1px solid var(--border);
+}
+
+.assessment-items table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.assessment-items th,
+.assessment-items td {
+    padding: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    text-align: left;
+}
+
+.assessment-items th {
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.assessment-items td {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.assessment-table-wrapper {
+    overflow-x: auto;
+}
+
+.assessment-add {
+    margin-top: 4px;
+}
+
+.assessment-total {
+    margin-top: 6px;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 6px;
+    font-weight: 700;
+    color: white;
+}
+
+.assessment-total-figure {
+    font-size: 14px;
+    color: white;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+}
+
+.assessment-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 4px 0 6px 0;
+}
+
+.assessment-card .assessment-field.full-width {
+    grid-column: 1 / -1;
+}
+
+/* Assessment print preview */
+.assessment-print-page {
+    min-height: var(--page-height, 100vh);
+    background: var(--page-bg, #f4f6f9);
+    padding: 12px;
+    box-sizing: border-box;
+}
+
+.print-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 10px 14px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+    margin-bottom: 12px;
+    gap: 10px;
+}
+
+.toolbar-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.toolbar-meta {
+    display: flex;
+    gap: 12px;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.print-panels {
+    display: flex;
+    flex-direction: column;
+    gap: var(--panel-gap, 64px);
+    align-items: center;
+}
+
+.assessment-print-panel {
+    width: 210mm;
+    background: #fff;
+    border: none;
+    box-shadow: none;
+    padding: 18px 22px;
+    box-sizing: border-box;
+    page-break-inside: avoid;
+    color: #000;
+}
+
+.assessment-print-panel,
+.assessment-print-panel * {
+    color: #000 !important;
+}
+
+.assessment-print-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    font-size: 12px;
+    color: #111827;
+    margin-bottom: 12px;
+}
+
+.assessment-print-header .header-left div {
+    line-height: 1.4;
+}
+
+.assessment-print-header .header-right {
+    text-align: right;
+    font-weight: 700;
+}
+
+.share-box {
+    border: 1px solid #111827;
+    padding: 10px 12px;
+    font-size: 12px;
+    min-width: 280px;
+    background: #fff;
+}
+
+.share-title {
+    font-weight: 800;
+    margin-bottom: 8px;
+}
+
+.share-rows {
+    display: grid;
+    gap: 4px;
+}
+
+.share-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+}
+
+.share-row span:last-child {
+    text-align: right;
+}
+
+.share-total {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #111827;
+    font-weight: 800;
+}
+
+.header-total {
+    font-size: 16px;
+}
+
+.assessment-print-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.gov-title {
+    font-weight: 800;
+    font-size: 13px;
+    color: #111827;
+    text-align: center;
+}
+
+.assessment-title {
+    font-size: 16px;
+    font-weight: 800;
+    margin-top: 4px;
+    margin-bottom: 12px;
+    text-align: center;
+}
+
+.payer-block {
+    display: table;
+    width: 100%;
+    font-size: 13px;
+    border-spacing: 0 6px;
+}
+
+.payer-row {
+    display: table-row;
+}
+
+.payer-row .label {
+    display: table-cell;
+    font-weight: 700;
+    width: 160px;
+    white-space: nowrap;
+    vertical-align: top;
+}
+
+.payer-row .separator {
+    display: table-cell;
+    width: 20px;
+    text-align: center;
+    vertical-align: top;
+}
+
+.payer-row .value {
+    display: table-cell;
+    vertical-align: top;
+}
+
+.payer-row .value.bold {
+    font-weight: 800;
+}
+
+.payer-row .control-no {
+    display: table-cell;
+    font-weight: 700;
+    text-align: right;
+    white-space: nowrap;
+    vertical-align: top;
+}
+
+.assessment-table {
+    border: 1px solid #1f2937;
+    border-collapse: collapse;
+    margin-top: 8px;
+}
+
+.assessment-table .table-row {
+    display: grid;
+    grid-template-columns: 2.5fr 1.5fr 1.2fr 1.2fr;
+    border-top: 1px solid #1f2937;
+}
+
+.assessment-table .table-row:first-of-type {
+    border-top: none;
+}
+
+.assessment-table .table-row.table-head {
+    background: #f3f4f6;
+    font-weight: 700;
+    padding: 0;
+}
+
+.assessment-table .table-row.empty-row {
+    grid-template-columns: 1fr;
+    text-align: center;
+}
+
+.assessment-table .col {
+    padding: 8px 10px;
+    border-left: 1px solid #1f2937;
+    font-size: 13px;
+}
+
+.assessment-table .col:first-child {
+    border-left: none;
+}
+
+.assessment-table .table-row.table-head .col {
+    font-size: 12px;
+}
+
+.assessment-table .col.item-col {
+    text-align: left;
+}
+
+.assessment-table .col.volume-col {
+    text-align: center;
+}
+
+.assessment-table .col.charge-col,
+.assessment-table .col.total-col {
+    text-align: right;
+}
+
+.remarks-row {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px;
+    margin-top: 10px;
+    font-size: 13px;
+}
+
+.remarks-row .label {
+    font-weight: 700;
+}
+
+.signature-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    margin-top: 28px;
+    font-size: 13px;
+    gap: 24px;
+}
+
+.signature-label {
+    margin-bottom: 18px;
+}
+
+.signature-line {
+    font-weight: 800;
+    text-decoration: underline;
+    text-align: center;
+    padding-bottom: 4px;
+}
+
+.signature-sub {
+    font-style: italic;
+    margin-top: 2px;
+    text-align: center;
+}
+
+.missing-preview {
+    background: #fff3cd;
+    border: 1px solid #ffeeba;
+    padding: 12px 14px;
+    border-radius: 10px;
+    color: #7c3a00;
+    font-weight: 600;
+}
+
+@media print {
+    @page assessment-page {
+        size: A4 portrait;
+        margin: 0.25in;
+    }
+
+    .assessment-print-page {
+        page: assessment-page;
+    }
+
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    /* Nuclear reset for dark backgrounds */
+    *:not(.assessment-print-page):not(.assessment-print-panel):not(.assessment-print-header):not(
+            .assessment-print-body
+        ):not(.assessment-table):not(.table-row):not(.col):not(.payer-block):not(.payer-row):not(
+            .label
+        ):not(.value):not(.separator):not(.control-no):not(.remarks-row):not(.signature-row):not(
+            span
+        ):not(div) {
+        background-color: transparent !important;
+        color: #000 !important;
+        box-shadow: none !important;
+        text-shadow: none !important;
+    }
+
+    html,
+    body {
+        height: 100%;
+        overflow: hidden;
+        background-color: #ffffff !important;
+        color: #000000 !important;
+    }
+
+    body * {
+        visibility: hidden;
+    }
+
+    .assessment-print-page,
+    .assessment-print-page *,
+    .production-print-page,
+    .production-print-page * {
+        visibility: visible;
+        background-color: transparent;
+        color: #000 !important;
+    }
+
+    .app-container,
+    .main-content,
+    .content-area {
+        padding: 0 !important;
+        margin: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        background-color: #ffffff !important;
+        /* display: none !important; REMOVED by fix */
+    }
+
+    /* Make print page the only visible block */
+    .assessment-print-page,
+    .production-print-page {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100% !important;
+        height: 100% !important;
+        background-color: #ffffff !important;
+        z-index: 9999;
+        display: block !important;
+        overflow: hidden !important;
+    }
+
+    .print-panels {
+        display: flex !important;
+        flex-direction: column !important;
+        width: 100% !important;
+        height: 100% !important;
+        background-color: #ffffff !important;
+    }
+
+    .assessment-print-panel {
+        box-shadow: none;
+        border: none;
+        width: 100% !important;
+        max-width: none !important;
+        flex: 1 !important;
+        padding: 24px 32px !important;
+        /* Increased padding */
+        overflow: visible !important;
+        page-break-inside: avoid !important;
+        page-break-after: avoid !important;
+        background-color: #ffffff !important;
+        color: #000000 !important;
+
+        /* Reduced zoom to accommodate Share report content height */
+        zoom: 0.81;
+
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        /* Distribute content vertically */
+    }
+
+    /* Remove specific margin as flex handles spacing */
+    .assessment-print-panel:last-child {
+        margin-top: 0;
+        border-top: 2px dashed #000;
+        /* Separator line */
+        padding-top: 32px !important;
+        page-break-after: avoid !important;
+    }
+
+    .print-toolbar {
+        display: none !important;
+    }
+
+    .sidebar {
+        display: none !important;
+    }
+
+    .assessment-print-body {
+        gap: 2px;
+    }
+
+    .assessment-table .col {
+        padding: 2px 6px;
+        border-color: #6b7280 !important;
+        /* Lighter gray for thinner visual appearance */
+    }
+
+    .assessment-table,
+    .table-row {
+        border-color: #6b7280 !important;
+        /* Lighter gray */
+    }
+
+    .signature-row {
+        margin-top: 8px;
+    }
+
+    .signature-label {
+        margin-bottom: 8px;
+    }
+
+    /* Ensure no other backgrounds leak */
+    .glass,
+    .glass:hover {
+        background: transparent !important;
+        box-shadow: none !important;
+        backdrop-filter: none !important;
+    }
+}
+
+.assessment-table-wrapper::-webkit-scrollbar {
+    height: 8px;
+}
+
+.assessment-table-wrapper::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 10px;
+}
+
+/* Pagination Controls */
+.pagination-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 12px;
+    margin-top: 8px;
+    background: rgba(35, 35, 45, 0.8);
+    border-radius: 8px;
+}
+
+.pagination-info {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.pagination-controls .btn {
+    min-width: 80px;
+}
+
+/* Scrollbar styling for table containers */
+.table-container::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.table-container::-webkit-scrollbar-track {
+    background: rgba(30, 30, 40, 0.5);
+    border-radius: 4px;
+}
+
+.table-container::-webkit-scrollbar-thumb {
+    background: rgba(80, 80, 100, 0.6);
+    border-radius: 4px;
+}
+
+.table-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(100, 100, 120, 0.7);
+}
+
+/* Home page centered layout */
+.home-page {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100%;
+    padding: 40px;
+}
+
+.home-content.home-centered {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    max-width: 800px;
+}
+
+.home-logo-large {
+    width: 280px;
+    height: 280px;
+    object-fit: contain;
+    margin-bottom: 30px;
+    filter: drop-shadow(0 8px 25px rgba(0, 0, 0, 0.3));
+}
+
+.home-title {
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: white;
+    margin-bottom: 16px;
+    text-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    white-space: nowrap;
+}
+
+.home-subtitle {
+    font-size: 1.3rem;
+    color: rgba(255, 255, 255, 0.9);
+    line-height: 1.6;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+/* Page header styles */
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.page-title-section {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.page-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--foreground);
+    margin: 0;
+}
+
+.page-logo {
+    display: none;
+}
+
+/* Page layout for scrollable content */
+.transactions-page,
+.payment-page,
+.page-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    padding: 20px;
+}
+
+.transactions-grid-section {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    align-content: flex-start;
+}
+
+.transactions-grid-section .table-container {
+    max-height: calc(100vh - 350px);
+    overflow: auto;
+    flex-shrink: 0;
+}
+
+.transactions-grid-section .table-container table {
+    height: auto;
+}
+
+.transactions-grid-section .table-container tbody {
+    display: table-row-group;
+}
+
+.transactions-grid-section .table-container tr {
+    height: auto;
+}
+
+.transactions-grid-section .table-container td {
+    height: auto;
+    vertical-align: top;
+}
+
+/* Disable glass hover animation */
+.glass:hover {
+    transform: none !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1) !important;
+}
+
+.sidebar.glass:hover,
+.content-area.glass:hover {
+    transform: none !important;
+    background: rgba(255, 255, 255, 0.15) !important;
+}
