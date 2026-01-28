@@ -13,7 +13,7 @@ const NOTED_BY_TITLE = getEnvValue(import.meta.env.VITE_NOTED_BY_TITLE, DEFAULT_
 
 const formatCurrency = (value) => {
     const num = Number(value) || 0;
-    return `₱ ${num.toFixed(2)}`;
+    return num.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
 const formatDateLong = (dateString) => {
@@ -71,7 +71,7 @@ const AssessmentPreview = () => {
                 </div>
                 <div className="header-right">
                     <div>100% for Province of Misamis Oriental</div>
-                    <div className="header-total">{formatCurrency(previewData?.totalAmount)}</div>
+                    <div className="header-total">₱ {formatCurrency(previewData?.totalAmount)}</div>
                 </div>
             </div>
 

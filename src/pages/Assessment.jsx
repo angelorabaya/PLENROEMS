@@ -194,7 +194,7 @@ const Assessment = () => {
                 setLocationLocked(lock);
                 return;
             }
-            const data = await api.getBarangays(mun);
+            const data = await api.getAssessmentBarangays(mun);
             setBarangays(data);
             if (preselectValue) {
                 setBarangay(preselectValue);
@@ -686,8 +686,8 @@ const Assessment = () => {
                                                 color: theme === 'light' ? '#09090b' : '#fafafa',
                                             }}
                                             onMouseEnter={(e) =>
-                                                (e.target.style.background =
-                                                    theme === 'light' ? '#f4f4f5' : '#27272a')
+                                            (e.target.style.background =
+                                                theme === 'light' ? '#f4f4f5' : '#27272a')
                                             }
                                             onMouseLeave={(e) =>
                                                 (e.target.style.background = 'transparent')

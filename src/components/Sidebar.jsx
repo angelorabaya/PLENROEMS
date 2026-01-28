@@ -210,6 +210,9 @@ const Sidebar = ({ onLogout, isCollapsed, onToggleCollapse, userRole, user }) =>
                     <NavItem to="/reports-hub" icon={FiBarChart2}>
                         Reports Hub
                     </NavItem>
+                    <NavItem to="/daily-collection" icon={FiFileText}>
+                        Daily Collection
+                    </NavItem>
                 </NavSection>
 
                 {isAdmin && (

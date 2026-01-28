@@ -253,7 +253,7 @@ const AssessmentHistory = () => {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                     });
-                    return <span className="cell-text">₱ {total}</span>;
+                    return <span className="cell-text">{total}</span>;
                 },
             },
             {
@@ -431,7 +431,11 @@ const AssessmentHistory = () => {
                                                 }
                                                 style={{
                                                     textAlign:
-                                                        header.id === 'actions' ? 'center' : 'left',
+                                                        header.id === 'actions'
+                                                            ? 'center'
+                                                            : header.id === 'aop_total'
+                                                                ? 'right'
+                                                                : 'left',
                                                     width: header.column.getSize(),
                                                 }}
                                             >
@@ -441,7 +445,9 @@ const AssessmentHistory = () => {
                                                         justifyContent:
                                                             header.id === 'actions'
                                                                 ? 'center'
-                                                                : 'flex-start',
+                                                                : header.id === 'aop_total'
+                                                                    ? 'flex-end'
+                                                                    : 'flex-start',
                                                     }}
                                                 >
                                                     {flexRender(
@@ -451,10 +457,10 @@ const AssessmentHistory = () => {
                                                     {header.column.getCanSort() && (
                                                         <span className="sort-icon">
                                                             {header.column.getIsSorted() ===
-                                                            'asc' ? (
+                                                                'asc' ? (
                                                                 <FiChevronUp className="sort-icon-active" />
                                                             ) : header.column.getIsSorted() ===
-                                                              'desc' ? (
+                                                                'desc' ? (
                                                                 <FiChevronDown className="sort-icon-active" />
                                                             ) : (
                                                                 <FiChevronUp className="sort-icon-inactive" />
@@ -479,7 +485,9 @@ const AssessmentHistory = () => {
                                                         textAlign:
                                                             cell.column.id === 'actions'
                                                                 ? 'center'
-                                                                : 'left',
+                                                                : cell.column.id === 'aop_total'
+                                                                    ? 'right'
+                                                                    : 'left',
                                                     }}
                                                 >
                                                     {flexRender(

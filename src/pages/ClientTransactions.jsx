@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-
+import { useOutletContext } from 'react-router-dom';
 import { createPortal } from 'react-dom';
+import { FiTrash2 } from 'react-icons/fi';
 import { api } from '../services/api';
+import DeleteModal from '../components/modals/DeleteModal';
 import plenroLogo from '../plenro.png';
 
 const ClientTransactions = () => {
@@ -14,12 +16,27 @@ const ClientTransactions = () => {
     const [transactions, setTransactions] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+
+    // Delete modal state
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [detailToDelete, setDetailToDelete] = useState(null);
 
     // Client autocomplete state
     const [clientSearch, setClientSearch] = useState('');
     const [showClientSuggestions, setShowClientSuggestions] = useState(false);
     const [dropdownPosition, setDropdownPosition] = useState({});
     const inputRef = useRef(null);
+
+    // Admin check
+    const { currentUser } = useOutletContext();
+    const isAdmin = useMemo(() => {
+        if (!currentUser) return false;
+        const role = currentUser.role?.toLowerCase() || '';
+        const username = currentUser.log_user?.toLowerCase()?.trim() || '';
+        const access = currentUser.log_access;
+        return role === 'admin' || username === 'admin' || access == 1;
+    }, [currentUser]);
 
     useEffect(() => {
         fetchTransactionClients();
@@ -102,6 +119,35 @@ const ClientTransactions = () => {
     const getFullAddress = (client) => {
         if (!client) return '';
         return (client.ph_address1 || '') + (client.ph_address2 ? ', ' + client.ph_address2 : '');
+    };
+
+    const handleDeleteClick = (detail) => {
+        setDetailToDelete(detail);
+        setIsDeleteModalOpen(true);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!detailToDelete) return;
+        try {
+            await api.deleteTransactionDetail(detailToDelete.aop_control);
+            setSuccess('Transaction deleted successfully');
+            setIsDeleteModalOpen(false);
+            setDetailToDelete(null);
+            // Refresh the transactions
+            if (selectedClientId) {
+                const details = await api.getTransactionDetails(selectedClientId);
+                setAllTransactions(details);
+                setTransactions(
+                    natureOfPayment
+                        ? details.filter((tx) => (tx.aop_nature || '').trim() === natureOfPayment)
+                        : details
+                );
+            }
+            setTimeout(() => setSuccess(''), 3000);
+        } catch (err) {
+            setError('Failed to delete: ' + err.message);
+            setTimeout(() => setError(''), 3000);
+        }
     };
 
     return (
@@ -270,6 +316,11 @@ const ClientTransactions = () => {
             </div>
 
             {error && <div className="error-alert">{error}</div>}
+            {success && (
+                <div className="alert alert-success" style={{ marginBottom: '16px' }}>
+                    {success}
+                </div>
+            )}
 
             <div className="transactions-grid-section">
                 {selectedClientId ? (
@@ -293,14 +344,19 @@ const ClientTransactions = () => {
                             <table>
                                 <thead>
                                     <tr>
-                                        <th>Control No.</th>
-                                        <th>O.R. No.</th>
-                                        <th>O.R. Date</th>
-                                        <th>Item</th>
-                                        <th>Volume/Unit</th>
-                                        <th>Charge</th>
-                                        <th>Amount</th>
-                                        <th>Remarks</th>
+                                        <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--secondary)' }}>Control No.</th>
+                                        <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--secondary)' }}>O.R. No.</th>
+                                        <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--secondary)' }}>O.R. Date</th>
+                                        <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--secondary)' }}>Item</th>
+                                        <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--secondary)' }}>Volume/Unit</th>
+                                        <th style={{ textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--secondary)' }}>Charge</th>
+                                        <th style={{ textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--secondary)' }}>Amount</th>
+                                        <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--secondary)' }}>Remarks</th>
+                                        {isAdmin && (
+                                            <th style={{ width: '60px', textAlign: 'center', position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--secondary)' }}>
+                                                Actions
+                                            </th>
+                                        )}
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -311,21 +367,38 @@ const ClientTransactions = () => {
                                             month: '2-digit',
                                             day: '2-digit',
                                         });
-                                        const charge = parseFloat(detail.aop_charge || 0).toFixed(
-                                            2
-                                        );
-                                        const total = parseFloat(detail.aop_total || 0).toFixed(2);
+                                        const charge = parseFloat(detail.aop_charge || 0).toLocaleString('en-US', {
+                                            minimumFractionDigits: 2,
+                                            maximumFractionDigits: 2,
+                                        });
+                                        const total = parseFloat(detail.aop_total || 0).toLocaleString('en-US', {
+                                            minimumFractionDigits: 2,
+                                            maximumFractionDigits: 2,
+                                        });
 
                                         return (
-                                            <tr key={index}>
+                                            <tr key={detail.aop_ctrlno || index}>
                                                 <td>{detail.aop_control}</td>
                                                 <td>{detail.aop_orno}</td>
                                                 <td>{dateStr}</td>
                                                 <td>{detail.aop_item}</td>
                                                 <td>{detail.aop_volume}</td>
-                                                <td>₱ {charge}</td>
-                                                <td>₱ {total}</td>
+                                                <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>{charge}</td>
+                                                <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>{total}</td>
                                                 <td>{detail.aop_remarks}</td>
+                                                {isAdmin && (
+                                                    <td style={{ textAlign: 'center' }}>
+                                                        <button
+                                                            className="btn-delete"
+                                                            title="Delete"
+                                                            onClick={() =>
+                                                                handleDeleteClick(detail)
+                                                            }
+                                                        >
+                                                            <FiTrash2 className="icon-sm" />
+                                                        </button>
+                                                    </td>
+                                                )}
                                             </tr>
                                         );
                                     })}
@@ -349,6 +422,17 @@ const ClientTransactions = () => {
                     </div>
                 )}
             </div>
+
+            <DeleteModal
+                isOpen={isDeleteModalOpen}
+                onClose={() => {
+                    setIsDeleteModalOpen(false);
+                    setDetailToDelete(null);
+                }}
+                onConfirm={handleConfirmDelete}
+                title="Delete Transaction"
+                message="Are you sure you want to delete this transaction? This action cannot be undone."
+            />
         </div>
     );
 };

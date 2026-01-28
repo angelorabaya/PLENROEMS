@@ -1097,7 +1097,8 @@ app.get('/api/assessmentdetails/:clientId', async (req, res) => {
              tbl_assessmenthdr.aop_ordate, tbl_assessmentdtl.aop_item, 
              tbl_assessmentdtl.aop_volume, tbl_assessmentdtl.aop_charge, 
              tbl_assessmentdtl.aop_total, tbl_assessmenthdr.aop_remarks,
-             tbl_assessmenthdr.aop_nature
+             tbl_assessmenthdr.aop_nature,
+             tbl_assessmentdtl.aop_ctrlno
       FROM tbl_assessmenthdr 
       INNER JOIN tbl_assessmentdtl ON tbl_assessmenthdr.aop_control = tbl_assessmentdtl.aop_control
       WHERE tbl_assessmenthdr.aop_orno IS NOT NULL 
@@ -1112,6 +1113,47 @@ app.get('/api/assessmentdetails/:clientId', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch assessment details' });
   }
 });
+
+// DELETE /api/assessmentdetails/:id
+// Deletes assessment detail and header rows by aop_control
+app.delete('/api/assessmentdetails/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const request = pool.request();
+    request.input('aop_control', sql.VarChar(50), id);
+
+    // Fetch old values for audit logging
+    const existingDtl = await request.query('SELECT * FROM tbl_assessmentdtl WHERE aop_control = @aop_control');
+    const existingHdr = await request.query('SELECT * FROM tbl_assessmenthdr WHERE aop_control = @aop_control');
+
+    const oldValuesDtl = existingDtl.recordset;
+    const oldValuesHdr = existingHdr.recordset[0];
+
+    if (oldValuesDtl.length === 0 && !oldValuesHdr) {
+      return res.status(404).json({ error: 'Assessment record not found' });
+    }
+
+    // Delete from detail table first (child records)
+    await request.query('DELETE FROM tbl_assessmentdtl WHERE aop_control = @aop_control');
+
+    // Delete from header table (parent record)
+    await request.query('DELETE FROM tbl_assessmenthdr WHERE aop_control = @aop_control');
+
+    await logActivity(pool, req, {
+      action: 'DELETE',
+      tableName: 'tbl_assessmenthdr/tbl_assessmentdtl',
+      recordId: id,
+      oldValues: { header: oldValuesHdr, details: oldValuesDtl }
+    });
+
+    console.log(`✅ Assessment ${id} deleted successfully`);
+    res.json({ message: 'Assessment deleted successfully' });
+  } catch (err) {
+    console.error('❌ Delete Assessment Error:', err.message);
+    res.status(500).json({ error: 'Failed to delete assessment: ' + err.message });
+  }
+});
+
 
 // DELETE /api/clients/:id
 app.delete('/api/clients/:id', async (req, res) => {
@@ -2241,6 +2283,23 @@ app.get('/api/municipalities', async (req, res) => {
   }
 });
 
+app.get('/api/barangays', async (req, res) => {
+  try {
+    const request = pool.request();
+    const result = await request.query(`
+      SELECT DISTINCT [aop_brgy] as mun_brgy
+      FROM [View_brgysharesmonth]
+      ORDER BY [aop_brgy]
+    `);
+
+    console.log(`✅ Fetched ${result.recordset.length} total barangays`);
+    res.json(result.recordset || []);
+  } catch (err) {
+    console.error('❌ Get All Barangays Error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch barangays: ' + err.message });
+  }
+});
+
 app.get('/api/municipalities/:mun_name/barangays', async (req, res) => {
   try {
     const { mun_name } = req.params;
@@ -2258,6 +2317,28 @@ app.get('/api/municipalities/:mun_name/barangays', async (req, res) => {
     res.json(result.recordset || []);
   } catch (err) {
     console.error('❌ Get Barangays Error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch barangays: ' + err.message });
+  }
+});
+
+app.get('/api/assessment/barangays/:mun_name', async (req, res) => {
+  try {
+    const { mun_name } = req.params;
+    const request = pool.request();
+    request.input('mun_name', sql.VarChar, mun_name);
+    const result = await request.query(`
+      SELECT
+          m.mun_name,
+          m.mun_brgy
+      FROM dbo.tbl_municipalities AS m
+      WHERE m.mun_name = @mun_name
+      ORDER BY m.mun_brgy ASC;
+    `);
+
+    console.log(`✅ Fetched ${result.recordset.length} assessment barangays for municipality ${mun_name}`);
+    res.json(result.recordset || []);
+  } catch (err) {
+    console.error('❌ Get Assessment Barangays Error:', err.message);
     res.status(500).json({ error: 'Failed to fetch barangays: ' + err.message });
   }
 });
@@ -3176,6 +3257,40 @@ app.delete('/api/docoutgoing/:id', async (req, res) => {
 });
 
 // ==================== REPORTS ENDPOINTS ====================
+
+// Reports
+// Daily Collection Report
+app.get('/api/reports/daily-collection', async (req, res) => {
+  try {
+    const { date } = req.query;
+    if (!date) {
+      return res.status(400).json({ error: 'Date parameter is required' });
+    }
+
+    const request = pool.request();
+    request.input('date', sql.Date, date);
+
+    const result = await request.query(`
+                SELECT 
+                    ah.aop_control,
+                    c.ph_cname,
+                    ah.aop_ordate,
+                    ah.aop_orno,
+                    ah.aop_nature,
+                    ah.aop_total
+                FROM tbl_assessmenthdr AS ah
+                INNER JOIN tbl_client AS c ON ah.aop_clientid = c.ph_ctrlno
+                WHERE CAST(ah.aop_ordate AS DATE) = @date
+                ORDER BY c.ph_cname
+            `);
+
+    console.log(`✅ Fetched daily collection for ${date}: ${result.recordset.length} records`);
+    res.json(result.recordset || []);
+  } catch (err) {
+    console.error('❌ Daily Collection Report Error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch daily collection: ' + err.message });
+  }
+});
 
 // GET /api/reports/available-years - Get available years from View_collectionreport
 app.get('/api/reports/available-years', async (req, res) => {

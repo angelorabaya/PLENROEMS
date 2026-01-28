@@ -7,17 +7,21 @@ import '../styles/ordinance-bot.css';
 
 // API URL helper
 const getApiUrl = () => {
-    const hostname = window.location.hostname;
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        return 'http://localhost:5000';
-    }
-    return `http://${hostname}:5000`;
+    return '';
 };
 
 const OrdinanceBot = () => {
     const navigate = useNavigate();
     const { theme } = useTheme();
-    const [messages, setMessages] = useState([]);
+    const [messages, setMessages] = useState(() => {
+        try {
+            const saved = localStorage.getItem('ordinance_bot_chat_history');
+            return saved ? JSON.parse(saved) : [];
+        } catch (e) {
+            console.error("Failed to load chat history", e);
+            return [];
+        }
+    });
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -43,6 +47,11 @@ const OrdinanceBot = () => {
         }, 50);
         return () => clearTimeout(timer);
     }, [messages, isLoading]);
+
+    // Save chat history to local storage
+    useEffect(() => {
+        localStorage.setItem('ordinance_bot_chat_history', JSON.stringify(messages));
+    }, [messages]);
 
     const checkBotStatus = async () => {
         try {
@@ -106,6 +115,7 @@ const OrdinanceBot = () => {
     const clearChat = () => {
         setMessages([]);
         setError(null);
+        localStorage.removeItem('ordinance_bot_chat_history');
     };
 
     return (

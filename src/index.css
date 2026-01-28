@@ -832,7 +832,7 @@ tbody tr:last-child td {
 
 .assessment-table .table-row {
     display: grid;
-    grid-template-columns: 2.5fr 1.5fr 1.2fr 1.2fr;
+    grid-template-columns: 2.5fr 1.2fr 1.5fr 1.2fr;
     border-top: 1px solid #1f2937;
 }
 
@@ -940,13 +940,7 @@ tbody tr:last-child td {
     }
 
     /* Nuclear reset for dark backgrounds */
-    *:not(.assessment-print-page):not(.assessment-print-panel):not(.assessment-print-header):not(
-            .assessment-print-body
-        ):not(.assessment-table):not(.table-row):not(.col):not(.payer-block):not(.payer-row):not(
-            .label
-        ):not(.value):not(.separator):not(.control-no):not(.remarks-row):not(.signature-row):not(
-            span
-        ):not(div) {
+    *:not(.assessment-print-page):not(.assessment-print-panel):not(.assessment-print-header):not(.assessment-print-body):not(.assessment-table):not(.table-row):not(.col):not(.payer-block):not(.payer-row):not(.label):not(.value):not(.separator):not(.control-no):not(.remarks-row):not(.signature-row):not(span):not(div) {
         background-color: transparent !important;
         color: #000 !important;
         box-shadow: none !important;
@@ -1051,16 +1045,25 @@ tbody tr:last-child td {
         gap: 2px;
     }
 
-    .assessment-table .col {
-        padding: 2px 6px;
-        border-color: #6b7280 !important;
-        /* Lighter gray for thinner visual appearance */
+    .assessment-table {
+        border: 0.5px solid #000 !important;
     }
 
-    .assessment-table,
-    .table-row {
-        border-color: #6b7280 !important;
-        /* Lighter gray */
+    .assessment-table .col {
+        padding: 2px 6px;
+        border-right: none !important;
+        border-bottom: none !important;
+        border-top: none !important;
+        border-left: 0.5px solid #000 !important;
+        box-shadow: none !important;
+    }
+
+    .assessment-table .table-row {
+        border-left: none !important;
+        border-right: none !important;
+        border-bottom: none !important;
+        border-top: 0.5px solid #000 !important;
+        box-shadow: none !important;
     }
 
     .signature-row {

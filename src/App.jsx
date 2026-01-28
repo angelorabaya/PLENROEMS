@@ -35,6 +35,7 @@ import ActivePermitteesReport from './pages/ActivePermitteesReport';
 import BackgroundShapes from './components/BackgroundShapes';
 import OrdinanceBot from './pages/OrdinanceBot';
 import TaskForce from './pages/TaskForce';
+import DailyCollection from './pages/DailyCollection';
 
 import { ThemeProvider } from './context/ThemeContext';
 
@@ -127,6 +128,10 @@ function App() {
                         <Route
                             path="/reports/active-permittees"
                             element={<ActivePermitteesReport />}
+                        />
+                        <Route
+                            path="/daily-collection"
+                            element={<DailyCollection />}
                         />
 
                         <Route path="/ordinance-bot" element={<OrdinanceBot />} />

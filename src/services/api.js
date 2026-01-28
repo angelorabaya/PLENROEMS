@@ -1,4 +1,4 @@
-const API_BASE = 'http://' + window.location.hostname + ':5000';
+const API_BASE = '';
 
 const getHeaders = () => {
     const headers = { 'Content-Type': 'application/json' };
@@ -289,6 +289,20 @@ export const api = {
         return response.json();
     },
 
+    getAllBarangays: async () => {
+        const response = await fetch(`${API_BASE}/api/barangays`);
+        if (!response.ok) throw new Error('Failed to fetch all barangays');
+        return response.json();
+    },
+
+    getAssessmentBarangays: async (municipality) => {
+        const response = await fetch(
+            `${API_BASE}/api/assessment/barangays/${encodeURIComponent(municipality)}`
+        );
+        if (!response.ok) throw new Error('Failed to fetch assessment barangays');
+        return response.json();
+    },
+
     getBarangays: async (municipality) => {
         const response = await fetch(
             `${API_BASE}/api/municipalities/${encodeURIComponent(municipality)}/barangays`
@@ -345,6 +359,15 @@ export const api = {
     getTransactionDetails: async (clientId) => {
         const response = await fetch(`${API_BASE}/api/assessmentdetails/${clientId}`);
         if (!response.ok) throw new Error('Failed to fetch transaction details');
+        return response.json();
+    },
+
+    deleteTransactionDetail: async (id) => {
+        const response = await fetch(`${API_BASE}/api/assessmentdetails/${id}`, {
+            method: 'DELETE',
+            headers: getHeaders(),
+        });
+        if (!response.ok) throw new Error('Failed to delete transaction detail');
         return response.json();
     },
 
@@ -660,6 +683,12 @@ export const api = {
         }
         const response = await fetch(url);
         if (!response.ok) throw new Error('Failed to fetch dashboard stats');
+        return response.json();
+    },
+
+    getDailyCollection: async (date) => {
+        const response = await fetch(`${API_BASE}/api/reports/daily-collection?date=${encodeURIComponent(date)}`);
+        if (!response.ok) throw new Error('Failed to fetch daily collection');
         return response.json();
     },
 
