@@ -59,6 +59,15 @@ export const api = {
         return response.json();
     },
 
+    updateClientPermitHolder: async (id) => {
+        const response = await fetch(`${API_BASE}/api/clients/${id}/permit-holder`, {
+            method: 'PUT',
+            headers: getHeaders(),
+        });
+        if (!response.ok) throw new Error('Failed to update client type');
+        return response.json();
+    },
+
     deleteClient: async (id) => {
         const response = await fetch(`${API_BASE}/api/clients/${id}`, {
             method: 'DELETE',
@@ -289,6 +298,12 @@ export const api = {
         return response.json();
     },
 
+    getMasterMunicipalities: async () => {
+        const response = await fetch(`${API_BASE}/api/municipalities/master`);
+        if (!response.ok) throw new Error('Failed to fetch master municipalities');
+        return response.json();
+    },
+
     getAllBarangays: async () => {
         const response = await fetch(`${API_BASE}/api/barangays`);
         if (!response.ok) throw new Error('Failed to fetch all barangays');
@@ -441,6 +456,32 @@ export const api = {
         const result = await response.json();
         if (!response.ok) {
             throw new Error(result.error || 'Failed to update attachment');
+        }
+        return result;
+    },
+
+    renameNewApplicationAttachments: async ({ oldPermitNo, newPermitNo }) => {
+        const response = await fetch(`${API_BASE}/api/newapplication/attachments/rename`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ oldPermitNo, newPermitNo }),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.error || 'Failed to rename attachments');
+        }
+        return result;
+    },
+
+    updateNewApplicationPermitNo: async ({ oldPermitNo, newPermitNo }) => {
+        const response = await fetch(`${API_BASE}/api/newapplication/permitno/update`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ oldPermitNo, newPermitNo }),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.error || 'Failed to update permit number');
         }
         return result;
     },

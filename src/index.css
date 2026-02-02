@@ -696,6 +696,10 @@ tbody tr:last-child td {
     color: #000;
 }
 
+.print-only {
+    display: none;
+}
+
 .assessment-print-panel,
 .assessment-print-panel * {
     color: #000 !important;
@@ -708,6 +712,23 @@ tbody tr:last-child td {
     font-size: 12px;
     color: #111827;
     margin-bottom: 12px;
+}
+
+.assessment-print-header .header-with-logo {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.assessment-print-header .header-with-logo .header-logo {
+    height: 4.2em;
+    width: auto;
+    object-fit: contain;
+}
+
+.assessment-print-header .header-with-logo .header-text {
+    display: flex;
+    flex-direction: column;
 }
 
 .assessment-print-header .header-left div {
@@ -822,6 +843,32 @@ tbody tr:last-child td {
     text-align: right;
     white-space: nowrap;
     vertical-align: top;
+    position: relative;
+}
+
+.payer-row .control-no .control-no-wrap {
+    display: inline-block;
+    position: relative;
+}
+
+.payer-row .control-no .control-no-qr {
+    position: absolute;
+    left: 50%;
+    top: -90px;
+    transform: translateX(-50%);
+    opacity: 1;
+    z-index: 0;
+    pointer-events: none;
+}
+
+.payer-row .control-no .control-no-qr svg {
+    display: block;
+}
+
+.payer-row .control-no .control-no-text {
+    display: block;
+    position: relative;
+    z-index: 1;
 }
 
 .assessment-table {
@@ -1022,6 +1069,10 @@ tbody tr:last-child td {
         flex-direction: column;
         justify-content: space-between;
         /* Distribute content vertically */
+    }
+
+    .print-only {
+        display: flex !important;
     }
 
     /* Remove specific margin as flex handles spacing */

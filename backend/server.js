@@ -349,6 +349,47 @@ app.put('/api/clients/:id', async (req, res) => {
   }
 });
 
+app.put('/api/clients/:id/permit-holder', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ error: 'Client id is required' });
+    }
+
+    const getReq = pool.request();
+    getReq.input('ph_ctrlno', sql.Int, id);
+    const existing = await getReq.query('SELECT * FROM tbl_client WHERE ph_ctrlno = @ph_ctrlno');
+
+    if (!existing.recordset.length) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    const request = pool.request();
+    request.input('ph_ctrlno', sql.Int, id);
+
+    await request.query(`
+      UPDATE tbl_client
+      SET ph_ctype = 'Permit Holder',
+          ph_tpermit = NULL
+      WHERE ph_ctrlno = @ph_ctrlno
+    `);
+
+    await logActivity(pool, req, {
+      action: 'UPDATE',
+      tableName: 'tbl_client',
+      recordId: id,
+      oldValues: existing.recordset[0],
+      newValues: { ph_ctype: 'Permit Holder', ph_tpermit: null }
+    });
+
+    res.json({ message: 'Client updated to Permit Holder' });
+  } catch (err) {
+    console.error('❌ Update Client Permit Holder Error:', err.message);
+    res.status(500).json({ error: 'Failed to update client: ' + err.message });
+  }
+});
+
 app.delete('/api/clients/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -1350,7 +1391,18 @@ app.get('/api/permitholder/permits/:clientId', async (req, res) => {
 // Creates a new client permit
 app.post('/api/permitholder/permits', async (req, res) => {
   try {
-    const { clientId, permitNo, municipality, barangay1, barangay2, volume, area, dateFrom, dateTo } = req.body || {};
+    const {
+      clientId,
+      permitNo,
+      municipality,
+      barangay1,
+      barangay2,
+      volume,
+      area,
+      dateFrom,
+      dateTo,
+      source
+    } = req.body || {};
 
     if (!clientId || !permitNo) {
       return res.status(400).json({ error: 'Client ID and Permit No. are required' });
@@ -1366,11 +1418,12 @@ app.post('/api/permitholder/permits', async (req, res) => {
     request.input('area', sql.Decimal(18, 2), area ?? 0);
     request.input('dateFrom', sql.Date, dateFrom || null);
     request.input('dateTo', sql.Date, dateTo || null);
+    request.input('source', sql.VarChar(100), source || permitNo || null);
 
     const result = await request.query(`
-      INSERT INTO tbl_clientpermit (ph_lnkctrl, ph_permitno, ph_mun, ph_brgy, ph_brgy2, ph_volume, ph_area, ph_dfrom, ph_dto)
-      OUTPUT inserted.ph_ctrlno, inserted.ph_lnkctrl, inserted.ph_permitno, inserted.ph_mun, inserted.ph_brgy, inserted.ph_brgy2, inserted.ph_volume, inserted.ph_area, inserted.ph_dfrom, inserted.ph_dto, inserted.ph_attach
-      VALUES (@clientId, @permitNo, @municipality, @barangay1, @barangay2, @volume, @area, @dateFrom, @dateTo)
+      INSERT INTO tbl_clientpermit (ph_lnkctrl, ph_permitno, ph_mun, ph_brgy, ph_brgy2, ph_volume, ph_area, ph_dfrom, ph_dto, ph_source)
+      OUTPUT inserted.ph_ctrlno, inserted.ph_lnkctrl, inserted.ph_permitno, inserted.ph_mun, inserted.ph_brgy, inserted.ph_brgy2, inserted.ph_volume, inserted.ph_area, inserted.ph_dfrom, inserted.ph_dto, inserted.ph_attach, inserted.ph_source
+      VALUES (@clientId, @permitNo, @municipality, @barangay1, @barangay2, @volume, @area, @dateFrom, @dateTo, @source)
     `);
 
     console.log('✅ Client permit created successfully');
@@ -1856,6 +1909,87 @@ app.post('/api/newapplication/preview/batch', async (req, res) => {
   }
 });
 
+// POST /api/newapplication/permitno/update
+// Update permit number in tbl_permitreqnewapp
+app.post('/api/newapplication/permitno/update', async (req, res) => {
+  try {
+    const { oldPermitNo, newPermitNo } = req.body || {};
+
+    if (!oldPermitNo || !newPermitNo) {
+      return res.status(400).json({ error: 'oldPermitNo and newPermitNo are required' });
+    }
+
+    const request = pool.request();
+    request.input('oldPermitNo', sql.VarChar(100), oldPermitNo);
+    request.input('newPermitNo', sql.VarChar(100), newPermitNo);
+
+    const result = await request.query(`
+      UPDATE tbl_permitreqnewapp
+      SET pr_permitno = @newPermitNo
+      WHERE pr_permitno = @oldPermitNo
+    `);
+
+    res.json({ success: true, rowsAffected: result.rowsAffected?.[0] || 0 });
+  } catch (err) {
+    console.error('Error updating permit number in new application requirements:', err);
+    res.status(500).json({ error: 'Failed to update permit number: ' + err.message });
+  }
+});
+
+// POST /api/newapplication/attachments/rename
+// Rename attachment files containing old permit number to new permit number
+app.post('/api/newapplication/attachments/rename', async (req, res) => {
+  try {
+    const { oldPermitNo, newPermitNo } = req.body || {};
+
+    if (!oldPermitNo || !newPermitNo) {
+      return res.status(400).json({ error: 'oldPermitNo and newPermitNo are required' });
+    }
+
+    if (/[\\/]/.test(oldPermitNo) || /[\\/]/.test(newPermitNo)) {
+      return res.status(400).json({ error: 'Invalid permit number' });
+    }
+
+    if (oldPermitNo === newPermitNo) {
+      return res.json({ renamedCount: 0, skippedCount: 0, renamed: [], skipped: [] });
+    }
+
+    const files = await fs.promises.readdir(ATTACHMENTS_BASE_PATH);
+    const renamed = [];
+    const skipped = [];
+
+    for (const file of files) {
+      if (!file.includes(oldPermitNo)) continue;
+      const newName = file.split(oldPermitNo).join(newPermitNo);
+      if (newName === file) continue;
+
+      const fromPath = path.join(ATTACHMENTS_BASE_PATH, file);
+      const toPath = path.join(ATTACHMENTS_BASE_PATH, newName);
+
+      try {
+        await fs.promises.access(toPath, fs.constants.F_OK);
+        skipped.push({ file, reason: 'target-exists', target: newName });
+        continue;
+      } catch {
+        // target does not exist
+      }
+
+      await fs.promises.rename(fromPath, toPath);
+      renamed.push({ from: file, to: newName });
+    }
+
+    res.json({
+      renamedCount: renamed.length,
+      skippedCount: skipped.length,
+      renamed,
+      skipped
+    });
+  } catch (err) {
+    console.error('Error renaming attachments:', err);
+    res.status(500).json({ error: 'Failed to rename attachments: ' + err.message });
+  }
+});
+
 
 // ==================== VEHICLE REGISTRATIONS ENDPOINTS ====================
 
@@ -2067,6 +2201,7 @@ app.post('/api/assessments', async (req, res) => {
       aop_nature,
       aop_mun = '',
       aop_brgy = '',
+      aop_brgycombo = null,
       aop_remarks = '',
       aop_amount = 0,
       aop_total = 0,
@@ -2091,6 +2226,7 @@ app.post('/api/assessments', async (req, res) => {
       request.input('aop_nature', sql.VarChar(200), aop_nature);
       request.input('aop_mun', sql.VarChar(200), aop_mun || '');
       request.input('aop_brgy', sql.VarChar(200), aop_brgy || '');
+      request.input('aop_brgycombo', sql.VarChar(200), aop_brgycombo ?? null);
       request.input('aop_remarks', sql.VarChar(sql.MAX), aop_remarks || '');
       request.input('aop_orno', sql.VarChar(50), null);
       request.input('aop_ordate', sql.Date, null);
@@ -2108,6 +2244,7 @@ app.post('/api/assessments', async (req, res) => {
             , [aop_nature]
             , [aop_mun]
             , [aop_brgy]
+            , [aop_brgycombo]
             , [aop_remarks]
             , [aop_orno]
             , [aop_ordate]
@@ -2125,6 +2262,7 @@ app.post('/api/assessments', async (req, res) => {
             , @aop_nature
             , @aop_mun
             , @aop_brgy
+            , @aop_brgycombo
             , @aop_remarks
             , @aop_orno
             , @aop_ordate
@@ -2192,6 +2330,7 @@ app.post('/api/assessments', async (req, res) => {
           aop_nature,
           aop_mun,
           aop_brgy,
+          aop_brgycombo,
           aop_remarks,
           aop_amount,
           aop_total,
@@ -2280,6 +2419,23 @@ app.get('/api/municipalities', async (req, res) => {
   } catch (err) {
     console.error('❌ Get Municipalities Error:', err.message);
     res.status(500).json({ error: 'Failed to fetch municipalities: ' + err.message });
+  }
+});
+
+app.get('/api/municipalities/master', async (req, res) => {
+  try {
+    const request = pool.request();
+    const result = await request.query(`
+      SELECT DISTINCT m.mun_name
+      FROM dbo.tbl_municipalities AS m
+      ORDER BY m.mun_name;
+    `);
+
+    console.log(`✅ Fetched ${result.recordset.length} municipalities from tbl_municipalities`);
+    res.json(result.recordset || []);
+  } catch (err) {
+    console.error('❌ Get Master Municipalities Error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch master municipalities: ' + err.message });
   }
 });
 

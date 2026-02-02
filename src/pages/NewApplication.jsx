@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../services/api';
 import plenroLogo from '../plenro.png';
-import { FiRefreshCw } from 'react-icons/fi';
+import { FiRefreshCw, FiCheckCircle } from 'react-icons/fi';
 
 const DEFAULT_ATTACHMENTS_BASE_PATH = '\\\\Enro-server\\servershare\\attachments\\';
 const normalizeAttachmentBasePath = (value) => {
@@ -13,6 +13,8 @@ const normalizeAttachmentBasePath = (value) => {
 const ATTACHMENTS_BASE_PATH = normalizeAttachmentBasePath(
     import.meta.env.VITE_ATTACHMENTS_BASE_PATH
 );
+
+import PermitApprovedModal from '../components/modals/PermitApprovedModal';
 
 const NewApplication = () => {
     const navigate = useNavigate();
@@ -28,8 +30,18 @@ const NewApplication = () => {
     const [error, setError] = useState('');
     const [attachMessage, setAttachMessage] = useState('');
     const [refreshingAttachments, setRefreshingAttachments] = useState(false);
+    const [isPermitModalOpen, setIsPermitModalOpen] = useState(false);
+    const [currentUser, setCurrentUser] = useState(null);
 
     useEffect(() => {
+        const savedUser = localStorage.getItem('currentUser');
+        if (savedUser) {
+            try {
+                setCurrentUser(JSON.parse(savedUser));
+            } catch (e) {
+                console.error("Failed to parse user", e);
+            }
+        }
         loadClients();
     }, []);
 
@@ -187,10 +199,10 @@ const NewApplication = () => {
                 prev.map((item, idx) =>
                     idx === index
                         ? {
-                              ...item,
-                              pr_source: fileName,
-                              pr_wsource: 1,
-                          }
+                            ...item,
+                            pr_source: fileName,
+                            pr_wsource: 1,
+                        }
                         : item
                 )
             );
@@ -221,7 +233,28 @@ const NewApplication = () => {
                     />
                     <h2 className="page-title">New Application</h2>
                 </div>
+                <div className="page-actions">
+                    {currentUser?.log_access === 1 && (
+                        <button
+                            className="btn btn-primary"
+                            onClick={() => setIsPermitModalOpen(true)}
+                            disabled={requirements.length === 0}
+                        >
+                            <FiCheckCircle /> Permit Approved
+                        </button>
+                    )}
+                </div>
             </div>
+
+            <PermitApprovedModal
+                isOpen={isPermitModalOpen}
+                onClose={() => setIsPermitModalOpen(false)}
+                clientId={selectedClientId}
+                currentPermitNo={selectedClient?.ph_tpermit || ''}
+                onSave={(data) => {
+                    console.log('Permit Approved Data:', data);
+                }}
+            />
 
             <div className="table-container" style={{ marginBottom: '16px', padding: '12px' }}>
                 <div className="transactions-compact-form">

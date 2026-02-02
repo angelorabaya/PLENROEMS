@@ -176,7 +176,7 @@ const Assessment = () => {
     const loadMunicipalities = async () => {
         setLoading((prev) => ({ ...prev, municipalities: true }));
         try {
-            const data = await api.getMunicipalities();
+            const data = await api.getMasterMunicipalities();
             setMunicipalities(data);
         } catch (err) {
             transientMessage(setError, err.message);
@@ -519,6 +519,14 @@ const Assessment = () => {
             return;
         }
 
+        if ((nature || '').toLowerCase().includes('government share') && (!municipality || !barangay)) {
+            transientMessage(
+                setError,
+                'Municipality and Barangay are required for Government Share'
+            );
+            return;
+        }
+
         const validItems = items.filter((item) => {
             const hasItem = item.item && item.item.trim() !== '';
             const hasValue =
@@ -534,6 +542,8 @@ const Assessment = () => {
         const pentryMatch = remarks.match(/P-Entry:\s*([^)]+)\)/i);
         const pentryValue = shipmentEntry || (pentryMatch ? pentryMatch[1].trim() : '');
 
+        const aopBrgyCombo = barangay && barangay2 ? `${barangay}/${barangay2}` : null;
+
         const payload = {
             aop_control: controlNo,
             aop_clientid: parseInt(clientId, 10),
@@ -541,6 +551,7 @@ const Assessment = () => {
             aop_nature: nature,
             aop_mun: municipality || '',
             aop_brgy: barangay || '',
+            aop_brgycombo: aopBrgyCombo,
             aop_remarks: remarks || '',
             aop_amount: totalAmount,
             aop_total: totalAmount,

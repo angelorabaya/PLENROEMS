@@ -196,12 +196,16 @@ const PermitHolder = () => {
 
     // Helper to generate filename for prerequisite
     const getPrereqFilename = (req, permitNo) => {
-        const sourceFile = (req.pr_source || '').trim();
-        if (sourceFile) {
-            return sourceFile;
+        const cleanPermitNo = (permitNo || '').trim();
+        const suffix = (req.pr_desc || '').substring(0, 2);
+        if (cleanPermitNo) {
+            if (suffix) {
+                return `${cleanPermitNo}-${suffix}.pdf`;
+            }
+            return `${cleanPermitNo}.pdf`;
         }
-        // Generate filename: permitNo-{first 2 chars of description}.pdf
-        return `${permitNo}-${(req.pr_desc || '').substring(0, 2)}.pdf`;
+        const sourceFile = (req.pr_source || '').trim();
+        return sourceFile || '';
     };
 
     const checkPrereqFileExistence = async (reqs, permitNo) => {
@@ -761,9 +765,10 @@ const PermitHolder = () => {
                                             </thead>
                                             <tbody>
                                                 {prerequisites.map((req, index) => {
-                                                    const generatedFilename =
-                                                        req.pr_source ||
-                                                        `${selectedPermitForPrereqs.ph_permitno}-${(req.pr_desc || '').substring(0, 2)}.pdf`;
+                                                    const generatedFilename = getPrereqFilename(
+                                                        req,
+                                                        selectedPermitForPrereqs.ph_permitno
+                                                    );
                                                     return (
                                                         <tr key={index}>
                                                             <td>{req.pr_desc || ''}</td>

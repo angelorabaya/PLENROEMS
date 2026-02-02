@@ -1,6 +1,8 @@
 import React, { useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
+import QRCode from 'react-qr-code';
+import logo from '../logo.png';
 
 const DEFAULT_NOTED_BY_NAME = 'GERAN JOHN T. FLORES';
 const DEFAULT_NOTED_BY_TITLE = 'PLENRO';
@@ -62,12 +64,23 @@ const AssessmentPreview = () => {
     }, [previewData]);
 
     const renderPanel = (copyIndex = 0) => (
-        <div key={copyIndex} className="assessment-print-panel">
+        <div
+            key={copyIndex}
+            className={`assessment-print-panel${copyIndex === 1 ? ' print-only' : ''}`}
+        >
             <div className="assessment-print-header">
-                <div className="header-left">
-                    <div>Republic of the Philippines</div>
-                    <div>PROVINCE OF MISAMIS ORIENTAL</div>
-                    <div>Cagayan de Oro City</div>
+                <div className="header-left header-with-logo">
+                    <img
+                        src={logo}
+                        alt="PLENRO Logo"
+                        className="header-logo"
+                        onError={(e) => (e.target.style.display = 'none')}
+                    />
+                    <div className="header-text">
+                        <div>Republic of the Philippines</div>
+                        <div>PROVINCE OF MISAMIS ORIENTAL</div>
+                        <div>Cagayan de Oro City</div>
+                    </div>
                 </div>
                 <div className="header-right">
                     <div>100% for Province of Misamis Oriental</div>
@@ -114,7 +127,16 @@ const AssessmentPreview = () => {
                             {formatDateLong(previewData?.assessmentDate) || 'N/A'}
                         </span>
                         <span className="control-no">
-                            Control No.: {previewData?.controlNo || '—'}
+                            <span className="control-no-wrap">
+                                {previewData?.controlNo && (
+                                    <span className="control-no-qr">
+                                        <QRCode value={previewData.controlNo} size={80} />
+                                    </span>
+                                )}
+                                <span className="control-no-text">
+                                    Control No.: {previewData?.controlNo || '—'}
+                                </span>
+                            </span>
                         </span>
                     </div>
                 </div>

@@ -131,7 +131,10 @@ const AssessmentHistory = () => {
 
     const buildPreviewData = (header, details) => {
         const address = [header.ph_address1, header.ph_address2].filter(Boolean).join(', ');
-        const barangayText = header.aop_brgy || '';
+        const barangayText =
+            header.aop_brgycombo != null && header.aop_brgycombo !== ''
+                ? header.aop_brgycombo
+                : (header.aop_brgy || '');
         const location = [barangayText, header.aop_mun].filter(Boolean).join(', ');
         const totalAmount = Number(header.aop_total) || 0;
         const preparedBy = (
