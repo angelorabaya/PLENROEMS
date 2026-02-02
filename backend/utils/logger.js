@@ -33,7 +33,13 @@ const logActivity = async (pool, req, { action, tableName, recordId, oldValues, 
             userName = req.user?.log_cname || req.body?.log_cname || 'System User';
         }
 
-        const ip = req.ip || req.connection.remoteAddress;
+        let ip = req.headers['x-forwarded-for'] || req.ip || req.connection.remoteAddress;
+
+        // Handle multiple IPs in x-forwarded-for (e.g. "client, proxy1, proxy2")
+        if (ip && ip.includes(',')) {
+            ip = ip.split(',')[0].trim();
+        }
+
         const userAgent = req.get('User-Agent');
 
         const request = pool.request();

@@ -122,6 +122,10 @@
     .revenue-table thead th {
         padding: 1.5mm 3mm !important;
         font-size: 8pt !important;
+        color: #fff !important;
+        -webkit-text-fill-color: #fff !important;
+        background-color: #245020 !important;
+        background: linear-gradient(180deg, #2d5a27 0%, #245020 100%) !important;
     }
 
     .revenue-table tbody td {

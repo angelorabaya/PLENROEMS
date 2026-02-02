@@ -342,6 +342,8 @@
 
 .select-viewport {
     padding: 0.25rem;
+    max-height: 300px;
+    overflow-y: auto;
 }
 
 .select-item {

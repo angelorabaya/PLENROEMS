@@ -78,26 +78,29 @@ const RevenueCollectionReport = () => {
         window.print();
     };
 
-    // Calculate extraction fee (sum of Province, Municipal, Barangay shares + MGB)
+    // Calculate extraction fee (sum of Province, Municipal, Barangay shares)
     const extractionFee = data
         ? (Number(data.Share_Prov_30) || 0) +
-          (Number(data.Share_Mun_30) || 0) +
-          (Number(data.Share_Brgy_40) || 0) +
-          (Number(data.MGB_Prov_30) || 0)
+        (Number(data.Share_Mun_30) || 0) +
+        (Number(data.Share_Brgy_40) || 0)
         : 0;
+
+    // Calculate MGB Extraction Fee
+    const extractionFeeMGB = data ? Number(data.MGB_Prov_30) || 0 : 0;
 
     // Calculate total
     const totalAmount = data
         ? extractionFee +
-          (Number(data.Admin_Fee) || 0) +
-          (Number(data.Ecosystem_Fee) || 0) +
-          (Number(data.Admin_Ecosystem_Fee) || 0) +
-          (Number(data.Other_Misc_Fee) || 0) +
-          (Number(data.Outbound_Fee) || 0) +
-          (Number(data.Inbound_Fee) || 0) +
-          (Number(data.Sticker_Fee) || 0) +
-          (Number(data.Reg_Conveyances_Fee) || 0) +
-          (Number(data.Penalties_Fee) || 0)
+        extractionFeeMGB +
+        (Number(data.Admin_Fee) || 0) +
+        (Number(data.Ecosystem_Fee) || 0) +
+        (Number(data.Admin_Ecosystem_Fee) || 0) +
+        (Number(data.Other_Misc_Fee) || 0) +
+        (Number(data.Outbound_Fee) || 0) +
+        (Number(data.Inbound_Fee) || 0) +
+        (Number(data.Sticker_Fee) || 0) +
+        (Number(data.Reg_Conveyances_Fee) || 0) +
+        (Number(data.Penalties_Fee) || 0)
         : 0;
 
     const shouldShowReport = !loading && !error && data !== null;
@@ -171,6 +174,10 @@ const RevenueCollectionReport = () => {
                                     <td className="amount">{formatCurrency(extractionFee)}</td>
                                 </tr>
                                 <tr>
+                                    <td>Extraction Fee (MGB)</td>
+                                    <td className="amount">{formatCurrency(extractionFeeMGB)}</td>
+                                </tr>
+                                <tr>
                                     <td>Administrative Fee</td>
                                     <td className="amount">{formatCurrency(data.Admin_Fee)}</td>
                                 </tr>
@@ -214,38 +221,35 @@ const RevenueCollectionReport = () => {
                                 </tr>
                                 <tr className="total-row">
                                     <td>
-                                        <strong>TOTAL COLLECTION</strong>
+                                        <strong>TOTAL COLLECTION (GROSS)</strong>
                                     </td>
                                     <td className="amount">
                                         <strong>{formatCurrency(totalAmount)}</strong>
                                     </td>
                                 </tr>
-                            </tbody>
-                        </table>
-
-                        {/* ===== BREAKDOWN TABLE ===== */}
-                        <table className="revenue-table breakdown-table">
-                            <thead>
-                                <tr className="table-header">
-                                    <th style={{ width: '65%' }}>Distribution Breakdown</th>
-                                    <th style={{ width: '35%' }}>Share (₱)</th>
-                                </tr>
-                            </thead>
-                            <tbody>
                                 <tr>
-                                    <td>Provincial Share (30%)</td>
-                                    <td className="amount">{formatCurrency(data.Share_Prov_30)}</td>
-                                </tr>
-                                <tr>
-                                    <td>Municipal Share (30%)</td>
+                                    <td>LESS: Municipal Share (30% of Extraction Fee)</td>
                                     <td className="amount">{formatCurrency(data.Share_Mun_30)}</td>
                                 </tr>
                                 <tr>
-                                    <td>Barangay Share (40%)</td>
+                                    <td>
+                                        <span style={{ visibility: 'hidden' }}>LESS: </span>
+                                        Barangay Share (40% of Extraction Fee)
+                                    </td>
                                     <td className="amount">{formatCurrency(data.Share_Brgy_40)}</td>
+                                </tr>
+                                <tr className="total-row">
+                                    <td>
+                                        <strong>TOTAL COLLECTION (NET)</strong>
+                                    </td>
+                                    <td className="amount">
+                                        <strong>{formatCurrency(data.Net_Share)}</strong>
+                                    </td>
                                 </tr>
                             </tbody>
                         </table>
+
+                        {/* ===== SIGNATURE SECTION ===== */}
 
                         {/* ===== SIGNATURE SECTION ===== */}
                         <section className="signature-section">
