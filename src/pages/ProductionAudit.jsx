@@ -76,6 +76,16 @@ const cycleRanges = (permit) => {
 const formatMonthYear = (date) =>
     date ? date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : '';
 
+const formatVolumeValue = (value) => {
+    if (value === null || value === undefined || value === '') return '';
+    const numeric = Number(value);
+    if (Number.isNaN(numeric)) return value;
+    return numeric.toLocaleString('en-US', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+    });
+};
+
 const formatDateInput = (value) => {
     if (!value) return '';
     const d = new Date(value);
@@ -297,7 +307,23 @@ const ProductionAudit = () => {
                 });
 
                 if (existingRow) {
-                    return existingRow;
+                    const hasExtractedValue =
+                        existingRow.pr_vextracted !== null &&
+                        existingRow.pr_vextracted !== undefined &&
+                        existingRow.pr_vextracted !== '';
+                    const hasSoldValue =
+                        existingRow.pr_vsold !== null &&
+                        existingRow.pr_vsold !== undefined &&
+                        existingRow.pr_vsold !== '';
+                    const hasProductionValue = hasExtractedValue || hasSoldValue;
+                    if (hasProductionValue) {
+                        return existingRow;
+                    }
+                    return {
+                        ...existingRow,
+                        pr_date: monthDate,
+                        noProduction: true,
+                    };
                 } else {
                     // Return placeholder for months without data
                     return {
@@ -305,6 +331,7 @@ const ProductionAudit = () => {
                         pr_vextracted: null,
                         pr_vsold: null,
                         pr_vpaid: null,
+                        pr_taskforce: null,
                         noProduction: true, // Flag to indicate no production data
                     };
                 }
@@ -690,13 +717,12 @@ const ProductionAudit = () => {
                                                 }
                                                 style={row.noProduction ? { opacity: 0.6 } : {}}
                                             >
-                                                <td>
-                                                    {formatMonthYear(startOfMonth(row.pr_date))}
-                                                </td>
+                                                    <td>
+                                                        {formatMonthYear(startOfMonth(row.pr_date))}
+                                                    </td>
                                                 {row.noProduction ? (
                                                     <>
                                                         <td
-                                                            colSpan={4}
                                                             style={{
                                                                 fontStyle: 'italic',
                                                                 color: 'var(--muted-foreground)',
@@ -705,13 +731,58 @@ const ProductionAudit = () => {
                                                             No Production
                                                         </td>
                                                         <td></td>
+                                                        <td>
+                                                            {Number(row.pr_vpaid) > 0
+                                                                ? formatVolumeValue(row.pr_vpaid)
+                                                                : ''}
+                                                        </td>
+                                                        <td
+                                                            style={{
+                                                                color:
+                                                                    Number(row.pr_taskforce) > 0
+                                                                        ? '#ef4444'
+                                                                        : 'var(--muted-foreground)',
+                                                                fontWeight:
+                                                                    Number(row.pr_taskforce) > 0
+                                                                        ? 600
+                                                                        : undefined,
+                                                                fontStyle:
+                                                                    Number(row.pr_taskforce) > 0
+                                                                        ? 'normal'
+                                                                        : 'italic',
+                                                            }}
+                                                        >
+                                                            {Number(row.pr_taskforce) > 0
+                                                                ? formatVolumeValue(
+                                                                      row.pr_taskforce
+                                                                  )
+                                                                : ''}
+                                                        </td>
+                                                        <td></td>
                                                     </>
                                                 ) : (
                                                     <>
-                                                        <td>{row.pr_vextracted ?? ''}</td>
-                                                        <td>{row.pr_vsold ?? ''}</td>
-                                                        <td>{row.pr_vpaid ?? ''}</td>
-                                                        <td>{row.pr_taskforce ?? ''}</td>
+                                                        <td>
+                                                            {formatVolumeValue(row.pr_vextracted)}
+                                                        </td>
+                                                        <td>{formatVolumeValue(row.pr_vsold)}</td>
+                                                        <td>{formatVolumeValue(row.pr_vpaid)}</td>
+                                                        <td
+                                                            style={{
+                                                                color:
+                                                                    Number(row.pr_taskforce) >
+                                                                    Number(row.pr_vextracted)
+                                                                        ? '#ef4444'
+                                                                        : undefined,
+                                                                fontWeight:
+                                                                    Number(row.pr_taskforce) >
+                                                                    Number(row.pr_vextracted)
+                                                                        ? 600
+                                                                        : undefined,
+                                                            }}
+                                                        >
+                                                            {formatVolumeValue(row.pr_taskforce)}
+                                                        </td>
                                                         <td>
                                                             <div
                                                                 className="action-buttons"

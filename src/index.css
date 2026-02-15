@@ -865,6 +865,32 @@ tbody tr:last-child td {
     display: block;
 }
 
+.payer-row .control-no .qr-code-wrap {
+    position: relative;
+    display: inline-block;
+    width: var(--qr-size, 80px);
+    height: var(--qr-size, 80px);
+}
+
+.payer-row .control-no .qr-code-wrap svg {
+    width: 100%;
+    height: 100%;
+}
+
+.payer-row .control-no .qr-code-logo {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: var(--qr-logo-size, 20px);
+    height: var(--qr-logo-size, 20px);
+    transform: translate(-50%, -50%);
+    background: #ffffff;
+    border-radius: 4px;
+    padding: 2px;
+    box-sizing: content-box;
+    object-fit: contain;
+}
+
 .payer-row .control-no .control-no-text {
     display: block;
     position: relative;

@@ -30,8 +30,10 @@ import ReportsHub from './pages/ReportsHub';
 import ComparativeIncomeReport from './pages/ComparativeIncomeReport';
 import RevenueCollectionReport from './pages/RevenueCollectionReport';
 import BarangayShareReport from './pages/BarangayShareReport';
+import BarangayShareBreakdown from './pages/BarangayShareBreakdown';
 import MunicipalShareReport from './pages/MunicipalShareReport';
 import ActivePermitteesReport from './pages/ActivePermitteesReport';
+import ActivePermitteesByMunicipalityReport from './pages/ActivePermitteesByMunicipalityReport';
 import BackgroundShapes from './components/BackgroundShapes';
 import OrdinanceBot from './pages/OrdinanceBot';
 import TaskForce from './pages/TaskForce';
@@ -39,22 +41,51 @@ import DailyCollection from './pages/DailyCollection';
 
 import { ThemeProvider } from './context/ThemeContext';
 
+const CURRENT_USER_KEY = 'currentUser';
+const CURRENT_USER_LOGIN_DATE_KEY = 'currentUserLoginDate';
+
+const getTodayDateKey = () => new Date().toISOString().slice(0, 10);
+
+const getStoredCurrentUser = () => {
+    const saved = localStorage.getItem(CURRENT_USER_KEY);
+    if (!saved) return null;
+
+    const loginDate = localStorage.getItem(CURRENT_USER_LOGIN_DATE_KEY);
+    const today = getTodayDateKey();
+
+    // Expire login when it's not from the current date.
+    if (!loginDate || loginDate !== today) {
+        localStorage.removeItem(CURRENT_USER_KEY);
+        localStorage.removeItem(CURRENT_USER_LOGIN_DATE_KEY);
+        return null;
+    }
+
+    try {
+        return JSON.parse(saved);
+    } catch {
+        localStorage.removeItem(CURRENT_USER_KEY);
+        localStorage.removeItem(CURRENT_USER_LOGIN_DATE_KEY);
+        return null;
+    }
+};
+
 function App() {
     // Load user from localStorage on initial render
     const [currentUser, setCurrentUser] = useState(() => {
-        const saved = localStorage.getItem('currentUser');
-        return saved ? JSON.parse(saved) : null;
+        return getStoredCurrentUser();
     });
 
     const handleLogin = (user) => {
         setCurrentUser(user);
-        localStorage.setItem('currentUser', JSON.stringify(user));
+        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+        localStorage.setItem(CURRENT_USER_LOGIN_DATE_KEY, getTodayDateKey());
     };
 
     const handleLogout = () => {
         // Logout directly without confirmation (confirm dialogs can be blocked by browsers)
         setCurrentUser(null);
-        localStorage.removeItem('currentUser');
+        localStorage.removeItem(CURRENT_USER_KEY);
+        localStorage.removeItem(CURRENT_USER_LOGIN_DATE_KEY);
     };
 
     return (
@@ -124,10 +155,18 @@ function App() {
                             element={<RevenueCollectionReport />}
                         />
                         <Route path="/reports/barangay-share" element={<BarangayShareReport />} />
+                        <Route
+                            path="/reports/barangay-share-breakdown"
+                            element={<BarangayShareBreakdown />}
+                        />
                         <Route path="/reports/municipal-share" element={<MunicipalShareReport />} />
                         <Route
                             path="/reports/active-permittees"
                             element={<ActivePermitteesReport />}
+                        />
+                        <Route
+                            path="/reports/active-permittees-by-municipality"
+                            element={<ActivePermitteesByMunicipalityReport />}
                         />
                         <Route
                             path="/daily-collection"

@@ -6,7 +6,6 @@ const path = require('path');
 const fs = require('fs');
 const { logActivity } = require('./utils/logger');
 const bcrypt = require('bcrypt');
-const ExcelJS = require('exceljs');
 
 const envPath = path.resolve(__dirname, '.env');
 const rootEnvPath = path.resolve(__dirname, '..', '.env');
@@ -1562,81 +1561,55 @@ app.get('/api/productionaudit/production/:permitNo', async (req, res) => {
     request.input('naturePattern', sql.VarChar(200), '%Government Share%');
 
     const query = `
-      WITH PermitWindow AS (
-          SELECT
-              DATEADD(MONTH, 1, DATEFROMPARTS(YEAR(cp.ph_dfrom), MONTH(cp.ph_dfrom), 1)) AS start_month,
-              DATEFROMPARTS(YEAR(cp.ph_dto), MONTH(cp.ph_dto), 1) AS end_month
-          FROM tbl_clientpermit cp
-          WHERE cp.ph_permitno = @permitNo
-            AND cp.ph_lnkctrl = @clientId
-      ),
-      Months AS (
-          SELECT start_month AS month_start
-          FROM PermitWindow
-          UNION ALL
-          SELECT DATEADD(MONTH, 1, m.month_start)
-          FROM Months m
-          CROSS JOIN PermitWindow pw
-          WHERE DATEADD(MONTH, 1, m.month_start) <= pw.end_month
-      ),
-      RankedMonths AS (
-          SELECT
-              m.month_start AS pr_date,
-              ROW_NUMBER() OVER (ORDER BY m.month_start) AS rn
-          FROM Months m
-      ),
-      ProductionByMonth AS (
-          SELECT
-              DATEFROMPARTS(YEAR(p.pr_date), MONTH(p.pr_date), 1) AS month_start,
-              MAX(p.pr_ctrlno) AS pr_ctrlno,
-              MAX(p.pr_clientid) AS pr_clientid,
-              MAX(p.pr_permitno) AS pr_permitno,
-              SUM(ISNULL(p.pr_vextracted, 0)) AS pr_vextracted,
-              SUM(ISNULL(p.pr_vsold, 0)) AS pr_vsold
-          FROM tbl_production p
-          WHERE p.pr_permitno = @permitNo
-          GROUP BY DATEFROMPARTS(YEAR(p.pr_date), MONTH(p.pr_date), 1)
+      WITH RankedProduction AS (
+          SELECT 
+              pr_ctrlno,
+              pr_clientid,
+              pr_permitno,
+              pr_date,
+              pr_vextracted,
+              pr_vsold,
+              ROW_NUMBER() OVER (ORDER BY pr_date) AS rn
+          FROM tbl_production 
+          WHERE pr_permitno = @permitNo
       )
-      SELECT
-          pbm.pr_ctrlno,
-          ISNULL(pbm.pr_clientid, @clientId) AS pr_clientid,
-          ISNULL(pbm.pr_permitno, @permitNo) AS pr_permitno,
-          rm.pr_date,
-          pbm.pr_vextracted,
-          pbm.pr_vsold,
+      SELECT 
+          p.pr_ctrlno,
+          p.pr_clientid,
+          p.pr_permitno,
+          p.pr_date,
+          p.pr_vextracted,
+          p.pr_vsold,
           ISNULL(a.total_volume, 0) AS pr_vpaid,
           ISNULL(t.tf_volume, 0) AS pr_taskforce
-      FROM RankedMonths rm
-      LEFT JOIN ProductionByMonth pbm
-          ON pbm.month_start = rm.pr_date
+      FROM RankedProduction p
       OUTER APPLY (
-          SELECT
+          SELECT 
               SUM(d.aop_volume) AS total_volume
           FROM tbl_assessmenthdr h
-          INNER JOIN tbl_assessmentdtl d
+          INNER JOIN tbl_assessmentdtl d 
               ON h.aop_control = d.aop_control
-          WHERE h.aop_clientid = @clientId
+          WHERE h.aop_clientid = p.pr_clientid
             AND h.aop_nature LIKE '%Government Share%'
             AND (
-              (rm.rn = 1 AND (
-                  (YEAR(h.aop_ordate) = YEAR(rm.pr_date)
-                   AND MONTH(h.aop_ordate) = MONTH(rm.pr_date))
-                  OR h.aop_ordate < rm.pr_date
+              (p.rn = 1 AND (
+                  (YEAR(h.aop_ordate) = YEAR(p.pr_date) 
+                   AND MONTH(h.aop_ordate) = MONTH(p.pr_date))
+                  OR h.aop_ordate < p.pr_date
               ))
-              OR (rm.rn > 1
-                  AND YEAR(h.aop_ordate) = YEAR(rm.pr_date)
-                  AND MONTH(h.aop_ordate) = MONTH(rm.pr_date))
+              OR (p.rn > 1 
+                  AND YEAR(h.aop_ordate) = YEAR(p.pr_date) 
+                  AND MONTH(h.aop_ordate) = MONTH(p.pr_date))
             )
       ) a
       OUTER APPLY (
-          SELECT vt.SumOftf_volume as tf_volume
-          FROM View_taskforcemonth vt
-          WHERE vt.RptYear = YEAR(rm.pr_date)
-            AND vt.MonthNumber = MONTH(rm.pr_date)
-            AND LTRIM(RTRIM(vt.tf_name)) = LTRIM(RTRIM((SELECT c.ph_cname FROM tbl_client c WHERE c.ph_ctrlno = @clientId)))
+          SELECT vt.TotalVolume as tf_volume
+          FROM View_taskforce vt
+          WHERE vt.RptYear = YEAR(p.pr_date)
+            AND vt.Mo = MONTH(p.pr_date)
+            AND LTRIM(RTRIM(vt.PersonName)) = LTRIM(RTRIM((SELECT c.ph_cname FROM tbl_client c WHERE c.ph_ctrlno = @clientId)))
       ) t
-      ORDER BY rm.pr_date
-      OPTION (MAXRECURSION 120);
+      ORDER BY p.pr_date;
     `;
 
     const result = await request.query(query);
@@ -3680,48 +3653,6 @@ app.get('/api/reports/barangay-share', async (req, res) => {
   }
 });
 
-// ==================== BARANGAY SHARE BREAKDOWN REPORT ENDPOINT ====================
-
-app.get('/api/reports/barangay-share-breakdown', async (req, res) => {
-  try {
-    const { year, municipality, barangay } = req.query;
-
-    if (!year || !municipality || !barangay) {
-      return res.status(400).json({ error: 'Year, municipality, and barangay are required' });
-    }
-
-    console.log(
-      `[API] Fetching barangay share breakdown for ${barangay}, ${municipality} - ${year}`
-    );
-
-    const request = pool.request();
-    request.input('year', sql.Int, parseInt(year));
-    request.input('municipality', sql.VarChar, municipality);
-    request.input('barangay', sql.VarChar, barangay);
-
-    const result = await request.query(`
-      SELECT ControlNum AS [Control No.]
-            ,ORDate AS [OR Date]
-            ,ORNumber AS [OR No.]
-            ,ClientName AS [Name]
-            ,TotalAmount AS [Amount]
-            ,[Percent]
-            ,BarangayShare AS [Share]
-      FROM View_brgysharesbreakdown
-      WHERE RptYear = @year
-        AND Municipality = @municipality
-        AND Barangay = @barangay
-      ORDER BY ORDate ASC
-    `);
-
-    console.log(`✅ [API] Found ${result.recordset.length} barangay share breakdown rows`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Barangay Share Breakdown Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch barangay share breakdown: ' + err.message });
-  }
-});
-
 // ==================== MUNICIPAL SHARE REPORT ENDPOINT ====================
 
 app.get('/api/reports/municipal-share', async (req, res) => {
@@ -3798,109 +3729,6 @@ app.get('/api/reports/active-permittees', async (req, res) => {
   } catch (err) {
     console.error('❌ Get Active Permittees Error:', err.message);
     res.status(500).json({ error: 'Failed to fetch active permittees: ' + err.message });
-  }
-});
-
-app.get('/api/reports/active-permittees-by-municipality', async (req, res) => {
-  try {
-    console.log('[API] Fetching active permittees by municipality');
-
-    const request = pool.request();
-    const result = await request.query(`
-      SELECT
-        ph_mun AS [Municipality],
-        LEFT(ph_permitno, CHARINDEX('-', ph_permitno + '-') - 1) AS [Permit Type],
-        COUNT(*) AS [Permit Count]
-      FROM View_activepermit
-      GROUP BY
-        ph_mun,
-        LEFT(ph_permitno, CHARINDEX('-', ph_permitno + '-') - 1)
-      ORDER BY
-        ph_mun,
-        [Permit Type];
-    `);
-
-    console.log(`✅ [API] Found ${result.recordset.length} grouped active permittee records`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Active Permittees By Municipality Error:', err.message);
-    res
-      .status(500)
-      .json({ error: 'Failed to fetch active permittees by municipality: ' + err.message });
-  }
-});
-
-app.get('/api/reports/active-registered-vehicle-records/export', async (req, res) => {
-  try {
-    console.log('[API] Exporting active registered vehicle records');
-
-    const request = pool.request();
-    const result = await request.query(`
-      SELECT
-        vr_cname as NAME,
-        vr_trucktype as [TRUCK TYPE],
-        vr_plateno as [PLATE NO.],
-        vr_controlno as [CONTROL NO.],
-        vr_code as [CODE],
-        vr_datereg as [DATE REGISTERED],
-        vr_expiry as [EXPIRY DATE]
-      FROM tbl_vehiclereg
-      WHERE vr_expiry >= CAST(GETDATE() AS DATE)
-      ORDER BY vr_cname, vr_expiry DESC;
-    `);
-
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Active Vehicles');
-
-    worksheet.columns = [
-      { header: 'NAME', key: 'NAME', width: 32 },
-      { header: 'TRUCK TYPE', key: 'TRUCK TYPE', width: 20 },
-      { header: 'PLATE NO.', key: 'PLATE NO.', width: 16 },
-      { header: 'CONTROL NO.', key: 'CONTROL NO.', width: 18 },
-      { header: 'CODE', key: 'CODE', width: 12 },
-      { header: 'DATE REGISTERED', key: 'DATE REGISTERED', width: 18 },
-      { header: 'EXPIRY DATE', key: 'EXPIRY DATE', width: 16 }
-    ];
-
-    worksheet.getRow(1).font = { bold: true };
-    worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
-    worksheet.getRow(1).eachCell((cell) => {
-      cell.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FF1F4E78' }
-      };
-      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      cell.border = {
-        top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-        left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-        bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-        right: { style: 'thin', color: { argb: 'FFCCCCCC' } }
-      };
-    });
-
-    (result.recordset || []).forEach((row) => {
-      worksheet.addRow(row);
-    });
-
-    worksheet.getColumn(6).numFmt = 'yyyy-mm-dd';
-    worksheet.getColumn(7).numFmt = 'yyyy-mm-dd';
-
-    const filename = 'active_registered_vehicles.xlsx';
-    const buffer = await workbook.xlsx.writeBuffer();
-
-    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
-    res.setHeader(
-      'Content-Type',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    );
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(Buffer.from(buffer));
-  } catch (err) {
-    console.error('❌ Export Active Registered Vehicle Records Error:', err.message);
-    res
-      .status(500)
-      .json({ error: 'Failed to export active registered vehicle records: ' + err.message });
   }
 });
 

@@ -765,6 +765,17 @@ export const api = {
         return response.json();
     },
 
+    getBarangayShareBreakdown: async (year, municipality, barangay) => {
+        const params = new URLSearchParams({
+            year: year.toString(),
+            municipality,
+            barangay,
+        });
+        const response = await fetch(`${API_BASE}/api/reports/barangay-share-breakdown?${params}`);
+        if (!response.ok) throw new Error('Failed to fetch barangay share breakdown report');
+        return response.json();
+    },
+
     getMunicipalShare: async (year, municipality) => {
         const params = new URLSearchParams({
             year: year.toString(),
@@ -779,6 +790,20 @@ export const api = {
         const response = await fetch(`${API_BASE}/api/reports/active-permittees`);
         if (!response.ok) throw new Error('Failed to fetch active permittees report');
         return response.json();
+    },
+
+    getActivePermitteesByMunicipality: async () => {
+        const response = await fetch(`${API_BASE}/api/reports/active-permittees-by-municipality`);
+        if (!response.ok) throw new Error('Failed to fetch active permittees by municipality report');
+        return response.json();
+    },
+
+    exportActiveRegisteredVehicleRecords: async () => {
+        const response = await fetch(
+            `${API_BASE}/api/reports/active-registered-vehicle-records/export`
+        );
+        if (!response.ok) throw new Error('Failed to export active registered vehicle records');
+        return response.blob();
     },
 
     getDeliveryReceipts: async (clientId) => {

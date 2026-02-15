@@ -66,6 +66,9 @@
     .permittees-table th {
         padding: 4px 6px !important;
         font-size: 8pt !important;
+        color: #fff !important;
+        -webkit-text-fill-color: #fff !important;
+        background: linear-gradient(180deg, #2d5a27 0%, #245020 100%) !important;
     }
 
     .permittees-table td {

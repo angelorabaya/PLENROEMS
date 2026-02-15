@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    FiDollarSign,
+    FiBarChart2,
+    FiActivity,
     FiTrendingUp,
     FiCalendar,
     FiUsers,
     FiMapPin,
+    FiTruck,
     FiCheckCircle,
     FiXCircle,
     FiArrowRight,
@@ -36,6 +38,12 @@ const CategorySection = ({ category, onReportClick, yearSelector, isDark }) => {
             bg: 'from-blue-500/10 to-blue-500/5',
             border: 'border-blue-500/20',
             glow: 'bg-blue-500',
+        },
+        amber: {
+            gradient: 'from-amber-500 to-amber-600',
+            bg: 'from-amber-500/10 to-amber-500/5',
+            border: 'border-amber-500/20',
+            glow: 'bg-amber-500',
         },
     };
 
@@ -113,9 +121,6 @@ const CategorySection = ({ category, onReportClick, yearSelector, isDark }) => {
         </div>
     );
 };
-
-// Premium Peso Icon
-const PesoIcon = ({ className }) => <span className={`font-bold text-lg ${className}`}>₱</span>;
 
 const ReportsHub = () => {
     const navigate = useNavigate();
@@ -239,7 +244,7 @@ const ReportsHub = () => {
             id: 'income',
             title: 'Income Reports',
             description: 'Financial performance and revenue analytics',
-            icon: PesoIcon,
+            icon: FiActivity,
             accentColor: 'emerald',
             hasYearSelector: true,
             reports: [
@@ -254,7 +259,7 @@ const ReportsHub = () => {
                     id: 'revenue-collection',
                     name: 'Revenue Collection',
                     description: 'Detailed revenue breakdown by category',
-                    icon: FiDollarSign,
+                    icon: FiBarChart2,
                     path: '/reports/revenue-collection',
                 },
             ],
@@ -273,6 +278,13 @@ const ReportsHub = () => {
                     description: 'Revenue share allocation per barangay',
                     icon: FiMapPin,
                     path: '/reports/barangay-share',
+                },
+                {
+                    id: 'barangay-share-breakdown',
+                    name: 'Barangay Share Breakdown',
+                    description: 'Detailed breakdown of barangay share allocation',
+                    icon: FiBarChart2,
+                    path: '/reports/barangay-share-breakdown',
                 },
                 {
                     id: 'municipal-share',
@@ -297,17 +309,55 @@ const ReportsHub = () => {
                     icon: FiCheckCircle,
                     path: '/reports/active-permittees',
                 },
+                {
+                    id: 'active-permittees-by-municipality',
+                    name: 'Active Permittees by Municipality',
+                    description: 'Active permit holders grouped by municipality',
+                    icon: FiCalendar,
+                    path: '/reports/active-permittees-by-municipality',
+                },
+            ],
+        },
+        {
+            id: 'vehicle-registration',
+            title: 'Vehicle Registration Reports',
+            description: 'Vehicle registration status and monitoring',
+            icon: FiTruck,
+            accentColor: 'amber',
+            reports: [
+                {
+                    id: 'active-registered-vehicle-records',
+                    name: 'Active Registered Vehicle Records',
+                    description: 'List of currently active registered vehicles',
+                    icon: FiTruck,
+                    path: '/reports/active-registered-vehicle-records',
+                },
             ],
         },
     ];
 
-    const handleReportClick = (path) => {
+    const handleReportClick = async (path) => {
         // Append selected year to income reports
         if (path.includes('/reports/comparative-income')) {
             navigate(`${path}?year=${selectedYear}`);
         } else if (path.includes('/reports/revenue-collection')) {
             // Include month for revenue collection
             navigate(`${path}?year=${selectedYear}&month=${selectedMonth}`);
+        } else if (path.includes('/reports/active-registered-vehicle-records')) {
+            try {
+                const blob = await api.exportActiveRegisteredVehicleRecords();
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'active_registered_vehicles.xlsx';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+            } catch (err) {
+                console.error('Export active registered vehicle records failed:', err);
+                alert('Failed to export active registered vehicle records.');
+            }
         } else if (
             path.includes('/reports/barangay-share') ||
             path.includes('/reports/municipal-share')
@@ -444,7 +494,11 @@ const ReportsHub = () => {
         <div className={`min-h-full p-8 ${isDark ? 'bg-gray-950' : 'bg-gray-50'}`}>
             <div className="max-w-7xl mx-auto space-y-10">
                 {/* Header */}
-                <div className="flex items-center gap-4">
+                <div
+                    className={`sticky top-4 z-20 flex items-center gap-4 rounded-xl px-3 py-2 backdrop-blur-sm ${
+                        isDark ? 'bg-gray-950/85' : 'bg-gray-50/85'
+                    }`}
+                >
                     <div
                         className={`bg-gradient-to-br from-violet-500 to-purple-600 p-3 rounded-xl shadow-lg ${isDark ? 'shadow-black/30' : 'shadow-gray-300/50'}`}
                     >

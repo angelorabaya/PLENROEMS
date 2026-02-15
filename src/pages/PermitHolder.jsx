@@ -285,12 +285,14 @@ const PermitHolder = () => {
 
     const getBarangay = (permit) => {
         if (!permit) return '';
-        const brgy1 = permit.ph_brgy || '';
-        const brgy2 = permit.ph_brgy2 || '';
-        if (brgy2) {
+        const brgy1 = (permit.ph_brgy ?? '').trim();
+        const brgy2 = (permit.ph_brgy2 ?? '').trim();
+        if (brgy1 && brgy2) {
             return `${brgy1}/${brgy2}`;
         }
-        return brgy1;
+        if (brgy1) return brgy1;
+        if (brgy2) return brgy2;
+        return '';
     };
 
     // Refresh attachment existence checks without reloading data

@@ -13,13 +13,51 @@ import { api } from '../services/api';
 import '../styles/global.css';
 import '../components/modals/Modal.css';
 
+const ACTIVITY_TIME_ZONE = 'Asia/Manila';
+const BREAKPOINT_SM_PX = 640;
+const BREAKPOINT_LG_PX = 1024;
+const APPROX_ROW_HEIGHT_PX = 52;
+const PAGINATION_GAP_PX = 32;
+const VIEWPORT_BOTTOM_PADDING_PX = 24;
+const CLIP_SAFETY_BUFFER_PX = 16;
+
+const clampRowsByBreakpoint = (rows, viewportWidth) => {
+    if (viewportWidth < BREAKPOINT_SM_PX) {
+        return Math.min(10, Math.max(5, rows));
+    }
+    if (viewportWidth < BREAKPOINT_LG_PX) {
+        return Math.min(14, Math.max(6, rows));
+    }
+    return Math.min(22, Math.max(7, rows));
+};
+
+const formatDateTime = (value) => {
+    if (!value) return '';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return parsed.toLocaleString('en-PH', {
+        timeZone: ACTIVITY_TIME_ZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+    });
+};
+
 const ActivityLogs = () => {
     const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [globalFilter, setGlobalFilter] = useState('');
     const [sorting, setSorting] = useState([{ id: 'CreatedAt', desc: true }]);
-    const [pageSize, setPageSize] = useState(10);
+    const [rowsPerPage, setRowsPerPage] = useState(10);
+    const prevFilterRef = React.useRef(globalFilter);
+    const tableWrapperRef = React.useRef(null);
+    const tableHeadRef = React.useRef(null);
+    const paginationRef = React.useRef(null);
 
     // Use localStorage for persistent page index
     const [pageIndex, setPageIndexState] = useState(() => {
@@ -31,20 +69,50 @@ const ActivityLogs = () => {
     const [selectedLog, setSelectedLog] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
 
-    // Calculate rows per page based on window height
+    // Calculate rows per page based on measured viewport/layout
     useEffect(() => {
+        let frameId;
+
         const calculateRows = () => {
-            const offset = 320; // Standard offset matching AssessmentHistory
-            const minRowHeight = 56;
-            const availableHeight = window.innerHeight - offset;
-            const calculatedRows = Math.floor(availableHeight / minRowHeight);
-            setPageSize(Math.max(5, calculatedRows));
+            if (!tableWrapperRef.current) return;
+
+            const tableTop = tableWrapperRef.current.getBoundingClientRect().top;
+            const tableHeadHeight = tableHeadRef.current?.getBoundingClientRect().height || 0;
+            const paginationHeight =
+                paginationRef.current?.getBoundingClientRect().height || APPROX_ROW_HEIGHT_PX;
+
+            const firstBodyRow = tableWrapperRef.current.querySelector('tbody tr');
+            let measuredRowHeight = firstBodyRow?.getBoundingClientRect().height || 0;
+            if (!measuredRowHeight || measuredRowHeight < 20) {
+                measuredRowHeight = APPROX_ROW_HEIGHT_PX;
+            }
+
+            const availableHeight =
+                window.innerHeight -
+                tableTop -
+                VIEWPORT_BOTTOM_PADDING_PX -
+                CLIP_SAFETY_BUFFER_PX;
+            const bodyAvailableHeight =
+                availableHeight - tableHeadHeight - paginationHeight - PAGINATION_GAP_PX;
+
+            const rawRows = Math.floor(bodyAvailableHeight / measuredRowHeight);
+            const nextRowsPerPage = clampRowsByBreakpoint(rawRows, window.innerWidth);
+            setRowsPerPage((prev) => (prev === nextRowsPerPage ? prev : nextRowsPerPage));
         };
 
-        calculateRows();
-        window.addEventListener('resize', calculateRows);
-        return () => window.removeEventListener('resize', calculateRows);
-    }, []);
+        const scheduleCalculation = () => {
+            if (frameId) cancelAnimationFrame(frameId);
+            frameId = requestAnimationFrame(calculateRows);
+        };
+
+        scheduleCalculation();
+        window.addEventListener('resize', scheduleCalculation);
+
+        return () => {
+            if (frameId) cancelAnimationFrame(frameId);
+            window.removeEventListener('resize', scheduleCalculation);
+        };
+    }, [logs.length, globalFilter]);
 
     const fetchLogs = async () => {
         setLoading(true);
@@ -77,6 +145,38 @@ const ActivityLogs = () => {
         }
     };
 
+    const globalFilterFn = React.useCallback((row, _columnId, filterValue) => {
+        const search = (filterValue ?? '').toString().trim().toLowerCase();
+        if (!search) return true;
+
+        const {
+            CreatedAt,
+            UserName,
+            UserID,
+            ActionType,
+            TableName,
+            RecordID,
+            IPAddress,
+        } = row.original || {};
+
+        const createdAtText = formatDateTime(CreatedAt);
+        const haystack = [
+            CreatedAt,
+            createdAtText,
+            UserName,
+            UserID,
+            ActionType,
+            TableName,
+            RecordID,
+            IPAddress,
+        ]
+            .filter((value) => value !== null && value !== undefined && String(value).trim() !== '')
+            .map((value) => String(value).toLowerCase())
+            .join(' ');
+
+        return haystack.includes(search);
+    }, []);
+
     // Define columns for TanStack Table
     const columns = useMemo(
         () => [
@@ -85,7 +185,7 @@ const ActivityLogs = () => {
                 header: 'Date & Time',
                 size: 180,
                 cell: ({ getValue }) => (
-                    <span className="cell-text">{new Date(getValue()).toLocaleString()}</span>
+                    <span className="cell-text">{formatDateTime(getValue())}</span>
                 ),
             },
             {
@@ -157,11 +257,13 @@ const ActivityLogs = () => {
             sorting,
             pagination: {
                 pageIndex,
-                pageSize,
+                pageSize: rowsPerPage,
             },
         },
         onGlobalFilterChange: setGlobalFilter,
         onSortingChange: setSorting,
+        getColumnCanGlobalFilter: (column) => Boolean(column.accessorFn),
+        globalFilterFn,
         getCoreRowModel: getCoreRowModel(),
         getSortedRowModel: getSortedRowModel(),
         getFilteredRowModel: getFilteredRowModel(),
@@ -189,12 +291,21 @@ const ActivityLogs = () => {
     // Update page size and reset index if needed
     useEffect(() => {
         // table.setPageSize(pageSize); // Not needed as it's passed in state
-        const maxPage = Math.ceil(logs.length / pageSize) - 1;
+        const maxPage = Math.ceil(logs.length / rowsPerPage) - 1;
         if (pageIndex > maxPage && maxPage >= 0) {
             setPageIndexState(maxPage);
             localStorage.setItem('activityLogsPageIndex', maxPage.toString());
         }
-    }, [pageSize, logs.length, pageIndex]);
+    }, [rowsPerPage, logs.length, pageIndex]);
+
+    useEffect(() => {
+        if (prevFilterRef.current === globalFilter) return;
+        prevFilterRef.current = globalFilter;
+        if (pageIndex !== 0) {
+            setPageIndexState(0);
+            localStorage.setItem('activityLogsPageIndex', '0');
+        }
+    }, [globalFilter, pageIndex]);
 
     return (
         <div className="page-container activity-page-container">
@@ -250,10 +361,10 @@ const ActivityLogs = () => {
                     <span className="loading-text">Loading audit logs...</span>
                 </div>
             ) : (
-                <div className="table-wrapper activity-table-wrapper">
+                <div className="table-wrapper activity-table-wrapper" ref={tableWrapperRef}>
                     <div className="activity-table-scroll">
                         <table className="table">
-                            <thead className="table-header">
+                            <thead className="table-header" ref={tableHeadRef}>
                                 {table.getHeaderGroups().map((headerGroup) => (
                                     <tr key={headerGroup.id} className="table-row">
                                         {headerGroup.headers.map((header) => (
@@ -338,7 +449,7 @@ const ActivityLogs = () => {
                     </div>
 
                     {/* Pagination */}
-                    <div className="pagination">
+                    <div className="pagination" ref={paginationRef}>
                         <span className="pagination-info">
                             {table.getFilteredRowModel().rows.length} row(s)
                         </span>

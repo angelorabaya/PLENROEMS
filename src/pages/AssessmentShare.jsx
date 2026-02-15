@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import QRCode from 'react-qr-code';
 import logo from '../logo.png';
+import qrLogo from '../plenro.png';
 
 const DEFAULT_NOTED_BY_NAME = 'GERAN JOHN T. FLORES';
 const DEFAULT_NOTED_BY_TITLE = 'PLENRO';
@@ -51,6 +52,8 @@ const AssessmentShare = () => {
     const toolbarBg = isDark ? '#1c1c1e' : '#ffffff';
     const borderColor = isDark ? '#27272a' : '#e4e4e7';
     const mutedColor = isDark ? '#a1a1aa' : '#71717a';
+    const qrSize = 80;
+    const qrLogoSize = Math.round(qrSize * 0.18);
 
     const preparedItems = useMemo(() => {
         if (!previewData?.items) return [];
@@ -162,7 +165,27 @@ const AssessmentShare = () => {
                             <span className="control-no-wrap">
                                 {previewData?.controlNo && (
                                     <span className="control-no-qr">
-                                        <QRCode value={previewData.controlNo} size={80} />
+                                        <span
+                                            className="qr-code-wrap"
+                                            style={{
+                                                '--qr-size': `${qrSize}px`,
+                                                '--qr-logo-size': `${qrLogoSize}px`,
+                                            }}
+                                        >
+                                            <QRCode
+                                                value={previewData.controlNo}
+                                                size={qrSize}
+                                                level="H"
+                                                bgColor="#ffffff"
+                                                fgColor="#000000"
+                                            />
+                                            <img
+                                                src={qrLogo}
+                                                alt=""
+                                                className="qr-code-logo"
+                                                onError={(e) => (e.target.style.display = 'none')}
+                                            />
+                                        </span>
                                     </span>
                                 )}
                                 <span className="control-no-text">
