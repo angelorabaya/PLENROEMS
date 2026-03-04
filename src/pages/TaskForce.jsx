@@ -5,6 +5,7 @@ import { api } from '../services/api';
 import DeleteModal from '../components/modals/DeleteModal';
 import DuplicateDRModal from '../components/modals/DuplicateDRModal';
 import { useTheme } from '../context/ThemeContext';
+import { getTodayPHT } from '../utils/dateUtils';
 import '../styles/global.css';
 
 const TaskForce = () => {
@@ -14,10 +15,7 @@ const TaskForce = () => {
     // Header state
     const [municipalities, setMunicipalities] = useState([]);
     const [selectedArea, setSelectedArea] = useState('');
-    const [selectedDate, setSelectedDate] = useState(() => {
-        const today = new Date();
-        return today.toISOString().split('T')[0];
-    });
+    const [selectedDate, setSelectedDate] = useState(() => getTodayPHT());
 
     // Records state
     const [records, setRecords] = useState([]);

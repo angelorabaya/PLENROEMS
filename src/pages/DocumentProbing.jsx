@@ -47,6 +47,7 @@ const formatDateTime = (value) => {
         if (isNaN(date.getTime())) return value;
 
         return date.toLocaleString('en-US', {
+            timeZone: 'Asia/Manila',
             year: 'numeric',
             month: '2-digit',
             day: '2-digit',

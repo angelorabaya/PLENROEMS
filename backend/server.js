@@ -1655,25 +1655,74 @@ app.post('/api/productionaudit/production', async (req, res) => {
       return res.status(400).json({ error: 'permitNo and date are required' });
     }
 
+    // Check if a record already exists for the same month and permit (prevent duplicates)
+    const checkReq = pool.request();
+    checkReq.input('permitNo', sql.VarChar(200), permitNo);
+    checkReq.input('date', sql.Date, date);
+    const existingCheck = await checkReq.query(`
+      SELECT pr_ctrlno FROM tbl_production
+      WHERE pr_permitno = @permitNo
+        AND YEAR(pr_date) = YEAR(@date)
+        AND MONTH(pr_date) = MONTH(@date)
+    `);
+
     const request = pool.request();
     request.input('permitNo', sql.VarChar(200), permitNo);
     request.input('date', sql.Date, date);
     request.input('vExtracted', sql.Decimal(18, 2), volumeExtracted ?? 0);
     request.input('vSold', sql.Decimal(18, 2), volumeSold ?? 0);
 
-    const result = await request.query(`
-      INSERT INTO tbl_production (pr_date, pr_vextracted, pr_vsold, pr_permitno)
-      OUTPUT inserted.pr_ctrlno, inserted.pr_date, inserted.pr_vextracted, inserted.pr_vsold, inserted.pr_permitno
-      VALUES (@date, @vExtracted, @vSold, @permitNo)
-    `);
+    let result;
+    if (existingCheck.recordset.length > 0) {
+      // Update existing record instead of creating a duplicate
+      const existingId = existingCheck.recordset[0].pr_ctrlno;
+      request.input('id', sql.Int, existingId);
 
-    // Log Activity
-    await logActivity(pool, req, {
-      action: 'CREATE',
-      tableName: 'tbl_production',
-      recordId: result.recordset?.[0]?.pr_ctrlno || permitNo,
-      newValues: { ...req.body, pr_ctrlno: result.recordset?.[0]?.pr_ctrlno }
-    });
+      // Delete any extra duplicates for this month/permit, keep only one
+      if (existingCheck.recordset.length > 1) {
+        const delReq = pool.request();
+        delReq.input('keepId', sql.Int, existingId);
+        delReq.input('permitNo2', sql.VarChar(200), permitNo);
+        delReq.input('date2', sql.Date, date);
+        await delReq.query(`
+          DELETE FROM tbl_production
+          WHERE pr_permitno = @permitNo2
+            AND YEAR(pr_date) = YEAR(@date2)
+            AND MONTH(pr_date) = MONTH(@date2)
+            AND pr_ctrlno <> @keepId
+        `);
+      }
+
+      result = await request.query(`
+        UPDATE tbl_production
+        SET pr_date = @date,
+            pr_vextracted = @vExtracted,
+            pr_vsold = @vSold
+        OUTPUT inserted.pr_ctrlno, inserted.pr_date, inserted.pr_vextracted, inserted.pr_vsold, inserted.pr_permitno
+        WHERE pr_ctrlno = @id
+      `);
+
+      await logActivity(pool, req, {
+        action: 'UPDATE',
+        tableName: 'tbl_production',
+        recordId: existingId,
+        newValues: { ...req.body, pr_ctrlno: existingId, note: 'upsert - record already existed for this month' }
+      });
+    } else {
+      // Insert new record
+      result = await request.query(`
+        INSERT INTO tbl_production (pr_date, pr_vextracted, pr_vsold, pr_permitno)
+        OUTPUT inserted.pr_ctrlno, inserted.pr_date, inserted.pr_vextracted, inserted.pr_vsold, inserted.pr_permitno
+        VALUES (@date, @vExtracted, @vSold, @permitNo)
+      `);
+
+      await logActivity(pool, req, {
+        action: 'CREATE',
+        tableName: 'tbl_production',
+        recordId: result.recordset?.[0]?.pr_ctrlno || permitNo,
+        newValues: { ...req.body, pr_ctrlno: result.recordset?.[0]?.pr_ctrlno }
+      });
+    }
 
     res.json(result.recordset?.[0] || {});
   } catch (err) {
@@ -1697,7 +1746,23 @@ app.put('/api/productionaudit/production/:id', async (req, res) => {
     const existing = await getReq.query('SELECT * FROM tbl_production WHERE pr_ctrlno = @pr_ctrlno');
     const oldValues = existing.recordset[0];
 
-    // 2. Perform Update
+    // 2. Delete any duplicate records for the same month/permit (consolidate)
+    const delReq = pool.request();
+    delReq.input('keepId', sql.Int, parseInt(id, 10));
+    delReq.input('permitNo', sql.VarChar(200), permitNo);
+    delReq.input('date', sql.Date, date);
+    const delResult = await delReq.query(`
+      DELETE FROM tbl_production
+      WHERE pr_permitno = @permitNo
+        AND YEAR(pr_date) = YEAR(@date)
+        AND MONTH(pr_date) = MONTH(@date)
+        AND pr_ctrlno <> @keepId
+    `);
+    if (delResult.rowsAffected?.[0] > 0) {
+      console.log(`Consolidated ${delResult.rowsAffected[0]} duplicate production record(s) for permit ${permitNo} month ${date}`);
+    }
+
+    // 3. Perform Update on the kept record
     const request = pool.request();
     request.input('id', sql.Int, parseInt(id, 10));
     request.input('permitNo', sql.VarChar(200), permitNo);
@@ -1719,7 +1784,7 @@ app.put('/api/productionaudit/production/:id', async (req, res) => {
       return res.status(404).json({ error: 'Production record not found' });
     }
 
-    // 3. Log Activity
+    // 4. Log Activity
     await logActivity(pool, req, {
       action: 'UPDATE',
       tableName: 'tbl_production',
@@ -3901,6 +3966,42 @@ app.get('/api/reports/active-registered-vehicle-records/export', async (req, res
     res
       .status(500)
       .json({ error: 'Failed to export active registered vehicle records: ' + err.message });
+  }
+});
+
+// ==================== MONTHLY ENVIRONMENTAL LOAD MONITORING REPORT ====================
+
+app.get('/api/reports/monthly-environmental-load-monitoring', async (req, res) => {
+  try {
+    const { year, month } = req.query;
+
+    if (!year || !month) {
+      return res.status(400).json({ error: 'Year and month parameters are required' });
+    }
+
+    const request = pool.request();
+    request.input('year', sql.Int, parseInt(year, 10));
+    request.input('month', sql.NVarChar, month);
+
+    const result = await request.query(`
+      SELECT
+        tf_name AS [NAME],
+        SumOftf_volume AS [VOLUME]
+      FROM View_taskforcemonth
+      WHERE RptYear = @year
+        AND MonthName = @month
+      ORDER BY tf_name
+    `);
+
+    console.log(
+      `✅ [API] Found ${result.recordset.length} monthly environmental load monitoring rows for ${month} ${year}`
+    );
+    res.json(result.recordset || []);
+  } catch (err) {
+    console.error('❌ Get Monthly Environmental Load Monitoring Error:', err.message);
+    res
+      .status(500)
+      .json({ error: 'Failed to fetch monthly environmental load monitoring: ' + err.message });
   }
 });
 

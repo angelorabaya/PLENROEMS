@@ -29,6 +29,7 @@ const formatVolume = (value) => {
 
 const formatDateFull = () => {
     return new Date().toLocaleDateString('en-US', {
+        timeZone: 'Asia/Manila',
         weekday: 'long',
         year: 'numeric',
         month: 'long',

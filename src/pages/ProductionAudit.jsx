@@ -74,7 +74,7 @@ const cycleRanges = (permit) => {
 };
 
 const formatMonthYear = (date) =>
-    date ? date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : '';
+    date ? date.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'long', year: 'numeric' }) : '';
 
 const formatVolumeValue = (value) => {
     if (value === null || value === undefined || value === '') return '';
@@ -90,7 +90,7 @@ const formatDateInput = (value) => {
     if (!value) return '';
     const d = new Date(value);
     if (Number.isNaN(d)) return '';
-    return d.toISOString().slice(0, 10);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
 const firstDayOfCurrentMonthInput = () => {
@@ -160,6 +160,20 @@ const ProductionAudit = () => {
         if (Number.isNaN(end)) return '';
         return new Date() <= end ? 'Active' : 'Expired';
     }, [selectedPermitObj]);
+
+    // Auto-hide success notification after 3 seconds
+    useEffect(() => {
+        if (!info) return;
+        const timer = setTimeout(() => setInfo(''), 3000);
+        return () => clearTimeout(timer);
+    }, [info]);
+
+    // Auto-hide error notification after 5 seconds
+    useEffect(() => {
+        if (!error) return;
+        const timer = setTimeout(() => setError(''), 5000);
+        return () => clearTimeout(timer);
+    }, [error]);
 
     useEffect(() => {
         const loadClients = async () => {
@@ -337,21 +351,35 @@ const ProductionAudit = () => {
                 }
             });
 
-            // Calculate totals only from actual production rows (not placeholders)
-            const actualRows = rows.filter((r) => !r.noProduction);
-            const totalExtracted = actualRows.reduce(
-                (sum, r) => sum + (Number(r.pr_vextracted) || 0),
-                0
-            );
-            const totalSold = actualRows.reduce((sum, r) => sum + (Number(r.pr_vsold) || 0), 0);
-            const totalPaid = actualRows.reduce((sum, r) => sum + (Number(r.pr_vpaid) || 0), 0);
+            // Calculate totals for all volume columns in this cycle.
+            const totalExtracted = rows.reduce((sum, r) => sum + (Number(r.pr_vextracted) || 0), 0);
+            const totalSold = rows.reduce((sum, r) => sum + (Number(r.pr_vsold) || 0), 0);
+            const totalPaid = rows.reduce((sum, r) => sum + (Number(r.pr_vpaid) || 0), 0);
+            const totalTaskForce = rows.reduce((sum, r) => sum + (Number(r.pr_taskforce) || 0), 0);
 
-            return { label, range, rows, totalExtracted, totalSold, totalPaid, allowableVolume };
+            return {
+                label,
+                range,
+                rows,
+                totalExtracted,
+                totalSold,
+                totalPaid,
+                totalTaskForce,
+                allowableVolume,
+            };
         });
     }, [productionRows, selectedPermitObj]);
 
     const handleFormChange = (field) => (e) => {
-        setForm((prev) => ({ ...prev, [field]: e.target.value }));
+        let value = e.target.value;
+        if (field === 'pr_date' && value) {
+            // Snap to the 1st of the selected month
+            const parts = value.split('-');
+            if (parts.length === 3) {
+                value = `${parts[0]}-${parts[1]}-01`;
+            }
+        }
+        setForm((prev) => ({ ...prev, [field]: value }));
     };
 
     const handleEdit = (row) => {
@@ -393,14 +421,16 @@ const ProductionAudit = () => {
                 volumeExtracted: form.pr_vextracted === '' ? 0 : Number(form.pr_vextracted) || 0,
                 volumeSold: form.pr_vsold === '' ? 0 : Number(form.pr_vsold) || 0,
             };
+            let successMsg = '';
             if (editingId) {
                 await api.updateProductionAuditEntry({ id: editingId, ...payload });
-                setInfo('Production entry updated.');
+                successMsg = 'Production entry updated.';
             } else {
                 await api.createProductionAuditEntry(payload);
-                setInfo('Production entry added.');
+                successMsg = 'Production entry added.';
             }
             handleCancelEdit();
+            setInfo(successMsg);
             fetchProduction();
         } catch (err) {
             setError(err.message || 'Failed to save production entry');
@@ -620,18 +650,25 @@ const ProductionAudit = () => {
                     {selectedPermitObj ? (
                         <>
                             Permit Duration (
-                            {new Date(selectedPermitObj.ph_dfrom).toLocaleDateString(undefined, {
+                            {new Date(selectedPermitObj.ph_dfrom).toLocaleDateString('en-US', {
+                                timeZone: 'Asia/Manila',
                                 year: 'numeric',
                                 month: 'long',
                                 day: 'numeric',
                             })}{' '}
                             –{' '}
-                            {new Date(selectedPermitObj.ph_dto).toLocaleDateString(undefined, {
+                            {new Date(selectedPermitObj.ph_dto).toLocaleDateString('en-US', {
+                                timeZone: 'Asia/Manila',
                                 year: 'numeric',
                                 month: 'long',
                                 day: 'numeric',
                             })}
-                            )
+                            ) | Allowable Volume:{' '}
+                            {selectedPermitObj.ph_volume !== null &&
+                                selectedPermitObj.ph_volume !== undefined &&
+                                selectedPermitObj.ph_volume !== ''
+                                ? formatVolumeValue(selectedPermitObj.ph_volume)
+                                : 'N/A'}
                         </>
                     ) : (
                         ''
@@ -717,9 +754,9 @@ const ProductionAudit = () => {
                                                 }
                                                 style={row.noProduction ? { opacity: 0.6 } : {}}
                                             >
-                                                    <td>
-                                                        {formatMonthYear(startOfMonth(row.pr_date))}
-                                                    </td>
+                                                <td>
+                                                    {formatMonthYear(startOfMonth(row.pr_date))}
+                                                </td>
                                                 {row.noProduction ? (
                                                     <>
                                                         <td
@@ -754,8 +791,8 @@ const ProductionAudit = () => {
                                                         >
                                                             {Number(row.pr_taskforce) > 0
                                                                 ? formatVolumeValue(
-                                                                      row.pr_taskforce
-                                                                  )
+                                                                    row.pr_taskforce
+                                                                )
                                                                 : ''}
                                                         </td>
                                                         <td></td>
@@ -771,12 +808,12 @@ const ProductionAudit = () => {
                                                             style={{
                                                                 color:
                                                                     Number(row.pr_taskforce) >
-                                                                    Number(row.pr_vextracted)
+                                                                        Number(row.pr_vextracted)
                                                                         ? '#ef4444'
                                                                         : undefined,
                                                                 fontWeight:
                                                                     Number(row.pr_taskforce) >
-                                                                    Number(row.pr_vextracted)
+                                                                        Number(row.pr_vextracted)
                                                                         ? 600
                                                                         : undefined,
                                                             }}
@@ -817,32 +854,71 @@ const ProductionAudit = () => {
                                             </tr>
                                         ))}
                                     </tbody>
+                                    <tfoot>
+                                        <tr>
+                                            <td
+                                                style={{
+                                                    fontWeight: 600,
+                                                    borderTop: '3px double var(--border)',
+                                                    paddingTop: '10px',
+                                                }}
+                                            >
+                                                Total
+                                            </td>
+                                            <td
+                                                style={{
+                                                    fontWeight: 600,
+                                                    borderTop: '3px double var(--border)',
+                                                    paddingTop: '10px',
+                                                    color:
+                                                        cycle.allowableVolume &&
+                                                            Number(cycle.allowableVolume) <
+                                                            cycle.totalExtracted
+                                                            ? '#ef4444'
+                                                            : '#22c55e',
+                                                }}
+                                            >
+                                                {formatVolumeValue(cycle.totalExtracted)}
+                                            </td>
+                                            <td
+                                                style={{
+                                                    fontWeight: 600,
+                                                    borderTop: '3px double var(--border)',
+                                                    paddingTop: '10px',
+                                                }}
+                                            >
+                                                {formatVolumeValue(cycle.totalSold)}
+                                            </td>
+                                            <td
+                                                style={{
+                                                    fontWeight: 600,
+                                                    borderTop: '3px double var(--border)',
+                                                    paddingTop: '10px',
+                                                }}
+                                            >
+                                                {formatVolumeValue(cycle.totalPaid)}
+                                            </td>
+                                            <td
+                                                style={{
+                                                    fontWeight: 600,
+                                                    borderTop: '3px double var(--border)',
+                                                    paddingTop: '10px',
+                                                }}
+                                            >
+                                                {formatVolumeValue(cycle.totalTaskForce)}
+                                            </td>
+                                            <td
+                                                style={{
+                                                    borderTop: '3px double var(--border)',
+                                                    paddingTop: '10px',
+                                                }}
+                                            ></td>
+                                        </tr>
+                                    </tfoot>
                                 </table>
                             ) : (
                                 <div className="text-muted" style={{ padding: '12px' }}>
                                     No production data for this cycle.
-                                </div>
-                            )}
-                            {cycle.rows.length > 0 && (
-                                <div
-                                    className="text-sm"
-                                    style={{ marginTop: '8px', marginLeft: '12px' }}
-                                >
-                                    Total Extracted:{' '}
-                                    <span
-                                        style={{
-                                            color:
-                                                cycle.allowableVolume &&
-                                                Number(cycle.allowableVolume) < cycle.totalExtracted
-                                                    ? '#ef4444'
-                                                    : '#22c55e',
-                                            fontWeight: 600,
-                                        }}
-                                    >
-                                        {cycle.totalExtracted}
-                                    </span>{' '}
-                                    | Total Sold: {cycle.totalSold} | Total Paid: {cycle.totalPaid}{' '}
-                                    | Allowable Volume: {cycle.allowableVolume || 'N/A'}
                                 </div>
                             )}
                         </div>

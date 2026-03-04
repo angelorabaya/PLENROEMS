@@ -46,7 +46,7 @@ const logActivity = async (pool, req, { action, tableName, recordId, oldValues, 
 
         // Use Node.js time to ensure consistency with application server time
         const createdAt = new Date();
-        console.log('📝 Audit Log Inserting:', { action, tableName, createdAt: createdAt.toLocaleString() });
+        console.log('📝 Audit Log Inserting:', { action, tableName, createdAt: createdAt.toLocaleString('en-US', { timeZone: 'Asia/Manila' }) });
 
         request.input('UserID', sql.NVarChar(255), userId);
         request.input('UserName', sql.NVarChar(255), userName);

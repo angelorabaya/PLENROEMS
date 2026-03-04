@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { FiX } from 'react-icons/fi';
+import { getTodayPHT, getDateOffsetYearsPHT } from '../../utils/dateUtils';
 import './Modal.css';
 
 const VehicleModal = ({ isOpen, onClose, onSave, vehicle }) => {
@@ -26,18 +27,14 @@ const VehicleModal = ({ isOpen, onClose, onSave, vehicle }) => {
                 vr_expiry: vehicle.vr_expiry ? vehicle.vr_expiry.split('T')[0] : '',
             });
         } else {
-            const today = new Date();
-            const nextYear = new Date(today);
-            nextYear.setFullYear(today.getFullYear() + 1);
-
             setFormData({
                 vr_plateno: '',
                 vr_trucktype: '',
                 vr_cname: '',
                 vr_controlno: '',
                 vr_code: '',
-                vr_datereg: today.toISOString().split('T')[0],
-                vr_expiry: nextYear.toISOString().split('T')[0],
+                vr_datereg: getTodayPHT(),
+                vr_expiry: getDateOffsetYearsPHT(1),
             });
         }
     }, [vehicle, isOpen]);
@@ -50,7 +47,7 @@ const VehicleModal = ({ isOpen, onClose, onSave, vehicle }) => {
             if (!isNaN(date.getTime())) {
                 const expiry = new Date(date);
                 expiry.setFullYear(date.getFullYear() + 1);
-                const expiryString = expiry.toISOString().split('T')[0];
+                const expiryString = `${expiry.getFullYear()}-${String(expiry.getMonth() + 1).padStart(2, '0')}-${String(expiry.getDate()).padStart(2, '0')}`;
                 setFormData((prev) => ({
                     ...prev,
                     [name]: value,

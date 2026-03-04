@@ -24,6 +24,7 @@ const formatDateLong = (dateString) => {
     const parsed = new Date(dateString);
     if (Number.isNaN(parsed.getTime())) return dateString;
     return parsed.toLocaleDateString('en-US', {
+        timeZone: 'Asia/Manila',
         weekday: 'long',
         month: 'long',
         day: 'numeric',

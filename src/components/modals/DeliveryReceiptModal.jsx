@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { FiX } from 'react-icons/fi';
+import { getTodayPHT } from '../../utils/dateUtils';
 import './Modal.css';
 
 const DeliveryReceiptModal = ({ isOpen, onClose, onSave, receipt }) => {
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState({
-        dr_releasedate: new Date().toISOString().split('T')[0],
+        dr_releasedate: getTodayPHT(),
         dr_stubno: '',
         dr_stubfrom: '',
         dr_stubto: '',
@@ -17,14 +18,14 @@ const DeliveryReceiptModal = ({ isOpen, onClose, onSave, receipt }) => {
             setFormData({
                 dr_releasedate: receipt.dr_releasedate
                     ? new Date(receipt.dr_releasedate).toISOString().split('T')[0]
-                    : new Date().toISOString().split('T')[0],
+                    : getTodayPHT(),
                 dr_stubno: receipt.dr_stubno || '',
                 dr_stubfrom: receipt.dr_stubfrom || '',
                 dr_stubto: receipt.dr_stubto || '',
             });
         } else {
             setFormData({
-                dr_releasedate: new Date().toISOString().split('T')[0],
+                dr_releasedate: getTodayPHT(),
                 dr_stubno: '',
                 dr_stubfrom: '',
                 dr_stubto: '',

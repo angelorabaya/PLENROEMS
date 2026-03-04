@@ -363,6 +363,7 @@ const ClientTransactions = () => {
                                     {transactions.map((detail, index) => {
                                         const dateObj = new Date(detail.aop_ordate);
                                         const dateStr = dateObj.toLocaleDateString('en-US', {
+                                            timeZone: 'Asia/Manila',
                                             year: 'numeric',
                                             month: '2-digit',
                                             day: '2-digit',

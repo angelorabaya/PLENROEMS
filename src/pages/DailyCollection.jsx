@@ -76,7 +76,7 @@ const DailyCollection = () => {
                 header: 'Date',
                 cell: (info) => {
                     const dateVal = info.getValue();
-                    return dateVal ? new Date(dateVal).toLocaleDateString() : '';
+                    return dateVal ? new Date(dateVal).toLocaleDateString('en-US', { timeZone: 'Asia/Manila' }) : '';
                 },
             }),
             columnHelper.accessor('aop_orno', {
@@ -179,157 +179,155 @@ const DailyCollection = () => {
                         className={`rounded-xl shadow-lg overflow-hidden border min-w-max ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}
                     >
 
-                    {/* Toolbar */}
-                    <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-col md:flex-row justify-between items-center gap-4">
-                        <div className="relative w-full md:w-64">
-                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                <FiSearch className="text-gray-400" />
+                        {/* Toolbar */}
+                        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-col md:flex-row justify-between items-center gap-4">
+                            <div className="relative w-full md:w-64">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <FiSearch className="text-gray-400" />
+                                </div>
+                                <input
+                                    type="text"
+                                    placeholder="Search records..."
+                                    value={globalFilter ?? ''}
+                                    onChange={(e) => setGlobalFilter(e.target.value)}
+                                    className={`block w-full pl-10 pr-3 py-2 border rounded-lg leading-5 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-violet-500 sm:text-sm transition duration-150 ease-in-out ${isDark
+                                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
+                                        : 'bg-white border-gray-300 text-gray-900'
+                                        }`}
+                                />
                             </div>
-                            <input
-                                type="text"
-                                placeholder="Search records..."
-                                value={globalFilter ?? ''}
-                                onChange={(e) => setGlobalFilter(e.target.value)}
-                                className={`block w-full pl-10 pr-3 py-2 border rounded-lg leading-5 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-violet-500 sm:text-sm transition duration-150 ease-in-out ${isDark
-                                    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
-                                    : 'bg-white border-gray-300 text-gray-900'
-                                    }`}
-                            />
-                        </div>
-                        <div className="flex items-center gap-3">
-                            {/* Summary for Total Rows */}
-                            <div className={`flex items-center gap-2 px-4 py-2 rounded-lg ${isDark ? 'bg-blue-900/20 text-blue-300' : 'bg-blue-50 text-blue-700'}`}>
-                                <span className="text-sm font-medium">ROWS:</span>
-                                <span className="text-lg font-bold">{data.length}</span>
-                            </div>
+                            <div className="flex items-center gap-3">
+                                {/* Summary for Total Rows */}
+                                <div className={`flex items-center gap-2 px-4 py-2 rounded-lg ${isDark ? 'bg-blue-900/20 text-blue-300' : 'bg-blue-50 text-blue-700'}`}>
+                                    <span className="text-sm font-medium">ROWS:</span>
+                                    <span className="text-lg font-bold">{data.length}</span>
+                                </div>
 
-                            {/* Summary for Total Amount */}
-                            <div className={`flex items-center gap-2 px-4 py-2 rounded-lg ${isDark ? 'bg-violet-900/20 text-violet-300' : 'bg-violet-50 text-violet-700'}`}>
-                                <span className="text-sm font-medium">TOTAL:</span>
-                                <span className="text-lg font-bold">
-                                    {totalAmount.toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })}
-                                </span>
+                                {/* Summary for Total Amount */}
+                                <div className={`flex items-center gap-2 px-4 py-2 rounded-lg ${isDark ? 'bg-violet-900/20 text-violet-300' : 'bg-violet-50 text-violet-700'}`}>
+                                    <span className="text-sm font-medium">TOTAL:</span>
+                                    <span className="text-lg font-bold">
+                                        {totalAmount.toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })}
+                                    </span>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    {/* Table */}
-                    <div className="overflow-x-visible">
-                        <table className="w-max min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                            <thead className={isDark ? 'bg-gray-700/50' : 'bg-gray-50'}>
-                                {table.getHeaderGroups().map((headerGroup) => (
-                                    <tr key={headerGroup.id}>
-                                        {headerGroup.headers.map((header) => (
-                                            <th
-                                                key={header.id}
-                                                className={`px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-gray-400' : 'text-gray-500'
-                                                    }`}
-                                            >
-                                                {header.isPlaceholder
-                                                    ? null
-                                                    : flexRender(
-                                                        header.column.columnDef.header,
-                                                        header.getContext()
-                                                    )}
-                                            </th>
-                                        ))}
-                                    </tr>
-                                ))}
-                            </thead>
-                            <tbody className={`divide-y divide-gray-200 dark:divide-gray-700 ${isDark ? 'bg-gray-800' : 'bg-white'}`}>
-                                {loading ? (
-                                    <tr>
-                                        <td colSpan={columns.length} className="px-6 py-12 text-center">
-                                            <div className="flex justify-center items-center gap-2">
-                                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-violet-500"></div>
-                                                <span className="text-gray-500">Loading data...</span>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ) : data.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={columns.length} className="px-6 py-12 text-center text-gray-500">
-                                            No records found for this date.
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    table.getRowModel().rows.map((row) => (
-                                        <tr key={row.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors`}>
-                                            {row.getVisibleCells().map((cell) => (
-                                                <td
-                                                    key={cell.id}
-                                                    className={`px-6 py-4 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'
+                        {/* Table */}
+                        <div className="overflow-x-visible">
+                            <table className="w-max min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                <thead className={isDark ? 'bg-gray-700/50' : 'bg-gray-50'}>
+                                    {table.getHeaderGroups().map((headerGroup) => (
+                                        <tr key={headerGroup.id}>
+                                            {headerGroup.headers.map((header) => (
+                                                <th
+                                                    key={header.id}
+                                                    className={`px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-gray-400' : 'text-gray-500'
                                                         }`}
                                                 >
-                                                    {flexRender(
-                                                        cell.column.columnDef.cell,
-                                                        cell.getContext()
-                                                    )}
-                                                </td>
+                                                    {header.isPlaceholder
+                                                        ? null
+                                                        : flexRender(
+                                                            header.column.columnDef.header,
+                                                            header.getContext()
+                                                        )}
+                                                </th>
                                             ))}
                                         </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                                    ))}
+                                </thead>
+                                <tbody className={`divide-y divide-gray-200 dark:divide-gray-700 ${isDark ? 'bg-gray-800' : 'bg-white'}`}>
+                                    {loading ? (
+                                        <tr>
+                                            <td colSpan={columns.length} className="px-6 py-12 text-center">
+                                                <div className="flex justify-center items-center gap-2">
+                                                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-violet-500"></div>
+                                                    <span className="text-gray-500">Loading data...</span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ) : data.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={columns.length} className="px-6 py-12 text-center text-gray-500">
+                                                No records found for this date.
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        table.getRowModel().rows.map((row) => (
+                                            <tr key={row.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors`}>
+                                                {row.getVisibleCells().map((cell) => (
+                                                    <td
+                                                        key={cell.id}
+                                                        className={`px-6 py-4 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'
+                                                            }`}
+                                                    >
+                                                        {flexRender(
+                                                            cell.column.columnDef.cell,
+                                                            cell.getContext()
+                                                        )}
+                                                    </td>
+                                                ))}
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
 
-                    {/* Pagination */}
-                    <div className={`px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between ${isDark ? 'bg-gray-800' : 'bg-white'
-                        }`}>
-                        <div className="flex-1 flex justify-between sm:hidden">
-                            <button
-                                onClick={() => table.previousPage()}
-                                disabled={!canPreviousPage}
-                                className={`relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md ${
-                                    !canPreviousPage
-                                        ? 'text-gray-300 bg-gray-100 cursor-not-allowed'
-                                        : 'text-gray-700 bg-white hover:bg-gray-50'
-                                }`}
-                            >
-                                Previous
-                            </button>
-                            <button
-                                onClick={() => table.nextPage()}
-                                disabled={!canNextPage}
-                                className={`ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md ${
-                                    !canNextPage
-                                        ? 'text-gray-300 bg-gray-100 cursor-not-allowed'
-                                        : 'text-gray-700 bg-white hover:bg-gray-50'
-                                }`}
-                            >
-                                Next
-                            </button>
-                        </div>
-                        <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                            <div>
-                                <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-700'}`}>
-                                    Showing <span className="font-medium">{rangeStart}</span> to{' '}
-                                    <span className="font-medium">{rangeEnd}</span> of{' '}
-                                    <span className="font-medium">{filteredRowCount}</span> results
-                                </p>
+                        {/* Pagination */}
+                        <div className={`px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between ${isDark ? 'bg-gray-800' : 'bg-white'
+                            }`}>
+                            <div className="flex-1 flex justify-between sm:hidden">
+                                <button
+                                    onClick={() => table.previousPage()}
+                                    disabled={!canPreviousPage}
+                                    className={`relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md ${!canPreviousPage
+                                            ? 'text-gray-300 bg-gray-100 cursor-not-allowed'
+                                            : 'text-gray-700 bg-white hover:bg-gray-50'
+                                        }`}
+                                >
+                                    Previous
+                                </button>
+                                <button
+                                    onClick={() => table.nextPage()}
+                                    disabled={!canNextPage}
+                                    className={`ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md ${!canNextPage
+                                            ? 'text-gray-300 bg-gray-100 cursor-not-allowed'
+                                            : 'text-gray-700 bg-white hover:bg-gray-50'
+                                        }`}
+                                >
+                                    Next
+                                </button>
                             </div>
-                            <div>
-                                <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-                                    <button
-                                        onClick={() => table.previousPage()}
-                                        disabled={!canPreviousPage}
-                                        className={`relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm font-medium ${!canPreviousPage ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-600'}`}
-                                    >
-                                        Previous
-                                    </button>
-                                    <button
-                                        onClick={() => table.nextPage()}
-                                        disabled={!canNextPage}
-                                        className={`relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm font-medium ${!canNextPage ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-600'}`}
-                                    >
-                                        Next
-                                    </button>
-                                </nav>
+                            <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                                <div>
+                                    <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-700'}`}>
+                                        Showing <span className="font-medium">{rangeStart}</span> to{' '}
+                                        <span className="font-medium">{rangeEnd}</span> of{' '}
+                                        <span className="font-medium">{filteredRowCount}</span> results
+                                    </p>
+                                </div>
+                                <div>
+                                    <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                                        <button
+                                            onClick={() => table.previousPage()}
+                                            disabled={!canPreviousPage}
+                                            className={`relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm font-medium ${!canPreviousPage ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-600'}`}
+                                        >
+                                            Previous
+                                        </button>
+                                        <button
+                                            onClick={() => table.nextPage()}
+                                            disabled={!canNextPage}
+                                            className={`relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm font-medium ${!canNextPage ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-600'}`}
+                                        >
+                                            Next
+                                        </button>
+                                    </nav>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
                 </div>
             </div>
         </div>

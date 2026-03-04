@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../services/api';
+import {
+    Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+    WidthType, AlignmentType, BorderStyle, HeadingLevel, ShadingType,
+    VerticalAlign, TableLayoutType
+} from 'docx';
+import { saveAs } from 'file-saver';
 import '../styles/revenue-collection-print.css';
 
 /* ============================================
@@ -42,6 +48,58 @@ const formatCurrency = (value) => {
 };
 
 /* ============================================
+   DOCX EXPORT HELPERS
+   ============================================ */
+const ACCENT_COLOR = '2D5A27';
+const BLACK = '000000';
+const MUTED = '555555';
+const noBorder = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
+const solidBorder = { style: BorderStyle.SINGLE, size: 1, color: BLACK };
+const thickBorder = { style: BorderStyle.SINGLE, size: 2, color: BLACK };
+const allBorders = { top: solidBorder, bottom: solidBorder, left: solidBorder, right: solidBorder };
+
+const buildFeeRow = (label, amount, isTotalRow = false) => {
+    const topBorderStyle = isTotalRow ? thickBorder : solidBorder;
+    return new TableRow({
+        children: [
+            new TableCell({
+                width: { size: 65, type: WidthType.PERCENTAGE },
+                borders: { ...allBorders, top: topBorderStyle },
+                shading: isTotalRow ? { type: ShadingType.SOLID, color: 'F5F5F5' } : undefined,
+                verticalAlign: VerticalAlign.CENTER,
+                children: [new Paragraph({
+                    spacing: { before: 40, after: 40 },
+                    indent: { left: 120 },
+                    children: [new TextRun({
+                        text: label,
+                        bold: isTotalRow,
+                        size: isTotalRow ? 22 : 20,
+                        font: 'Segoe UI',
+                    })],
+                })],
+            }),
+            new TableCell({
+                width: { size: 35, type: WidthType.PERCENTAGE },
+                borders: { ...allBorders, top: topBorderStyle },
+                shading: isTotalRow ? { type: ShadingType.SOLID, color: 'F5F5F5' } : undefined,
+                verticalAlign: VerticalAlign.CENTER,
+                children: [new Paragraph({
+                    alignment: AlignmentType.RIGHT,
+                    spacing: { before: 40, after: 40 },
+                    indent: { right: 120 },
+                    children: [new TextRun({
+                        text: formatCurrency(amount),
+                        bold: isTotalRow,
+                        size: isTotalRow ? 22 : 20,
+                        font: 'Segoe UI',
+                    })],
+                })],
+            }),
+        ],
+    });
+};
+
+/* ============================================
    COMPONENT
    ============================================ */
 const RevenueCollectionReport = () => {
@@ -76,6 +134,222 @@ const RevenueCollectionReport = () => {
 
     const handlePrint = () => {
         window.print();
+    };
+
+    const handleExportWord = async () => {
+        if (!data) return;
+
+        // Recalculate values (same logic as the component render)
+        const extFee = (Number(data.Share_Prov_30) || 0) + (Number(data.Share_Mun_30) || 0) + (Number(data.Share_Brgy_40) || 0);
+        const extFeeMGB = Number(data.MGB_Prov_30) || 0;
+        const total = extFee + extFeeMGB +
+            (Number(data.Admin_Fee) || 0) + (Number(data.Ecosystem_Fee) || 0) +
+            (Number(data.Admin_Ecosystem_Fee) || 0) + (Number(data.Other_Misc_Fee) || 0) +
+            (Number(data.Outbound_Fee) || 0) + (Number(data.Inbound_Fee) || 0) +
+            (Number(data.Sticker_Fee) || 0) + (Number(data.Reg_Conveyances_Fee) || 0) +
+            (Number(data.Penalties_Fee) || 0);
+
+        // --- Header Section ---
+        const headerParagraphs = [
+            new Paragraph({
+                alignment: AlignmentType.CENTER, spacing: { after: 0 }, children: [
+                    new TextRun({ text: 'REPUBLIC OF THE PHILIPPINES', bold: true, size: 24, font: 'Segoe UI' }),
+                ]
+            }),
+            new Paragraph({
+                alignment: AlignmentType.CENTER, spacing: { after: 0 }, children: [
+                    new TextRun({ text: 'Province of Misamis Oriental', size: 22, font: 'Segoe UI' }),
+                ]
+            }),
+            new Paragraph({
+                alignment: AlignmentType.CENTER, spacing: { before: 80, after: 0 }, children: [
+                    new TextRun({ text: 'PROVINCIAL LOCAL ENVIRONMENT AND NATURAL RESOURCES OFFICE', bold: true, size: 20, font: 'Segoe UI', color: ACCENT_COLOR }),
+                ]
+            }),
+            new Paragraph({
+                alignment: AlignmentType.CENTER, spacing: { after: 0 }, children: [
+                    new TextRun({ text: 'Misortel Building, A. Luna St., Cagayan de Oro City', italics: true, size: 18, font: 'Segoe UI', color: MUTED }),
+                ]
+            }),
+            // Divider line
+            new Paragraph({ spacing: { before: 100, after: 100 }, border: { bottom: { style: BorderStyle.SINGLE, size: 2, color: BLACK } }, children: [] }),
+        ];
+
+        // --- Title Section ---
+        const titleParagraphs = [
+            new Paragraph({
+                alignment: AlignmentType.CENTER, spacing: { before: 200, after: 0 }, children: [
+                    new TextRun({ text: 'REVENUE COLLECTION REPORT', bold: true, size: 28, font: 'Segoe UI', color: ACCENT_COLOR }),
+                ]
+            }),
+            new Paragraph({
+                alignment: AlignmentType.CENTER, spacing: { before: 40, after: 200 }, children: [
+                    new TextRun({ text: `For the Month of ${month}, ${year}`, size: 22, font: 'Segoe UI' }),
+                ]
+            }),
+        ];
+
+        // --- Table Header Row ---
+        const tableHeaderRow = new TableRow({
+            tableHeader: true,
+            children: [
+                new TableCell({
+                    width: { size: 65, type: WidthType.PERCENTAGE },
+                    borders: allBorders,
+                    shading: { type: ShadingType.SOLID, color: ACCENT_COLOR },
+                    verticalAlign: VerticalAlign.CENTER,
+                    children: [new Paragraph({
+                        alignment: AlignmentType.CENTER,
+                        spacing: { before: 60, after: 60 },
+                        children: [new TextRun({ text: 'PARTICULARS', bold: true, size: 20, font: 'Segoe UI', color: 'FFFFFF' })],
+                    })],
+                }),
+                new TableCell({
+                    width: { size: 35, type: WidthType.PERCENTAGE },
+                    borders: allBorders,
+                    shading: { type: ShadingType.SOLID, color: ACCENT_COLOR },
+                    verticalAlign: VerticalAlign.CENTER,
+                    children: [new Paragraph({
+                        alignment: AlignmentType.CENTER,
+                        spacing: { before: 60, after: 60 },
+                        children: [new TextRun({ text: 'AMOUNT (₱)', bold: true, size: 20, font: 'Segoe UI', color: 'FFFFFF' })],
+                    })],
+                }),
+            ],
+        });
+
+        // --- Fee Data Rows ---
+        const feeRows = [
+            buildFeeRow('Extraction Fee', extFee),
+            buildFeeRow('Extraction Fee (MGB)', extFeeMGB),
+            buildFeeRow('Administrative Fee', data.Admin_Fee),
+            buildFeeRow('Ecosystem Services Fee', data.Ecosystem_Fee),
+            buildFeeRow('Admin & Ecosystem Fee', data.Admin_Ecosystem_Fee),
+            buildFeeRow('Other Miscellaneous Fee', data.Other_Misc_Fee),
+            buildFeeRow('Outbound Fee', data.Outbound_Fee),
+            buildFeeRow('Inbound Fee', data.Inbound_Fee),
+            buildFeeRow('Sticker Fee', data.Sticker_Fee),
+            buildFeeRow('Registration (Conveyances)', data.Reg_Conveyances_Fee),
+            buildFeeRow('Penalties', data.Penalties_Fee),
+            buildFeeRow('TOTAL COLLECTION (GROSS)', total, true),
+            buildFeeRow('LESS: Municipal Share (30% of Extraction Fee)', data.Share_Mun_30),
+            buildFeeRow('         Barangay Share (40% of Extraction Fee)', data.Share_Brgy_40),
+            buildFeeRow('TOTAL COLLECTION (NET)', data.Net_Share, true),
+        ];
+
+        const feesTable = new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            layout: TableLayoutType.FIXED,
+            rows: [tableHeaderRow, ...feeRows],
+        });
+
+        // --- Signature Section (table-based for Word) ---
+        const noBorders = { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder };
+        const signatureTable = new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            borders: noBorders,
+            rows: [
+                // Labels row
+                new TableRow({
+                    children: [
+                        new TableCell({
+                            width: { size: 50, type: WidthType.PERCENTAGE }, borders: noBorders, children: [
+                                new Paragraph({
+                                    spacing: { before: 0, after: 600 }, children: [
+                                        new TextRun({ text: 'Prepared by:', size: 20, font: 'Segoe UI' }),
+                                    ]
+                                }),
+                            ]
+                        }),
+                        new TableCell({
+                            width: { size: 50, type: WidthType.PERCENTAGE }, borders: noBorders, children: [
+                                new Paragraph({
+                                    spacing: { before: 0, after: 600 }, children: [
+                                        new TextRun({ text: 'Verified by:', size: 20, font: 'Segoe UI' }),
+                                    ]
+                                }),
+                            ]
+                        }),
+                    ]
+                }),
+                // Names row
+                new TableRow({
+                    children: [
+                        new TableCell({
+                            width: { size: 50, type: WidthType.PERCENTAGE }, borders: noBorders, children: [
+                                new Paragraph({
+                                    alignment: AlignmentType.CENTER, border: { top: { style: BorderStyle.SINGLE, size: 1, color: BLACK } }, spacing: { before: 40, after: 0 }, children: [
+                                        new TextRun({ text: PREPARED_BY_NAME, bold: true, size: 22, font: 'Segoe UI' }),
+                                    ]
+                                }),
+                                new Paragraph({
+                                    alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [
+                                        new TextRun({ text: PREPARED_BY_TITLE, size: 20, font: 'Segoe UI' }),
+                                    ]
+                                }),
+                            ]
+                        }),
+                        new TableCell({
+                            width: { size: 50, type: WidthType.PERCENTAGE }, borders: noBorders, children: [
+                                new Paragraph({
+                                    alignment: AlignmentType.CENTER, border: { top: { style: BorderStyle.SINGLE, size: 1, color: BLACK } }, spacing: { before: 40, after: 0 }, children: [
+                                        new TextRun({ text: VERIFIED_BY_NAME, bold: true, size: 22, font: 'Segoe UI' }),
+                                    ]
+                                }),
+                                new Paragraph({
+                                    alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [
+                                        new TextRun({ text: VERIFIED_BY_TITLE, size: 20, font: 'Segoe UI' }),
+                                    ]
+                                }),
+                            ]
+                        }),
+                    ]
+                }),
+            ],
+        });
+
+        // --- Footer ---
+        const footerParagraphs = [
+            new Paragraph({ spacing: { before: 300 }, border: { top: { style: BorderStyle.SINGLE, size: 1, color: MUTED } }, children: [] }),
+            new Paragraph({
+                alignment: AlignmentType.CENTER, spacing: { before: 60, after: 0 }, children: [
+                    new TextRun({ text: 'Provincial Local Environment and Natural Resources Office', italics: true, size: 16, font: 'Segoe UI', color: MUTED }),
+                ]
+            }),
+            new Paragraph({
+                alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [
+                    new TextRun({ text: 'Misortel Building, A. Luna St., Provincial Capitol Compound, Cagayan de Oro City', italics: true, size: 16, font: 'Segoe UI', color: MUTED }),
+                ]
+            }),
+        ];
+
+        // --- Build Document ---
+        const doc = new Document({
+            sections: [{
+                properties: {
+                    page: {
+                        size: { width: 12240, height: 15840 }, // Letter size in twips
+                        margin: { top: 720, right: 900, bottom: 720, left: 900 },
+                    },
+                },
+                children: [
+                    ...headerParagraphs,
+                    ...titleParagraphs,
+                    feesTable,
+                    new Paragraph({ spacing: { before: 400 }, children: [] }),
+                    signatureTable,
+                    ...footerParagraphs,
+                ],
+            }],
+        });
+
+        try {
+            const blob = await Packer.toBlob(doc);
+            saveAs(blob, `Revenue_Collection_Report_${month}_${year}.docx`);
+        } catch (err) {
+            console.error('Export to Word failed:', err);
+            alert('Failed to export to Word. Please try again.');
+        }
     };
 
     // Calculate extraction fee (sum of Province, Municipal, Barangay shares)
@@ -115,6 +389,9 @@ const RevenueCollectionReport = () => {
                     </button>
                     <button className="btn btn-primary" onClick={handlePrint}>
                         Print
+                    </button>
+                    <button className="btn btn-primary" onClick={handleExportWord} disabled={!shouldShowReport}>
+                        Export to Word
                     </button>
                 </div>
                 <div className="toolbar-meta">

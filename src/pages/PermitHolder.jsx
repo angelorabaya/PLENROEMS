@@ -10,7 +10,7 @@ const formatDate = (value) => {
     if (!value) return '';
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return '';
-    return d.toLocaleDateString();
+    return d.toLocaleDateString('en-US', { timeZone: 'Asia/Manila' });
 };
 
 const DEFAULT_ATTACHMENTS_BASE_PATH = '\\\\Enro-server\\servershare\\attachments\\';
@@ -482,8 +482,8 @@ const PermitHolder = () => {
                                                         theme === 'light' ? '#09090b' : '#fafafa',
                                                 }}
                                                 onMouseEnter={(e) =>
-                                                    (e.target.style.background =
-                                                        theme === 'light' ? '#f4f4f5' : '#27272a')
+                                                (e.target.style.background =
+                                                    theme === 'light' ? '#f4f4f5' : '#27272a')
                                                 }
                                                 onMouseLeave={(e) =>
                                                     (e.target.style.background = 'transparent')
@@ -630,7 +630,7 @@ const PermitHolder = () => {
                                                                     }}
                                                                     disabled={
                                                                         !fileExists[
-                                                                            permit.ph_ctrlno
+                                                                        permit.ph_ctrlno
                                                                         ]
                                                                     }
                                                                     style={{ padding: '4px 8px' }}

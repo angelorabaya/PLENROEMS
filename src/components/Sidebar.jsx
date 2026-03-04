@@ -27,6 +27,9 @@ import {
     FiMessageSquare,
     FiPackage,
     FiShield,
+    FiBriefcase,
+    FiNavigation,
+    FiCalendar,
 } from 'react-icons/fi';
 import '../styles/layout.css';
 
@@ -191,6 +194,15 @@ const Sidebar = ({ onLogout, isCollapsed, onToggleCollapse, userRole, user }) =>
                     </NavItem>
                     <NavItem to="/taskforce" icon={FiShield}>
                         Task Force
+                    </NavItem>
+                </NavSection>
+
+                <NavSection title="Administrative Division" id="admin-division" icon={FiBriefcase}>
+                    <NavItem to="/travel-authorization" icon={FiNavigation}>
+                        Travel Authorization
+                    </NavItem>
+                    <NavItem to="/leave-management" icon={FiCalendar}>
+                        Leave Management
                     </NavItem>
                 </NavSection>
 

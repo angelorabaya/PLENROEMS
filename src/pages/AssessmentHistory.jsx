@@ -230,6 +230,7 @@ const AssessmentHistory = () => {
                 cell: ({ getValue }) => {
                     const dateObj = new Date(getValue());
                     const dateStr = dateObj.toLocaleDateString('en-US', {
+                        timeZone: 'Asia/Manila',
                         year: 'numeric',
                         month: '2-digit',
                         day: '2-digit',

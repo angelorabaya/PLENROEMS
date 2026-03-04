@@ -806,6 +806,16 @@ export const api = {
         return response.blob();
     },
 
+    getMonthlyEnvironmentalLoadMonitoring: async (year, month) => {
+        const response = await fetch(
+            `${API_BASE}/api/reports/monthly-environmental-load-monitoring?year=${year}&month=${encodeURIComponent(month)}`
+        );
+        if (!response.ok) {
+            throw new Error('Failed to fetch monthly environmental load monitoring report');
+        }
+        return response.json();
+    },
+
     getDeliveryReceipts: async (clientId) => {
         const response = await fetch(
             `${API_BASE}/api/deliveryreceipts/${encodeURIComponent(clientId)}`

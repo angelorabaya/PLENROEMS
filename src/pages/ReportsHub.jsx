@@ -13,6 +13,8 @@ import {
     FiArrowRight,
     FiPieChart,
     FiFileText,
+    FiShield,
+    FiPackage,
 } from 'react-icons/fi';
 import { api } from '../services/api';
 import '../styles/global.css';
@@ -44,6 +46,12 @@ const CategorySection = ({ category, onReportClick, yearSelector, isDark }) => {
             bg: 'from-amber-500/10 to-amber-500/5',
             border: 'border-amber-500/20',
             glow: 'bg-amber-500',
+        },
+        cyan: {
+            gradient: 'from-cyan-500 to-cyan-600',
+            bg: 'from-cyan-500/10 to-cyan-500/5',
+            border: 'border-cyan-500/20',
+            glow: 'bg-cyan-500',
         },
     };
 
@@ -334,14 +342,34 @@ const ReportsHub = () => {
                 },
             ],
         },
+        {
+            id: 'task-force',
+            title: 'Task Force Reports',
+            description: 'Task force monitoring and environmental load analytics',
+            icon: FiShield,
+            accentColor: 'cyan',
+            hasYearSelector: true,
+            reports: [
+                {
+                    id: 'monthly-environmental-load-monitoring',
+                    name: 'Monthly Environmental Load Monitoring',
+                    description: 'Monthly environmental load monitoring summary',
+                    icon: FiPackage,
+                    path: '/reports/monthly-environmental-load-monitoring',
+                },
+            ],
+        },
     ];
 
     const handleReportClick = async (path) => {
         // Append selected year to income reports
         if (path.includes('/reports/comparative-income')) {
             navigate(`${path}?year=${selectedYear}`);
-        } else if (path.includes('/reports/revenue-collection')) {
-            // Include month for revenue collection
+        } else if (
+            path.includes('/reports/revenue-collection') ||
+            path.includes('/reports/monthly-environmental-load-monitoring')
+        ) {
+            // Include month for reports that require monthly filtering
             navigate(`${path}?year=${selectedYear}&month=${selectedMonth}`);
         } else if (path.includes('/reports/active-registered-vehicle-records')) {
             try {

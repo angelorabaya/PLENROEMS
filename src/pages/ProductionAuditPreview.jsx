@@ -21,13 +21,23 @@ const ProductionAuditPreview = () => {
         if (!dateString) return '';
         const d = new Date(dateString);
         if (Number.isNaN(d.getTime())) return '';
-        return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+        return d.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', year: 'numeric', month: 'long', day: 'numeric' });
     };
 
     const formatMonthYear = (date) =>
         date
-            ? new Date(date).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+            ? new Date(date).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'long', year: 'numeric' })
             : '';
+
+    const formatNumericValue = (value, minimumFractionDigits = 0, maximumFractionDigits = 2) => {
+        if (value === null || value === undefined || value === '') return '';
+        const numeric = Number(value);
+        if (Number.isNaN(numeric)) return value;
+        return numeric.toLocaleString('en-US', {
+            minimumFractionDigits,
+            maximumFractionDigits,
+        });
+    };
 
     if (!previewData) {
         return (
@@ -357,18 +367,43 @@ const ProductionAuditPreview = () => {
                                                         {formatMonthYear(row.pr_date)}
                                                     </td>
                                                     {row.noProduction ? (
-                                                        <td
-                                                            colSpan={3}
-                                                            style={{
-                                                                border: '1px solid #000',
-                                                                padding: '4px 6px',
-                                                                textAlign: 'center',
-                                                                fontStyle: 'italic',
-                                                                color: '#666',
-                                                            }}
-                                                        >
-                                                            No Production
-                                                        </td>
+                                                        <>
+                                                            <td
+                                                                style={{
+                                                                    border: '1px solid #000',
+                                                                    padding: '4px 6px',
+                                                                    textAlign: 'right',
+                                                                    fontStyle: 'italic',
+                                                                    color: '#666',
+                                                                }}
+                                                            >
+                                                                No Production
+                                                            </td>
+                                                            <td
+                                                                style={{
+                                                                    border: '1px solid #000',
+                                                                    padding: '4px 6px',
+                                                                    textAlign: 'right',
+                                                                    color: '#000',
+                                                                }}
+                                                            >
+                                                                {''}
+                                                            </td>
+                                                            <td
+                                                                style={{
+                                                                    border: '1px solid #000',
+                                                                    padding: '4px 6px',
+                                                                    textAlign: 'right',
+                                                                    color: '#000',
+                                                                }}
+                                                            >
+                                                                {Number(row.pr_vpaid) > 0
+                                                                    ? formatNumericValue(
+                                                                        row.pr_vpaid
+                                                                    )
+                                                                    : ''}
+                                                            </td>
+                                                        </>
                                                     ) : (
                                                         <>
                                                             <td
@@ -379,7 +414,7 @@ const ProductionAuditPreview = () => {
                                                                     color: '#000',
                                                                 }}
                                                             >
-                                                                {row.pr_vextracted}
+                                                                {formatNumericValue(row.pr_vextracted)}
                                                             </td>
                                                             <td
                                                                 style={{
@@ -389,7 +424,7 @@ const ProductionAuditPreview = () => {
                                                                     color: '#000',
                                                                 }}
                                                             >
-                                                                {row.pr_vsold}
+                                                                {formatNumericValue(row.pr_vsold)}
                                                             </td>
                                                             <td
                                                                 style={{
@@ -399,7 +434,7 @@ const ProductionAuditPreview = () => {
                                                                     color: '#000',
                                                                 }}
                                                             >
-                                                                {row.pr_vpaid}
+                                                                {formatNumericValue(row.pr_vpaid)}
                                                             </td>
                                                         </>
                                                     )}
@@ -448,7 +483,7 @@ const ProductionAuditPreview = () => {
                                                     color: '#000',
                                                 }}
                                             >
-                                                {cycle.totalExtracted.toFixed(2)}
+                                                {formatNumericValue(cycle.totalExtracted, 2, 2)}
                                             </td>
                                             <td
                                                 style={{
@@ -458,7 +493,7 @@ const ProductionAuditPreview = () => {
                                                     color: '#000',
                                                 }}
                                             >
-                                                {cycle.totalSold.toFixed(2)}
+                                                {formatNumericValue(cycle.totalSold, 2, 2)}
                                             </td>
                                             <td
                                                 style={{
@@ -468,7 +503,7 @@ const ProductionAuditPreview = () => {
                                                     color: '#000',
                                                 }}
                                             >
-                                                {cycle.totalPaid.toFixed(2)}
+                                                {formatNumericValue(cycle.totalPaid, 2, 2)}
                                             </td>
                                         </tr>
                                         <tr>
@@ -482,7 +517,12 @@ const ProductionAuditPreview = () => {
                                                     color: '#000',
                                                 }}
                                             >
-                                                Allowable Volume: {cycle.allowableVolume || 'N/A'}
+                                                Allowable Volume:{' '}
+                                                {cycle.allowableVolume !== null &&
+                                                    cycle.allowableVolume !== undefined &&
+                                                    cycle.allowableVolume !== ''
+                                                    ? formatNumericValue(cycle.allowableVolume)
+                                                    : 'N/A'}
                                             </td>
                                         </tr>
                                     </tfoot>
@@ -565,7 +605,7 @@ const ProductionAuditPreview = () => {
                         paddingTop: '16px',
                     }}
                 >
-                    Generated on {new Date().toLocaleString()} | PLENRO Systems
+                    Generated on {new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' })} | PLENRO Systems
                 </div>
             </div>
 

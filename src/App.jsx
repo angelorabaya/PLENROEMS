@@ -34,17 +34,19 @@ import BarangayShareBreakdown from './pages/BarangayShareBreakdown';
 import MunicipalShareReport from './pages/MunicipalShareReport';
 import ActivePermitteesReport from './pages/ActivePermitteesReport';
 import ActivePermitteesByMunicipalityReport from './pages/ActivePermitteesByMunicipalityReport';
+import TaskForceMonthly from './pages/TaskForceMonthly';
 import BackgroundShapes from './components/BackgroundShapes';
 import OrdinanceBot from './pages/OrdinanceBot';
 import TaskForce from './pages/TaskForce';
 import DailyCollection from './pages/DailyCollection';
 
 import { ThemeProvider } from './context/ThemeContext';
+import { getTodayPHT } from './utils/dateUtils';
 
 const CURRENT_USER_KEY = 'currentUser';
 const CURRENT_USER_LOGIN_DATE_KEY = 'currentUserLoginDate';
 
-const getTodayDateKey = () => new Date().toISOString().slice(0, 10);
+const getTodayDateKey = () => getTodayPHT();
 
 const getStoredCurrentUser = () => {
     const saved = localStorage.getItem(CURRENT_USER_KEY);
@@ -167,6 +169,10 @@ function App() {
                         <Route
                             path="/reports/active-permittees-by-municipality"
                             element={<ActivePermitteesByMunicipalityReport />}
+                        />
+                        <Route
+                            path="/reports/monthly-environmental-load-monitoring"
+                            element={<TaskForceMonthly />}
                         />
                         <Route
                             path="/daily-collection"
