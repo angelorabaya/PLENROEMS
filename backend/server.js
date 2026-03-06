@@ -4499,6 +4499,310 @@ app.delete('/api/taskforce/:id', async (req, res) => {
 
 
 
+// ==================== TRAVEL AUTHORIZATION ENDPOINTS ====================
+
+// Get all travel orders
+app.get('/api/travelorders', async (req, res) => {
+  try {
+    const request = pool.request();
+    const result = await request.query(`
+      SELECT to_ctrlno
+            ,to_number
+            ,to_dateprepared
+            ,to_destination
+            ,to_startdate
+            ,to_enddate
+            ,to_purpose
+            ,to_duration
+            ,to_control
+      FROM tbl_travelorder
+      ORDER BY to_dateprepared DESC
+    `);
+
+    console.log(`✅ Fetched ${result.recordset.length} travel orders`);
+    res.json(result.recordset || []);
+  } catch (err) {
+    console.error('❌ Get Travel Orders Error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch travel orders: ' + err.message });
+  }
+});
+
+// Create travel order
+app.post('/api/travelorders', async (req, res) => {
+  try {
+    const { to_number, to_dateprepared, to_destination, to_startdate, to_enddate, to_purpose, to_duration, to_control } = req.body;
+
+    const request = pool.request();
+    request.input('to_number', sql.VarChar, to_number || null);
+    request.input('to_dateprepared', sql.DateTime, to_dateprepared ? new Date(to_dateprepared) : new Date());
+    request.input('to_destination', sql.VarChar, to_destination || null);
+    request.input('to_startdate', sql.DateTime, to_startdate ? new Date(to_startdate) : null);
+    request.input('to_enddate', sql.DateTime, to_enddate ? new Date(to_enddate) : null);
+    request.input('to_purpose', sql.VarChar, to_purpose || null);
+    request.input('to_duration', sql.VarChar, to_duration || null);
+    request.input('to_control', sql.VarChar, to_control || null);
+
+    const result = await request.query(`
+      INSERT INTO tbl_travelorder (to_number, to_dateprepared, to_destination, to_startdate, to_enddate, to_purpose, to_duration, to_control)
+      OUTPUT INSERTED.to_ctrlno
+      VALUES (@to_number, @to_dateprepared, @to_destination, @to_startdate, @to_enddate, @to_purpose, @to_duration, @to_control)
+    `);
+
+    const insertedId = result.recordset[0]?.to_ctrlno;
+
+    // Log activity
+    await logActivity(pool, req, {
+      action: 'CREATE',
+      tableName: 'tbl_travelorder',
+      recordId: insertedId || 'New Record',
+      newValues: req.body
+    });
+
+    console.log(`✅ Created travel order: ${insertedId}`);
+    res.json({ success: true, message: 'Travel order created successfully', to_ctrlno: insertedId });
+  } catch (err) {
+    console.error('❌ Create Travel Order Error:', err.message);
+    res.status(500).json({ error: 'Failed to create travel order: ' + err.message });
+  }
+});
+
+// Update travel order
+app.put('/api/travelorders/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { to_number, to_dateprepared, to_destination, to_startdate, to_enddate, to_purpose, to_duration, to_control } = req.body;
+
+    // Fetch old values for audit logging
+    const getOldReq = pool.request();
+    getOldReq.input('id', sql.Int, id);
+    const oldResult = await getOldReq.query('SELECT * FROM tbl_travelorder WHERE to_ctrlno = @id');
+    const oldValues = oldResult.recordset[0];
+
+    const request = pool.request();
+    request.input('id', sql.Int, id);
+    request.input('to_number', sql.VarChar, to_number || null);
+    request.input('to_dateprepared', sql.DateTime, to_dateprepared ? new Date(to_dateprepared) : new Date());
+    request.input('to_destination', sql.VarChar, to_destination || null);
+    request.input('to_startdate', sql.DateTime, to_startdate ? new Date(to_startdate) : null);
+    request.input('to_enddate', sql.DateTime, to_enddate ? new Date(to_enddate) : null);
+    request.input('to_purpose', sql.VarChar, to_purpose || null);
+    request.input('to_duration', sql.VarChar, to_duration || null);
+    request.input('to_control', sql.VarChar, to_control || null);
+
+    await request.query(`
+      UPDATE tbl_travelorder
+      SET to_number = @to_number,
+          to_dateprepared = @to_dateprepared,
+          to_destination = @to_destination,
+          to_startdate = @to_startdate,
+          to_enddate = @to_enddate,
+          to_purpose = @to_purpose,
+          to_duration = @to_duration,
+          to_control = @to_control
+      WHERE to_ctrlno = @id
+    `);
+
+    // Log activity
+    await logActivity(pool, req, {
+      action: 'UPDATE',
+      tableName: 'tbl_travelorder',
+      recordId: id,
+      oldValues: oldValues,
+      newValues: req.body
+    });
+
+    console.log(`✅ Updated travel order: ${id}`);
+    res.json({ success: true, message: 'Travel order updated successfully' });
+  } catch (err) {
+    console.error('❌ Update Travel Order Error:', err.message);
+    res.status(500).json({ error: 'Failed to update travel order: ' + err.message });
+  }
+});
+
+// Delete travel order (cascade deletes employees)
+app.delete('/api/travelorders/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Fetch old values for audit logging
+    const getOldReq = pool.request();
+    getOldReq.input('id', sql.Int, id);
+    const oldResult = await getOldReq.query('SELECT * FROM tbl_travelorder WHERE to_ctrlno = @id');
+    const oldValues = oldResult.recordset[0];
+
+    // Delete associated employees first
+    const delEmpReq = pool.request();
+    delEmpReq.input('toId', sql.Int, id);
+    await delEmpReq.query('DELETE FROM tbl_travelorderemp WHERE toe_toid = @toId');
+
+    // Delete the travel order
+    const request = pool.request();
+    request.input('id', sql.Int, id);
+    await request.query('DELETE FROM tbl_travelorder WHERE to_ctrlno = @id');
+
+    // Log activity
+    if (oldValues) {
+      await logActivity(pool, req, {
+        action: 'DELETE',
+        tableName: 'tbl_travelorder',
+        recordId: id,
+        oldValues: oldValues
+      });
+    }
+
+    console.log(`✅ Deleted travel order: ${id}`);
+    res.json({ success: true, message: 'Travel order deleted successfully' });
+  } catch (err) {
+    console.error('❌ Delete Travel Order Error:', err.message);
+    res.status(500).json({ error: 'Failed to delete travel order: ' + err.message });
+  }
+});
+
+// Get employees for a travel order
+app.get('/api/travelorders/:id/employees', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const request = pool.request();
+    request.input('toId', sql.Int, id);
+
+    const result = await request.query(`
+      SELECT toe.toe_ctrlno,
+             toe.toe_toid,
+             toe.toe_empid,
+             e.emp_name
+      FROM tbl_travelorderemp toe
+      INNER JOIN tbl_enroemp e ON toe.toe_empid = e.emp_ctrlno
+      WHERE toe.toe_toid = @toId
+      ORDER BY e.emp_name
+    `);
+
+    console.log(`✅ Fetched ${result.recordset.length} employees for travel order ${id}`);
+    res.json(result.recordset || []);
+  } catch (err) {
+    console.error('❌ Get Travel Order Employees Error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch travel order employees: ' + err.message });
+  }
+});
+
+// Add employee to travel order
+app.post('/api/travelorders/:id/employees', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { toe_empid } = req.body;
+
+    const request = pool.request();
+    request.input('toe_toid', sql.Int, id);
+    request.input('toe_empid', sql.Int, toe_empid);
+
+    const result = await request.query(`
+      INSERT INTO tbl_travelorderemp (toe_toid, toe_empid)
+      OUTPUT INSERTED.toe_ctrlno
+      VALUES (@toe_toid, @toe_empid)
+    `);
+
+    const insertedId = result.recordset[0]?.toe_ctrlno;
+
+    // Log activity
+    await logActivity(pool, req, {
+      action: 'CREATE',
+      tableName: 'tbl_travelorderemp',
+      recordId: insertedId || 'New Record',
+      newValues: { toe_toid: id, toe_empid }
+    });
+
+    console.log(`✅ Added employee ${toe_empid} to travel order ${id}`);
+    res.json({ success: true, message: 'Employee added to travel order', toe_ctrlno: insertedId });
+  } catch (err) {
+    console.error('❌ Add Travel Order Employee Error:', err.message);
+    res.status(500).json({ error: 'Failed to add employee: ' + err.message });
+  }
+});
+
+// Remove employee from travel order
+app.delete('/api/travelorderemployees/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Fetch old values for audit logging
+    const getOldReq = pool.request();
+    getOldReq.input('id', sql.Int, id);
+    const oldResult = await getOldReq.query('SELECT * FROM tbl_travelorderemp WHERE toe_ctrlno = @id');
+    const oldValues = oldResult.recordset[0];
+
+    const request = pool.request();
+    request.input('id', sql.Int, id);
+    await request.query('DELETE FROM tbl_travelorderemp WHERE toe_ctrlno = @id');
+
+    // Log activity
+    if (oldValues) {
+      await logActivity(pool, req, {
+        action: 'DELETE',
+        tableName: 'tbl_travelorderemp',
+        recordId: id,
+        oldValues: oldValues
+      });
+    }
+
+    console.log(`✅ Removed employee from travel order: ${id}`);
+    res.json({ success: true, message: 'Employee removed from travel order' });
+  } catch (err) {
+    console.error('❌ Remove Travel Order Employee Error:', err.message);
+    res.status(500).json({ error: 'Failed to remove employee: ' + err.message });
+  }
+});
+
+// ==================== TASK FORCE ACTIVITY LOG ENDPOINTS ====================
+
+// GET /api/taskforce-activity-log/names - Get distinct client names from tbl_taskforce
+app.get('/api/taskforce-activity-log/names', async (req, res) => {
+  try {
+    const request = pool.request();
+    const result = await request.query(`
+      SELECT DISTINCT tf_name
+      FROM tbl_taskforce
+      WHERE tf_name IS NOT NULL AND tf_name != ''
+      ORDER BY tf_name
+    `);
+    console.log(`✅ Fetched ${result.recordset.length} distinct taskforce activity log names`);
+    res.json(result.recordset || []);
+  } catch (err) {
+    console.error('❌ Get Taskforce Activity Log Names Error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch taskforce activity log names: ' + err.message });
+  }
+});
+
+// GET /api/taskforce-activity-log/details/:name - Get activity details for a client name
+app.get('/api/taskforce-activity-log/details/:name', async (req, res) => {
+  try {
+    const { name } = req.params;
+    const request = pool.request();
+    request.input('tf_name', sql.VarChar(200), name);
+
+    const result = await request.query(`
+      SELECT 
+          t.tf_date AS [DATE], 
+          t.tf_area AS [AREA], 
+          t.tf_dr AS [DELIVERY RECEIPT], 
+          t.tf_destination AS [DESTINATION], 
+          t.tf_plateno AS [PLATE NO.], 
+          c.cm_desc AS [DESCRIPTION], 
+          t.tf_volume AS [VOLUME], 
+          t.tf_remarks AS [REMARKS]
+      FROM tbl_taskforce AS t
+      INNER JOIN tbl_commodity AS c 
+          ON t.tf_commodity = c.cm_ctrlno
+      WHERE t.tf_name = @tf_name
+      ORDER BY t.tf_date
+    `);
+
+    console.log(`✅ Fetched ${result.recordset.length} activity log details for "${name}"`);
+    res.json(result.recordset || []);
+  } catch (err) {
+    console.error('❌ Get Taskforce Activity Log Details Error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch taskforce activity log details: ' + err.message });
+  }
+});
+
 app.use((req, res) => {
   res.status(404).json({ error: 'Endpoint not found' });
 });

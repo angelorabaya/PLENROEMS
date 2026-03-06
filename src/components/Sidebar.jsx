@@ -225,6 +225,9 @@ const Sidebar = ({ onLogout, isCollapsed, onToggleCollapse, userRole, user }) =>
                     <NavItem to="/daily-collection" icon={FiFileText}>
                         Daily Collection
                     </NavItem>
+                    <NavItem to="/taskforce-activity-log" icon={FiClipboard}>
+                        Task Force Activity Log
+                    </NavItem>
                 </NavSection>
 
                 {isAdmin && (

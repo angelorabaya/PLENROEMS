@@ -728,7 +728,9 @@ export const api = {
     },
 
     getDailyCollection: async (date) => {
-        const response = await fetch(`${API_BASE}/api/reports/daily-collection?date=${encodeURIComponent(date)}`);
+        const response = await fetch(
+            `${API_BASE}/api/reports/daily-collection?date=${encodeURIComponent(date)}`
+        );
         if (!response.ok) throw new Error('Failed to fetch daily collection');
         return response.json();
     },
@@ -794,7 +796,8 @@ export const api = {
 
     getActivePermitteesByMunicipality: async () => {
         const response = await fetch(`${API_BASE}/api/reports/active-permittees-by-municipality`);
-        if (!response.ok) throw new Error('Failed to fetch active permittees by municipality report');
+        if (!response.ok)
+            throw new Error('Failed to fetch active permittees by municipality report');
         return response.json();
     },
 
@@ -927,6 +930,101 @@ export const api = {
             headers: getHeaders(),
         });
         if (!response.ok) throw new Error('Failed to delete task force record');
+        return response.json();
+    },
+
+    // Travel Authorization
+    getTravelOrders: async () => {
+        const response = await fetch(`${API_BASE}/api/travelorders`);
+        if (!response.ok) throw new Error('Failed to fetch travel orders');
+        return response.json();
+    },
+
+    createTravelOrder: async (data) => {
+        const response = await fetch(`${API_BASE}/api/travelorders`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify(data),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to create travel order');
+        return result;
+    },
+
+    updateTravelOrder: async (id, data) => {
+        const response = await fetch(`${API_BASE}/api/travelorders/${encodeURIComponent(id)}`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify(data),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to update travel order');
+        return result;
+    },
+
+    deleteTravelOrder: async (id) => {
+        const response = await fetch(`${API_BASE}/api/travelorders/${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+            headers: getHeaders(),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to delete travel order');
+        return result;
+    },
+
+    getTravelOrderEmployees: async (toId) => {
+        const response = await fetch(
+            `${API_BASE}/api/travelorders/${encodeURIComponent(toId)}/employees`
+        );
+        if (!response.ok) throw new Error('Failed to fetch travel order employees');
+        return response.json();
+    },
+
+    addTravelOrderEmployee: async (toId, empId) => {
+        const response = await fetch(
+            `${API_BASE}/api/travelorders/${encodeURIComponent(toId)}/employees`,
+            {
+                method: 'POST',
+                headers: getHeaders(),
+                body: JSON.stringify({ toe_empid: empId }),
+            }
+        );
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to add employee');
+        return result;
+    },
+
+    removeTravelOrderEmployee: async (id) => {
+        const response = await fetch(
+            `${API_BASE}/api/travelorderemployees/${encodeURIComponent(id)}`,
+            {
+                method: 'DELETE',
+                headers: getHeaders(),
+            }
+        );
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to remove employee');
+        return result;
+    },
+
+    getEmployees: async () => {
+        const response = await fetch(`${API_BASE}/api/docreceiving/employees`);
+        if (!response.ok) throw new Error('Failed to fetch employees');
+        return response.json();
+    },
+
+    // Task Force Activity Log
+    getTaskForceActivityLogNames: async () => {
+        const response = await fetch(`${API_BASE}/api/taskforce-activity-log/names`);
+        if (!response.ok) throw new Error('Failed to fetch taskforce activity log names');
+        return response.json();
+    },
+
+    getTaskForceActivityLogDetails: async (name) => {
+        const response = await fetch(
+            `${API_BASE}/api/taskforce-activity-log/details/${encodeURIComponent(name)}`
+        );
+        if (!response.ok) throw new Error('Failed to fetch taskforce activity log details');
         return response.json();
     },
 };
