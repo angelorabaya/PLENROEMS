@@ -148,7 +148,9 @@ const ActivePermitteesByMunicipalityReport = () => {
                                 {groupedData.map((group) => (
                                     <React.Fragment key={group.municipality}>
                                         {group.rows.map((row, idx) => (
-                                            <tr key={`${group.municipality}-${row.permitType}-${idx}`}>
+                                            <tr
+                                                key={`${group.municipality}-${row.permitType}-${idx}`}
+                                            >
                                                 {idx === 0 && (
                                                     <td
                                                         rowSpan={group.rows.length}

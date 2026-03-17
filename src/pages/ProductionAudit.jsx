@@ -74,7 +74,13 @@ const cycleRanges = (permit) => {
 };
 
 const formatMonthYear = (date) =>
-    date ? date.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'long', year: 'numeric' }) : '';
+    date
+        ? date.toLocaleDateString('en-US', {
+              timeZone: 'Asia/Manila',
+              month: 'long',
+              year: 'numeric',
+          })
+        : '';
 
 const formatVolumeValue = (value) => {
     if (value === null || value === undefined || value === '') return '';
@@ -665,8 +671,8 @@ const ProductionAudit = () => {
                             })}
                             ) | Allowable Volume:{' '}
                             {selectedPermitObj.ph_volume !== null &&
-                                selectedPermitObj.ph_volume !== undefined &&
-                                selectedPermitObj.ph_volume !== ''
+                            selectedPermitObj.ph_volume !== undefined &&
+                            selectedPermitObj.ph_volume !== ''
                                 ? formatVolumeValue(selectedPermitObj.ph_volume)
                                 : 'N/A'}
                         </>
@@ -791,8 +797,8 @@ const ProductionAudit = () => {
                                                         >
                                                             {Number(row.pr_taskforce) > 0
                                                                 ? formatVolumeValue(
-                                                                    row.pr_taskforce
-                                                                )
+                                                                      row.pr_taskforce
+                                                                  )
                                                                 : ''}
                                                         </td>
                                                         <td></td>
@@ -808,12 +814,12 @@ const ProductionAudit = () => {
                                                             style={{
                                                                 color:
                                                                     Number(row.pr_taskforce) >
-                                                                        Number(row.pr_vextracted)
+                                                                    Number(row.pr_vextracted)
                                                                         ? '#ef4444'
                                                                         : undefined,
                                                                 fontWeight:
                                                                     Number(row.pr_taskforce) >
-                                                                        Number(row.pr_vextracted)
+                                                                    Number(row.pr_vextracted)
                                                                         ? 600
                                                                         : undefined,
                                                             }}
@@ -872,7 +878,7 @@ const ProductionAudit = () => {
                                                     paddingTop: '10px',
                                                     color:
                                                         cycle.allowableVolume &&
-                                                            Number(cycle.allowableVolume) <
+                                                        Number(cycle.allowableVolume) <
                                                             cycle.totalExtracted
                                                             ? '#ef4444'
                                                             : '#22c55e',

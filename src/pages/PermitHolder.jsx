@@ -482,8 +482,8 @@ const PermitHolder = () => {
                                                         theme === 'light' ? '#09090b' : '#fafafa',
                                                 }}
                                                 onMouseEnter={(e) =>
-                                                (e.target.style.background =
-                                                    theme === 'light' ? '#f4f4f5' : '#27272a')
+                                                    (e.target.style.background =
+                                                        theme === 'light' ? '#f4f4f5' : '#27272a')
                                                 }
                                                 onMouseLeave={(e) =>
                                                     (e.target.style.background = 'transparent')
@@ -630,7 +630,7 @@ const PermitHolder = () => {
                                                                     }}
                                                                     disabled={
                                                                         !fileExists[
-                                                                        permit.ph_ctrlno
+                                                                            permit.ph_ctrlno
                                                                         ]
                                                                     }
                                                                     style={{ padding: '4px 8px' }}

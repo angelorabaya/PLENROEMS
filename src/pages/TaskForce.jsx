@@ -415,7 +415,7 @@ const TaskForce = () => {
         try {
             const result = await api.validateTaskforceDR(drValue);
 
-            // Per user request: 
+            // Per user request:
             // - Green (true) ONLY if valid (found in stubs).
             // - Default (null) if invalid but unique.
             // - Red (false) is handled by duplicate check above.
@@ -1369,8 +1369,8 @@ const TaskForce = () => {
                                                         record.is_dr_valid === 1
                                                             ? '#22c55e'
                                                             : record.tf_dr
-                                                                ? '#ef4444'
-                                                                : 'var(--foreground)',
+                                                              ? '#ef4444'
+                                                              : 'var(--foreground)',
                                                     fontWeight:
                                                         record.is_dr_valid === 1 || record.tf_dr
                                                             ? '600'
@@ -1388,7 +1388,7 @@ const TaskForce = () => {
                                                     color: getPlateStatusColor(record.tf_plateno),
                                                     fontWeight:
                                                         getPlateStatusColor(record.tf_plateno) !==
-                                                            'var(--foreground)'
+                                                        'var(--foreground)'
                                                             ? '600'
                                                             : 'normal',
                                                 }}

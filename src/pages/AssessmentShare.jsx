@@ -83,10 +83,7 @@ const AssessmentShare = () => {
     }, [previewData]);
 
     const renderPanel = (idx = 0) => (
-        <div
-            key={idx}
-            className={`assessment-print-panel${idx === 1 ? ' print-only' : ''}`}
-        >
+        <div key={idx} className={`assessment-print-panel${idx === 1 ? ' print-only' : ''}`}>
             <div className="assessment-print-header">
                 <div className="header-left header-with-logo">
                     <img

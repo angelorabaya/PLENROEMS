@@ -88,10 +88,7 @@ const ActivityLogs = () => {
             }
 
             const availableHeight =
-                window.innerHeight -
-                tableTop -
-                VIEWPORT_BOTTOM_PADDING_PX -
-                CLIP_SAFETY_BUFFER_PX;
+                window.innerHeight - tableTop - VIEWPORT_BOTTOM_PADDING_PX - CLIP_SAFETY_BUFFER_PX;
             const bodyAvailableHeight =
                 availableHeight - tableHeadHeight - paginationHeight - PAGINATION_GAP_PX;
 
@@ -135,11 +132,47 @@ const ActivityLogs = () => {
         setIsModalOpen(true);
     };
 
+    const formatJSONValue = (value) => {
+        if (typeof value === 'string') {
+            // Detect ISO 8601 date strings and convert to Asia/Manila timezone
+            const isoDateRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
+            if (isoDateRegex.test(value)) {
+                const parsed = new Date(value);
+                if (!Number.isNaN(parsed.getTime())) {
+                    return parsed.toLocaleString('en-PH', {
+                        timeZone: ACTIVITY_TIME_ZONE,
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hour12: true,
+                    });
+                }
+            }
+        }
+        return value;
+    };
+
+    const convertDatesInObj = (obj) => {
+        if (Array.isArray(obj)) return obj.map(convertDatesInObj);
+        if (obj && typeof obj === 'object') {
+            const result = {};
+            for (const [key, val] of Object.entries(obj)) {
+                result[key] = convertDatesInObj(val);
+            }
+            return result;
+        }
+        return formatJSONValue(obj);
+    };
+
     const formatJSON = (jsonString) => {
         try {
             if (!jsonString) return 'N/A';
             const obj = JSON.parse(jsonString);
-            return JSON.stringify(obj, null, 2);
+            const converted = convertDatesInObj(obj);
+            return JSON.stringify(converted, null, 2);
         } catch (e) {
             return jsonString;
         }
@@ -149,15 +182,8 @@ const ActivityLogs = () => {
         const search = (filterValue ?? '').toString().trim().toLowerCase();
         if (!search) return true;
 
-        const {
-            CreatedAt,
-            UserName,
-            UserID,
-            ActionType,
-            TableName,
-            RecordID,
-            IPAddress,
-        } = row.original || {};
+        const { CreatedAt, UserName, UserID, ActionType, TableName, RecordID, IPAddress } =
+            row.original || {};
 
         const createdAtText = formatDateTime(CreatedAt);
         const haystack = [
@@ -496,6 +522,32 @@ const ActivityLogs = () => {
                         >
                             {selectedLog && (
                                 <div className="vstack vstack-4">
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+                                        <div>
+                                            <span className="text-xs text-muted">DATE & TIME</span>
+                                            <p className="cell-text" style={{ marginTop: '0.25rem' }}>{formatDateTime(selectedLog.CreatedAt)}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-xs text-muted">USER</span>
+                                            <p className="cell-text" style={{ marginTop: '0.25rem' }}>{selectedLog.UserName || 'Unknown'} (@{selectedLog.UserID || 'System'})</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-xs text-muted">ACTION</span>
+                                            <p className="cell-text" style={{ marginTop: '0.25rem' }}>{selectedLog.ActionType}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-xs text-muted">TABLE</span>
+                                            <p className="cell-text" style={{ marginTop: '0.25rem' }}>{selectedLog.TableName}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-xs text-muted">RECORD ID</span>
+                                            <p className="cell-text" style={{ marginTop: '0.25rem' }}>{selectedLog.RecordID || '-'}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-xs text-muted">IP ADDRESS</span>
+                                            <p className="cell-text" style={{ marginTop: '0.25rem' }}>{selectedLog.IPAddress || '-'}</p>
+                                        </div>
+                                    </div>
                                     <div>
                                         <label className="form-label font-semibold">Changes:</label>
                                         <div className="flex gap-4" style={{ flexWrap: 'wrap' }}>

@@ -18,7 +18,7 @@ const OrdinanceBot = () => {
             const saved = localStorage.getItem('ordinance_bot_chat_history');
             return saved ? JSON.parse(saved) : [];
         } catch (e) {
-            console.error("Failed to load chat history", e);
+            console.error('Failed to load chat history', e);
             return [];
         }
     });

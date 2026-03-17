@@ -118,11 +118,16 @@ const AssessmentHistory = () => {
         if (!paymentToDelete) return;
         try {
             await api.deletePaymentRegistration(paymentToDelete.aop_ctrlno);
-            setSuccess('Payment registration deleted successfully');
-            fetchPayments();
+            // Optimistically remove the deleted record from local state immediately
+            setPayments((prev) =>
+                prev.filter((p) => p.aop_ctrlno !== paymentToDelete.aop_ctrlno)
+            );
             setIsDeleteModalOpen(false);
             setPaymentToDelete(null);
+            setSuccess('Payment registration deleted successfully');
             setTimeout(() => setSuccess(''), 3000);
+            // Also refresh from server to ensure consistency
+            await fetchPayments();
         } catch (err) {
             setError(err.message);
             setTimeout(() => setError(''), 3000);
@@ -134,7 +139,7 @@ const AssessmentHistory = () => {
         const barangayText =
             header.aop_brgycombo != null && header.aop_brgycombo !== ''
                 ? header.aop_brgycombo
-                : (header.aop_brgy || '');
+                : header.aop_brgy || '';
         const location = [barangayText, header.aop_mun].filter(Boolean).join(', ');
         const totalAmount = Number(header.aop_total) || 0;
         const preparedBy = (
@@ -438,8 +443,8 @@ const AssessmentHistory = () => {
                                                         header.id === 'actions'
                                                             ? 'center'
                                                             : header.id === 'aop_total'
-                                                                ? 'right'
-                                                                : 'left',
+                                                              ? 'right'
+                                                              : 'left',
                                                     width: header.column.getSize(),
                                                 }}
                                             >
@@ -450,8 +455,8 @@ const AssessmentHistory = () => {
                                                             header.id === 'actions'
                                                                 ? 'center'
                                                                 : header.id === 'aop_total'
-                                                                    ? 'flex-end'
-                                                                    : 'flex-start',
+                                                                  ? 'flex-end'
+                                                                  : 'flex-start',
                                                     }}
                                                 >
                                                     {flexRender(
@@ -461,10 +466,10 @@ const AssessmentHistory = () => {
                                                     {header.column.getCanSort() && (
                                                         <span className="sort-icon">
                                                             {header.column.getIsSorted() ===
-                                                                'asc' ? (
+                                                            'asc' ? (
                                                                 <FiChevronUp className="sort-icon-active" />
                                                             ) : header.column.getIsSorted() ===
-                                                                'desc' ? (
+                                                              'desc' ? (
                                                                 <FiChevronDown className="sort-icon-active" />
                                                             ) : (
                                                                 <FiChevronUp className="sort-icon-inactive" />
@@ -490,8 +495,8 @@ const AssessmentHistory = () => {
                                                             cell.column.id === 'actions'
                                                                 ? 'center'
                                                                 : cell.column.id === 'aop_total'
-                                                                    ? 'right'
-                                                                    : 'left',
+                                                                  ? 'right'
+                                                                  : 'left',
                                                     }}
                                                 >
                                                     {flexRender(

@@ -41,7 +41,7 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
     const fetchMunicipalities = async () => {
         try {
             const data = await api.getMasterMunicipalities();
-            // Assuming data is array of strings or objects. 
+            // Assuming data is array of strings or objects.
             // Based on api.js structure it seems like standard fetch.
             // Adjust mapping if needed after testing.
             setMunicipalities(data);
@@ -138,9 +138,7 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                     <form onSubmit={handleSubmit}>
                         {/* Header */}
                         <div className="dialog-header">
-                            <Dialog.Title className="dialog-title">
-                                Permit Approved
-                            </Dialog.Title>
+                            <Dialog.Title className="dialog-title">Permit Approved</Dialog.Title>
                             <Dialog.Close asChild>
                                 <button type="button" className="dialog-close" aria-label="Close">
                                     <FiX size={16} />
@@ -171,7 +169,9 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
 
                             {/* Municipality */}
                             <div className="form-group">
-                                <label className="form-label form-label-required">Municipality</label>
+                                <label className="form-label form-label-required">
+                                    Municipality
+                                </label>
                                 <Select.Root
                                     value={formData.municipality}
                                     onValueChange={handleMunicipalityChange}
@@ -184,13 +184,24 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                         </Select.Icon>
                                     </Select.Trigger>
                                     <Select.Portal>
-                                        <Select.Content className="select-content" position="popper" sideOffset={4}>
+                                        <Select.Content
+                                            className="select-content"
+                                            position="popper"
+                                            sideOffset={4}
+                                        >
                                             <Select.Viewport className="select-viewport">
                                                 {municipalities.map((mun, idx) => {
                                                     // Handling if municipalities are strings or objects
-                                                    const val = typeof mun === 'string' ? mun : mun.mun_name;
+                                                    const val =
+                                                        typeof mun === 'string'
+                                                            ? mun
+                                                            : mun.mun_name;
                                                     return (
-                                                        <Select.Item key={idx} value={val} className="select-item">
+                                                        <Select.Item
+                                                            key={idx}
+                                                            value={val}
+                                                            className="select-item"
+                                                        >
                                                             <Select.ItemIndicator className="select-item-indicator">
                                                                 <FiCheck size={12} />
                                                             </Select.ItemIndicator>
@@ -207,10 +218,14 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                             {/* Barangays */}
                             <div className="form-grid form-grid-2">
                                 <div className="form-group">
-                                    <label className="form-label form-label-required">Barangay 1</label>
+                                    <label className="form-label form-label-required">
+                                        Barangay 1
+                                    </label>
                                     <Select.Root
                                         value={formData.barangay1}
-                                        onValueChange={(val) => handleSelectChange('barangay1', val)}
+                                        onValueChange={(val) =>
+                                            handleSelectChange('barangay1', val)
+                                        }
                                         required
                                         disabled={!formData.municipality}
                                     >
@@ -221,16 +236,29 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                             </Select.Icon>
                                         </Select.Trigger>
                                         <Select.Portal>
-                                            <Select.Content className="select-content" position="popper" sideOffset={4}>
+                                            <Select.Content
+                                                className="select-content"
+                                                position="popper"
+                                                sideOffset={4}
+                                            >
                                                 <Select.Viewport className="select-viewport">
                                                     {barangays.map((brgy, idx) => {
-                                                        const val = typeof brgy === 'string' ? brgy : brgy.mun_brgy;
+                                                        const val =
+                                                            typeof brgy === 'string'
+                                                                ? brgy
+                                                                : brgy.mun_brgy;
                                                         return (
-                                                            <Select.Item key={idx} value={val} className="select-item">
+                                                            <Select.Item
+                                                                key={idx}
+                                                                value={val}
+                                                                className="select-item"
+                                                            >
                                                                 <Select.ItemIndicator className="select-item-indicator">
                                                                     <FiCheck size={12} />
                                                                 </Select.ItemIndicator>
-                                                                <Select.ItemText>{val}</Select.ItemText>
+                                                                <Select.ItemText>
+                                                                    {val}
+                                                                </Select.ItemText>
                                                             </Select.Item>
                                                         );
                                                     })}
@@ -243,7 +271,9 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                     <label className="form-label">Barangay 2</label>
                                     <Select.Root
                                         value={formData.barangay2}
-                                        onValueChange={(val) => handleSelectChange('barangay2', val)}
+                                        onValueChange={(val) =>
+                                            handleSelectChange('barangay2', val)
+                                        }
                                         disabled={!formData.municipality}
                                     >
                                         <Select.Trigger className="select-trigger">
@@ -253,16 +283,29 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                             </Select.Icon>
                                         </Select.Trigger>
                                         <Select.Portal>
-                                            <Select.Content className="select-content" position="popper" sideOffset={4}>
+                                            <Select.Content
+                                                className="select-content"
+                                                position="popper"
+                                                sideOffset={4}
+                                            >
                                                 <Select.Viewport className="select-viewport">
                                                     {barangays.map((brgy, idx) => {
-                                                        const val = typeof brgy === 'string' ? brgy : brgy.mun_brgy;
+                                                        const val =
+                                                            typeof brgy === 'string'
+                                                                ? brgy
+                                                                : brgy.mun_brgy;
                                                         return (
-                                                            <Select.Item key={idx} value={val} className="select-item">
+                                                            <Select.Item
+                                                                key={idx}
+                                                                value={val}
+                                                                className="select-item"
+                                                            >
                                                                 <Select.ItemIndicator className="select-item-indicator">
                                                                     <FiCheck size={12} />
                                                                 </Select.ItemIndicator>
-                                                                <Select.ItemText>{val}</Select.ItemText>
+                                                                <Select.ItemText>
+                                                                    {val}
+                                                                </Select.ItemText>
                                                             </Select.Item>
                                                         );
                                                     })}
@@ -276,7 +319,9 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                             {/* Volume & Area */}
                             <div className="form-grid form-grid-2">
                                 <div className="form-group">
-                                    <label className="form-label form-label-required">Volume (Input numbers only)</label>
+                                    <label className="form-label form-label-required">
+                                        Volume (Input numbers only)
+                                    </label>
                                     <input
                                         type="text"
                                         name="volume"
@@ -288,7 +333,9 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                     />
                                 </div>
                                 <div className="form-group">
-                                    <label className="form-label form-label-required">Area (Input numbers only)</label>
+                                    <label className="form-label form-label-required">
+                                        Area (Input numbers only)
+                                    </label>
                                     <input
                                         type="text"
                                         name="area"
@@ -303,10 +350,23 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
 
                             {/* Validity */}
                             <div className="form-group">
-                                <label className="form-label form-label-required" style={{ marginBottom: '0.5rem', display: 'block' }}>Permit Validity</label>
+                                <label
+                                    className="form-label form-label-required"
+                                    style={{ marginBottom: '0.5rem', display: 'block' }}
+                                >
+                                    Permit Validity
+                                </label>
                                 <div className="form-grid form-grid-2">
                                     <div>
-                                        <label className="form-label" style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>From</label>
+                                        <label
+                                            className="form-label"
+                                            style={{
+                                                fontSize: '0.75rem',
+                                                color: 'var(--muted-foreground)',
+                                            }}
+                                        >
+                                            From
+                                        </label>
                                         <input
                                             type="date"
                                             name="validFrom"
@@ -317,7 +377,15 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                         />
                                     </div>
                                     <div>
-                                        <label className="form-label" style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>To</label>
+                                        <label
+                                            className="form-label"
+                                            style={{
+                                                fontSize: '0.75rem',
+                                                color: 'var(--muted-foreground)',
+                                            }}
+                                        >
+                                            To
+                                        </label>
                                         <input
                                             type="date"
                                             name="validTo"

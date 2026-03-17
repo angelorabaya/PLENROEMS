@@ -41,6 +41,8 @@ import TaskForce from './pages/TaskForce';
 import DailyCollection from './pages/DailyCollection';
 import TravelAuthorization from './pages/TravelAuthorization';
 import TaskForceActivityLog from './pages/TaskForceActivityLog';
+import PersonnelTravelLogs from './pages/PersonnelTravelLogs';
+import EmployeeLeavePortal from './pages/EmployeeLeavePortal';
 
 import { ThemeProvider } from './context/ThemeContext';
 import { getTodayPHT } from './utils/dateUtils';
@@ -178,9 +180,14 @@ function App() {
                         />
                         <Route path="/daily-collection" element={<DailyCollection />} />
                         <Route path="/taskforce-activity-log" element={<TaskForceActivityLog />} />
+                        <Route path="/personnel-travel-logs" element={<PersonnelTravelLogs />} />
                         <Route
                             path="/travel-authorization"
                             element={<TravelAuthorization />}
+                        />
+                        <Route
+                            path="/leave-management"
+                            element={<EmployeeLeavePortal />}
                         />
 
                         <Route path="/ordinance-bot" element={<OrdinanceBot />} />

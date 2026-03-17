@@ -9,6 +9,7 @@ const TaskForceActivityLog = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
+    const [selectedMonth, setSelectedMonth] = useState('');
 
     useEffect(() => {
         fetchNames();
@@ -28,6 +29,7 @@ const TaskForceActivityLog = () => {
         setDetails([]);
         setError('');
         setSearchQuery('');
+        setSelectedMonth('');
 
         if (!name) return;
 
@@ -53,29 +55,68 @@ const TaskForceActivityLog = () => {
         'REMARKS',
     ];
 
-    const filteredDetails = useMemo(() => {
-        if (!searchQuery.trim()) return details;
-        const q = searchQuery.trim().toLowerCase();
-        return details.filter((row) => {
-            const dateObj = new Date(row['DATE']);
-            const dateStr = dateObj.toLocaleDateString('en-US', {
+    // Derive distinct months from the activity details (based on DATE)
+    const availableMonths = useMemo(() => {
+        const monthSet = new Map();
+        details.forEach((row) => {
+            const d = new Date(row['DATE']);
+            if (isNaN(d.getTime())) return;
+            const parts = new Intl.DateTimeFormat('en-US', {
                 timeZone: 'Asia/Manila',
                 year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-            });
-            return (
-                dateStr.toLowerCase().includes(q) ||
-                (row['AREA'] || '').toLowerCase().includes(q) ||
-                String(row['DELIVERY RECEIPT'] || '').toLowerCase().includes(q) ||
-                (row['DESTINATION'] || '').toLowerCase().includes(q) ||
-                (row['PLATE NO.'] || '').toLowerCase().includes(q) ||
-                (row['DESCRIPTION'] || '').toLowerCase().includes(q) ||
-                String(row['VOLUME'] || '').toLowerCase().includes(q) ||
-                (row['REMARKS'] || '').toLowerCase().includes(q)
-            );
+                month: 'long',
+            }).formatToParts(d);
+            const month = parts.find((p) => p.type === 'month')?.value || '';
+            const year = parts.find((p) => p.type === 'year')?.value || '';
+            const key = `${year}-${String(d.toLocaleString('en-US', { timeZone: 'Asia/Manila', month: '2-digit' }))}`;
+            const label = `${month} ${year}`;
+            if (!monthSet.has(key)) monthSet.set(key, label);
         });
-    }, [details, searchQuery]);
+        return [...monthSet.entries()]
+            .sort((a, b) => b[0].localeCompare(a[0]))
+            .map(([key, label]) => ({ key, label }));
+    }, [details]);
+
+    const filteredDetails = useMemo(() => {
+        let filtered = details;
+
+        // Apply month filter
+        if (selectedMonth) {
+            filtered = filtered.filter((row) => {
+                const d = new Date(row['DATE']);
+                if (isNaN(d.getTime())) return false;
+                const m = d.toLocaleString('en-US', { timeZone: 'Asia/Manila', month: '2-digit' });
+                const y = d.toLocaleString('en-US', { timeZone: 'Asia/Manila', year: 'numeric' });
+                return `${y}-${m}` === selectedMonth;
+            });
+        }
+
+        // Apply search filter
+        if (searchQuery.trim()) {
+            const q = searchQuery.trim().toLowerCase();
+            filtered = filtered.filter((row) => {
+                const dateObj = new Date(row['DATE']);
+                const dateStr = dateObj.toLocaleDateString('en-US', {
+                    timeZone: 'Asia/Manila',
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                });
+                return (
+                    dateStr.toLowerCase().includes(q) ||
+                    (row['AREA'] || '').toLowerCase().includes(q) ||
+                    String(row['DELIVERY RECEIPT'] || '').toLowerCase().includes(q) ||
+                    (row['DESTINATION'] || '').toLowerCase().includes(q) ||
+                    (row['PLATE NO.'] || '').toLowerCase().includes(q) ||
+                    (row['DESCRIPTION'] || '').toLowerCase().includes(q) ||
+                    String(row['VOLUME'] || '').toLowerCase().includes(q) ||
+                    (row['REMARKS'] || '').toLowerCase().includes(q)
+                );
+            });
+        }
+
+        return filtered;
+    }, [details, selectedMonth, searchQuery]);
 
     const stickyHeaderStyle = {
         position: 'sticky',
@@ -101,7 +142,7 @@ const TaskForceActivityLog = () => {
             <div className="table-container" style={{ marginBottom: '16px', padding: '12px' }}>
                 <div
                     className="transactions-compact-form"
-                    style={{ gridTemplateColumns: '1fr' }}
+                    style={{ gridTemplateColumns: selectedName && details.length > 0 ? '1fr 1fr 1fr' : '1fr' }}
                 >
                     <div className="transactions-compact-group">
                         <label className="transactions-compact-label">Client</label>
@@ -119,16 +160,33 @@ const TaskForceActivityLog = () => {
                         </select>
                     </div>
                     {selectedName && details.length > 0 && (
-                        <div className="transactions-compact-group">
-                            <label className="transactions-compact-label">Search</label>
-                            <input
-                                type="text"
-                                className="transactions-compact-input"
-                                placeholder="Search across all columns..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                            />
-                        </div>
+                        <>
+                            <div className="transactions-compact-group">
+                                <label className="transactions-compact-label">Month</label>
+                                <select
+                                    className="transactions-compact-input"
+                                    value={selectedMonth}
+                                    onChange={(e) => setSelectedMonth(e.target.value)}
+                                >
+                                    <option value="">-- All Months --</option>
+                                    {availableMonths.map((m) => (
+                                        <option key={m.key} value={m.key}>
+                                            {m.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="transactions-compact-group">
+                                <label className="transactions-compact-label">Search</label>
+                                <input
+                                    type="text"
+                                    className="transactions-compact-input"
+                                    placeholder="Search across all columns..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                />
+                            </div>
+                        </>
                     )}
                 </div>
             </div>

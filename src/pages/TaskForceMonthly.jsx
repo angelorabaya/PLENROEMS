@@ -154,7 +154,9 @@ const TaskForceMonthly = () => {
                     </div>
                 ) : (
                     <div className="permittees-report-error">
-                        <span>No records found for {month} {year}.</span>
+                        <span>
+                            No records found for {month} {year}.
+                        </span>
                         <button
                             className="btn btn-secondary"
                             onClick={() => navigate('/reports-hub')}

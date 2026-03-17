@@ -1013,7 +1013,13 @@ tbody tr:last-child td {
     }
 
     /* Nuclear reset for dark backgrounds */
-    *:not(.assessment-print-page):not(.assessment-print-panel):not(.assessment-print-header):not(.assessment-print-body):not(.assessment-table):not(.table-row):not(.col):not(.payer-block):not(.payer-row):not(.label):not(.value):not(.separator):not(.control-no):not(.remarks-row):not(.signature-row):not(span):not(div) {
+    *:not(.assessment-print-page):not(.assessment-print-panel):not(.assessment-print-header):not(
+            .assessment-print-body
+        ):not(.assessment-table):not(.table-row):not(.col):not(.payer-block):not(.payer-row):not(
+            .label
+        ):not(.value):not(.separator):not(.control-no):not(.remarks-row):not(.signature-row):not(
+            span
+        ):not(div) {
         background-color: transparent !important;
         color: #000 !important;
         box-shadow: none !important;

@@ -940,6 +940,16 @@ export const api = {
         return response.json();
     },
 
+    cancelTravelOrder: async (id) => {
+        const response = await fetch(`${API_BASE}/api/travelorders/${encodeURIComponent(id)}/cancel`, {
+            method: 'PUT',
+            headers: getHeaders(),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to cancel travel order');
+        return result;
+    },
+
     createTravelOrder: async (data) => {
         const response = await fetch(`${API_BASE}/api/travelorders`, {
             method: 'POST',
@@ -1013,6 +1023,57 @@ export const api = {
         return response.json();
     },
 
+    // Leave Management
+    getLeaveTypes: async () => {
+        const response = await fetch(`${API_BASE}/api/leave/types`);
+        if (!response.ok) throw new Error('Failed to fetch leave types');
+        return response.json();
+    },
+
+    getLeaveEmployees: async () => {
+        const response = await fetch(`${API_BASE}/api/leave/employees`);
+        if (!response.ok) throw new Error('Failed to fetch leave employees');
+        return response.json();
+    },
+
+    getLeaveApplications: async () => {
+        const response = await fetch(`${API_BASE}/api/leave/applications`);
+        if (!response.ok) throw new Error('Failed to fetch leave applications');
+        return response.json();
+    },
+
+    createLeaveApplication: async (data) => {
+        const response = await fetch(`${API_BASE}/api/leave/applications`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify(data),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to create leave application');
+        return result;
+    },
+
+    updateLeaveApplication: async (id, data) => {
+        const response = await fetch(`${API_BASE}/api/leave/applications/${encodeURIComponent(id)}`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify(data),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to update leave application');
+        return result;
+    },
+
+    deleteLeaveApplication: async (id) => {
+        const response = await fetch(`${API_BASE}/api/leave/applications/${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+            headers: getHeaders(),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to delete leave application');
+        return result;
+    },
+
     // Task Force Activity Log
     getTaskForceActivityLogNames: async () => {
         const response = await fetch(`${API_BASE}/api/taskforce-activity-log/names`);
@@ -1025,6 +1086,21 @@ export const api = {
             `${API_BASE}/api/taskforce-activity-log/details/${encodeURIComponent(name)}`
         );
         if (!response.ok) throw new Error('Failed to fetch taskforce activity log details');
+        return response.json();
+    },
+
+    // Personnel Travel Logs
+    getPersonnelTravelLogNames: async () => {
+        const response = await fetch(`${API_BASE}/api/personnel-travel-logs/names`);
+        if (!response.ok) throw new Error('Failed to fetch personnel travel log names');
+        return response.json();
+    },
+
+    getPersonnelTravelLogDetails: async (name) => {
+        const response = await fetch(
+            `${API_BASE}/api/personnel-travel-logs/details/${encodeURIComponent(name)}`
+        );
+        if (!response.ok) throw new Error('Failed to fetch personnel travel log details');
         return response.json();
     },
 };

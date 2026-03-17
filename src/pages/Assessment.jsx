@@ -519,7 +519,10 @@ const Assessment = () => {
             return;
         }
 
-        if ((nature || '').toLowerCase().includes('government share') && (!municipality || !barangay)) {
+        if (
+            (nature || '').toLowerCase().includes('government share') &&
+            (!municipality || !barangay)
+        ) {
             transientMessage(
                 setError,
                 'Municipality and Barangay are required for Government Share'
@@ -697,8 +700,8 @@ const Assessment = () => {
                                                 color: theme === 'light' ? '#09090b' : '#fafafa',
                                             }}
                                             onMouseEnter={(e) =>
-                                            (e.target.style.background =
-                                                theme === 'light' ? '#f4f4f5' : '#27272a')
+                                                (e.target.style.background =
+                                                    theme === 'light' ? '#f4f4f5' : '#27272a')
                                             }
                                             onMouseLeave={(e) =>
                                                 (e.target.style.background = 'transparent')

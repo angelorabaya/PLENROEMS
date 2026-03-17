@@ -4515,6 +4515,7 @@ app.get('/api/travelorders', async (req, res) => {
             ,to_purpose
             ,to_duration
             ,to_control
+            ,to_status
       FROM tbl_travelorder
       ORDER BY to_dateprepared DESC
     `);
@@ -4616,6 +4617,45 @@ app.put('/api/travelorders/:id', async (req, res) => {
   } catch (err) {
     console.error('❌ Update Travel Order Error:', err.message);
     res.status(500).json({ error: 'Failed to update travel order: ' + err.message });
+  }
+});
+
+// Cancel travel order
+app.put('/api/travelorders/:id/cancel', async (req, res) => {
+  const { id } = req.params;
+  const logUser = req.headers['x-log-user'] || 'Unknown User';
+
+  try {
+    // Audit log specific for cancel
+    const oldReq = pool.request();
+    const oldResult = await oldReq.query(`SELECT * FROM tbl_travelorder WHERE to_ctrlno = ${id}`);
+    if (oldResult.recordset.length === 0) {
+      return res.status(404).json({ error: 'Travel order not found' });
+    }
+
+    const request = pool.request();
+    request.input('id', sql.Int, id);
+
+    await request.query(`
+      UPDATE tbl_travelorder
+      SET to_status = 'CANCELLED'
+      WHERE to_ctrlno = @id
+    `);
+
+    // Add activity log
+    await logActivity(pool, req, {
+      action: 'UPDATE',
+      tableName: 'tbl_travelorder',
+      recordId: id,
+      oldValues: oldResult.recordset[0],
+      newValues: { ...oldResult.recordset[0], to_status: 'CANCELLED' }
+    });
+
+    console.log(`✅ Cancelled travel order: ${id}`);
+    res.json({ success: true, message: 'Travel order cancelled successfully' });
+  } catch (err) {
+    console.error('❌ Cancel Travel Order Error:', err.message);
+    res.status(500).json({ error: 'Failed to cancel travel order: ' + err.message });
   }
 });
 
@@ -4800,6 +4840,346 @@ app.get('/api/taskforce-activity-log/details/:name', async (req, res) => {
   } catch (err) {
     console.error('❌ Get Taskforce Activity Log Details Error:', err.message);
     res.status(500).json({ error: 'Failed to fetch taskforce activity log details: ' + err.message });
+  }
+});
+
+// ==================== LEAVE MANAGEMENT ENDPOINTS ====================
+
+// GET /api/leave/types - Get all active leave types
+app.get('/api/leave/types', async (req, res) => {
+  try {
+    const request = pool.request();
+    const result = await request.query(`
+      SELECT lt_leavetypeid, lt_typename
+      FROM tbl_leavetypes
+      WHERE lt_isactive = 1
+      ORDER BY lt_typename
+    `);
+    console.log(`✅ Fetched ${result.recordset.length} leave types`);
+    res.json(result.recordset || []);
+  } catch (err) {
+    console.error('❌ Get Leave Types Error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch leave types: ' + err.message });
+  }
+});
+
+// GET /api/leave/employees - Get all employees for leave application dropdown
+app.get('/api/leave/employees', async (req, res) => {
+  try {
+    const request = pool.request();
+    // Assuming tbl_enroemp has emp_ctrlno and emp_name
+    const result = await request.query(`
+      SELECT emp_ctrlno, emp_name
+      FROM tbl_enroemp
+      ORDER BY emp_name
+    `);
+    console.log(`✅ Fetched ${result.recordset.length} employees for leave`);
+    res.json(result.recordset || []);
+  } catch (err) {
+    console.error('❌ Get Leave Employees Error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch employees: ' + err.message });
+  }
+});
+
+// GET /api/leave/applications - Get all leave applications with join
+app.get('/api/leave/applications', async (req, res) => {
+  try {
+    const request = pool.request();
+    // Use FOR JSON PATH to securely bundle the dates as a JSON array literal inside SQL Server natively
+    const result = await request.query(`
+      SELECT 
+        la.la_ctrlno,
+        la.la_controlno,
+        la.la_employeeid,
+        la.la_leavetypeid,
+        la.la_dateoffiling,
+        la.la_totaldaysapplied,
+        e.emp_name,
+        lt.lt_typename,
+        (
+          SELECT lad.lad_ctrlno, lad.lad_specificdate, lad.lad_ishalfday
+          FROM tbl_leaveapplicationdates lad
+          WHERE lad.lad_applicationid = la.la_ctrlno
+          FOR JSON PATH
+        ) AS datesJSON
+      FROM tbl_leaveapplications la
+      INNER JOIN tbl_enroemp e ON la.la_employeeid = e.emp_ctrlno
+      INNER JOIN tbl_leavetypes lt ON la.la_leavetypeid = lt.lt_leavetypeid
+      ORDER BY la.la_dateoffiling DESC
+    `);
+
+    // Parse the nested JSON string safely
+    const applications = result.recordset.map(row => {
+      let dates = [];
+      if (row.datesJSON) {
+        try {
+          dates = JSON.parse(row.datesJSON);
+        } catch (e) {
+          console.error("Failed to parse datesJSON for application ID", row.la_ctrlno, e);
+        }
+      }
+      delete row.datesJSON;
+      return {
+        ...row,
+        dates
+      };
+    });
+
+    console.log(`✅ Fetched ${applications.length} leave applications`);
+    res.json(applications);
+  } catch (err) {
+    console.error('❌ Get Leave Applications Error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch leave applications: ' + err.message });
+  }
+});
+
+// POST /api/leave/applications - Create new leave application with specific dates
+app.post('/api/leave/applications', async (req, res) => {
+  const transaction = new sql.Transaction(pool);
+  try {
+    const { la_employeeid, la_leavetypeid, la_dateoffiling, la_totaldaysapplied, la_controlno, dates } = req.body;
+
+    if (!la_employeeid || !la_leavetypeid || la_totaldaysapplied === undefined) {
+      return res.status(400).json({ error: 'Employee ID, Leave Type ID, and Total Days are required' });
+    }
+
+    if (!Array.isArray(dates) || dates.length === 0) {
+      return res.status(400).json({ error: 'At least one specific date is required' });
+    }
+
+    await transaction.begin();
+
+    // Insert Application
+    const request = new sql.Request(transaction);
+    request.input('la_employeeid', sql.Int, la_employeeid);
+    request.input('la_leavetypeid', sql.Int, la_leavetypeid);
+    request.input('la_dateoffiling', sql.DateTime, la_dateoffiling ? new Date(la_dateoffiling) : new Date());
+    request.input('la_totaldaysapplied', sql.Decimal(4, 2), la_totaldaysapplied);
+    request.input('la_controlno', sql.VarChar(50), la_controlno || null);
+
+    const appResult = await request.query(`
+      INSERT INTO tbl_leaveapplications 
+        (la_employeeid, la_leavetypeid, la_dateoffiling, la_totaldaysapplied, la_controlno)
+      OUTPUT INSERTED.la_ctrlno
+      VALUES 
+        (@la_employeeid, @la_leavetypeid, @la_dateoffiling, @la_totaldaysapplied, @la_controlno)
+    `);
+
+    const application_id = appResult.recordset[0].la_ctrlno;
+
+    // Insert Application Dates
+    for (const dateObj of dates) {
+      const dateRequest = new sql.Request(transaction);
+      dateRequest.input('lad_applicationid', sql.Int, application_id);
+      dateRequest.input('lad_specificdate', sql.Date, new Date(dateObj.lad_specificdate));
+      dateRequest.input('lad_ishalfday', sql.Bit, dateObj.lad_ishalfday ? 1 : 0);
+
+      await dateRequest.query(`
+        INSERT INTO tbl_leaveapplicationdates 
+          (lad_applicationid, lad_specificdate, lad_ishalfday)
+        VALUES 
+          (@lad_applicationid, @lad_specificdate, @lad_ishalfday)
+      `);
+    }
+
+    await transaction.commit();
+
+    // Log activity
+    await logActivity(pool, req, {
+      action: 'CREATE',
+      tableName: 'tbl_leaveapplications',
+      recordId: application_id,
+      newValues: { ...req.body, created_id: application_id }
+    });
+
+    console.log(`✅ Created leave application: ${application_id}`);
+    res.json({ success: true, message: 'Leave application created successfully', la_ctrlno: application_id });
+
+  } catch (err) {
+    console.error('❌ Create Leave Application Error:', err.message);
+    if (transaction) await transaction.rollback();
+    res.status(500).json({ error: 'Failed to create leave application: ' + err.message });
+  }
+});
+
+// PUT /api/leave/applications/:id - Update leave application
+app.put('/api/leave/applications/:id', async (req, res) => {
+  const transaction = new sql.Transaction(pool);
+  try {
+    const { id } = req.params;
+    const { la_employeeid, la_leavetypeid, la_dateoffiling, la_totaldaysapplied, la_controlno, dates } = req.body;
+
+    if (!la_employeeid || !la_leavetypeid || la_totaldaysapplied === undefined) {
+      return res.status(400).json({ error: 'Employee ID, Leave Type ID, and Total Days are required' });
+    }
+
+    if (!Array.isArray(dates) || dates.length === 0) {
+      return res.status(400).json({ error: 'At least one specific date is required' });
+    }
+
+    // Fetch old values for audit logging
+    const getOldReq = pool.request();
+    getOldReq.input('id', sql.Int, id);
+    const oldResult = await getOldReq.query('SELECT * FROM tbl_leaveapplications WHERE la_ctrlno = @id');
+    
+    if (oldResult.recordset.length === 0) {
+      return res.status(404).json({ error: 'Leave application not found' });
+    }
+    const oldValues = oldResult.recordset[0];
+
+    await transaction.begin();
+
+    // 1. Update Application
+    const request = new sql.Request(transaction);
+    request.input('id', sql.Int, id);
+    request.input('la_employeeid', sql.Int, la_employeeid);
+    request.input('la_leavetypeid', sql.Int, la_leavetypeid);
+    request.input('la_dateoffiling', sql.DateTime, la_dateoffiling ? new Date(la_dateoffiling) : new Date());
+    request.input('la_totaldaysapplied', sql.Decimal(4, 2), la_totaldaysapplied);
+    request.input('la_controlno', sql.VarChar(50), la_controlno || null);
+
+    await request.query(`
+      UPDATE tbl_leaveapplications
+      SET 
+        la_employeeid = @la_employeeid,
+        la_leavetypeid = @la_leavetypeid,
+        la_dateoffiling = @la_dateoffiling,
+        la_totaldaysapplied = @la_totaldaysapplied,
+        la_controlno = @la_controlno
+      WHERE la_ctrlno = @id
+    `);
+
+    // 2. Delete existing application dates
+    const deleteDatesReq = new sql.Request(transaction);
+    deleteDatesReq.input('id', sql.Int, id);
+    await deleteDatesReq.query(`
+      DELETE FROM tbl_leaveapplicationdates WHERE lad_applicationid = @id
+    `);
+
+    // 3. Insert new application dates
+    for (const dateObj of dates) {
+      const dateRequest = new sql.Request(transaction);
+      dateRequest.input('lad_applicationid', sql.Int, id);
+      dateRequest.input('lad_specificdate', sql.Date, new Date(dateObj.lad_specificdate));
+      dateRequest.input('lad_ishalfday', sql.Bit, dateObj.lad_ishalfday ? 1 : 0);
+
+      await dateRequest.query(`
+        INSERT INTO tbl_leaveapplicationdates 
+          (lad_applicationid, lad_specificdate, lad_ishalfday)
+        VALUES 
+          (@lad_applicationid, @lad_specificdate, @lad_ishalfday)
+      `);
+    }
+
+    await transaction.commit();
+
+    // Log activity
+    await logActivity(pool, req, {
+      action: 'UPDATE',
+      tableName: 'tbl_leaveapplications',
+      recordId: id,
+      oldValues: oldValues,
+      newValues: req.body
+    });
+
+    console.log(`✅ Updated leave application: ${id}`);
+    res.json({ success: true, message: 'Leave application updated successfully' });
+
+  } catch (err) {
+    console.error('❌ Update Leave Application Error:', err.message);
+    if (transaction) await transaction.rollback();
+    res.status(500).json({ error: 'Failed to update leave application: ' + err.message });
+  }
+});
+
+// DELETE /api/leave/applications/:id - Delete leave application
+app.delete('/api/leave/applications/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Fetch old values for audit logging
+    const getOldReq = pool.request();
+    getOldReq.input('id', sql.Int, id);
+    const oldResult = await getOldReq.query('SELECT * FROM tbl_leaveapplications WHERE la_ctrlno = @id');
+    const oldValues = oldResult.recordset[0];
+
+    // Delete the application (Database constraint ON DELETE CASCADE will handle lad specific dates)
+    const request = pool.request();
+    request.input('id', sql.Int, id);
+    await request.query('DELETE FROM tbl_leaveapplications WHERE la_ctrlno = @id');
+
+    // Log activity
+    if (oldValues) {
+      await logActivity(pool, req, {
+        action: 'DELETE',
+        tableName: 'tbl_leaveapplications',
+        recordId: id,
+        oldValues: oldValues
+      });
+    }
+
+    console.log(`✅ Deleted leave application: ${id}`);
+    res.json({ success: true, message: 'Leave application deleted successfully' });
+  } catch (err) {
+    console.error('❌ Delete Leave Application Error:', err.message);
+    res.status(500).json({ error: 'Failed to delete leave application: ' + err.message });
+  }
+});
+
+// ==================== PERSONNEL TRAVEL LOGS ENDPOINTS ====================
+
+// GET /api/personnel-travel-logs/names - Get distinct employee names with travel orders
+app.get('/api/personnel-travel-logs/names', async (req, res) => {
+  try {
+    const request = pool.request();
+    const result = await request.query(`
+      SELECT DISTINCT
+          [e].[emp_name]
+      FROM [dbo].[tbl_enroemp] AS [e]
+      INNER JOIN [dbo].[tbl_travelorderemp] AS [te]
+          ON [e].[emp_ctrlno] = [te].[toe_empid]
+      ORDER BY [e].[emp_name]
+    `);
+    console.log(`✅ Fetched ${result.recordset.length} personnel names for travel logs`);
+    res.json(result.recordset || []);
+  } catch (err) {
+    console.error('❌ Get Personnel Travel Log Names Error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch personnel names: ' + err.message });
+  }
+});
+
+// GET /api/personnel-travel-logs/details/:name - Get travel order details for a personnel
+app.get('/api/personnel-travel-logs/details/:name', async (req, res) => {
+  try {
+    const { name } = req.params;
+    const request = pool.request();
+    request.input('emp_name', sql.VarChar(200), name);
+
+    const result = await request.query(`
+      SELECT
+          t.[to_number]       AS [T.O. NUMBER],
+          t.[to_dateprepared] AS [DATE PREPARED],
+          t.[to_destination]  AS [DESTINATION],
+          t.[to_startdate]    AS [START DATE],
+          t.[to_enddate]      AS [END DATE],
+          t.[to_purpose]      AS [PURPOSE],
+          t.[to_duration]     AS [DURATION],
+          t.[to_control]      AS [CONTROL],
+          t.[to_status]       AS [STATUS]
+      FROM [dbo].[tbl_travelorderemp] AS [te]
+      INNER JOIN [dbo].[tbl_enroemp] AS [e]
+          ON [te].[toe_empid] = [e].[emp_ctrlno]
+      INNER JOIN [dbo].[tbl_travelorder] AS [t]
+          ON [te].[toe_toid] = [t].[to_ctrlno]
+      WHERE [e].[emp_name] = @emp_name
+      ORDER BY t.[to_dateprepared] DESC
+    `);
+
+    console.log(`✅ Fetched ${result.recordset.length} travel log details for "${name}"`);
+    res.json(result.recordset || []);
+  } catch (err) {
+    console.error('❌ Get Personnel Travel Log Details Error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch personnel travel log details: ' + err.message });
   }
 });
 

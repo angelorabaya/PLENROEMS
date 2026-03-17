@@ -21,12 +21,21 @@ const ProductionAuditPreview = () => {
         if (!dateString) return '';
         const d = new Date(dateString);
         if (Number.isNaN(d.getTime())) return '';
-        return d.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', year: 'numeric', month: 'long', day: 'numeric' });
+        return d.toLocaleDateString('en-US', {
+            timeZone: 'Asia/Manila',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+        });
     };
 
     const formatMonthYear = (date) =>
         date
-            ? new Date(date).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'long', year: 'numeric' })
+            ? new Date(date).toLocaleDateString('en-US', {
+                  timeZone: 'Asia/Manila',
+                  month: 'long',
+                  year: 'numeric',
+              })
             : '';
 
     const formatNumericValue = (value, minimumFractionDigits = 0, maximumFractionDigits = 2) => {
@@ -399,8 +408,8 @@ const ProductionAuditPreview = () => {
                                                             >
                                                                 {Number(row.pr_vpaid) > 0
                                                                     ? formatNumericValue(
-                                                                        row.pr_vpaid
-                                                                    )
+                                                                          row.pr_vpaid
+                                                                      )
                                                                     : ''}
                                                             </td>
                                                         </>
@@ -414,7 +423,9 @@ const ProductionAuditPreview = () => {
                                                                     color: '#000',
                                                                 }}
                                                             >
-                                                                {formatNumericValue(row.pr_vextracted)}
+                                                                {formatNumericValue(
+                                                                    row.pr_vextracted
+                                                                )}
                                                             </td>
                                                             <td
                                                                 style={{
@@ -519,8 +530,8 @@ const ProductionAuditPreview = () => {
                                             >
                                                 Allowable Volume:{' '}
                                                 {cycle.allowableVolume !== null &&
-                                                    cycle.allowableVolume !== undefined &&
-                                                    cycle.allowableVolume !== ''
+                                                cycle.allowableVolume !== undefined &&
+                                                cycle.allowableVolume !== ''
                                                     ? formatNumericValue(cycle.allowableVolume)
                                                     : 'N/A'}
                                             </td>
@@ -605,7 +616,8 @@ const ProductionAuditPreview = () => {
                         paddingTop: '16px',
                     }}
                 >
-                    Generated on {new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' })} | PLENRO Systems
+                    Generated on {new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' })} |
+                    PLENRO Systems
                 </div>
             </div>
 

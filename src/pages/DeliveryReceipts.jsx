@@ -213,7 +213,9 @@ const DeliveryReceipts = () => {
                 size: 120,
                 cell: ({ getValue }) => {
                     const val = getValue();
-                    return val ? new Date(val).toLocaleDateString('en-US', { timeZone: 'Asia/Manila' }) : '';
+                    return val
+                        ? new Date(val).toLocaleDateString('en-US', { timeZone: 'Asia/Manila' })
+                        : '';
                 },
             },
             {
@@ -407,8 +409,8 @@ const DeliveryReceipts = () => {
                                                         theme === 'light' ? '#09090b' : '#fafafa',
                                                 }}
                                                 onMouseEnter={(e) =>
-                                                (e.target.style.background =
-                                                    theme === 'light' ? '#f4f4f5' : '#27272a')
+                                                    (e.target.style.background =
+                                                        theme === 'light' ? '#f4f4f5' : '#27272a')
                                                 }
                                                 onMouseLeave={(e) =>
                                                     (e.target.style.background = 'transparent')
@@ -502,10 +504,10 @@ const DeliveryReceipts = () => {
                                                         {header.column.getCanSort() && (
                                                             <span className="sort-icon">
                                                                 {header.column.getIsSorted() ===
-                                                                    'asc' ? (
+                                                                'asc' ? (
                                                                     <FiChevronUp className="sort-icon-active" />
                                                                 ) : header.column.getIsSorted() ===
-                                                                    'desc' ? (
+                                                                  'desc' ? (
                                                                     <FiChevronDown className="sort-icon-active" />
                                                                 ) : (
                                                                     <FiChevronUp className="sort-icon-inactive" />

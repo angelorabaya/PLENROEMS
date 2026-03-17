@@ -202,7 +202,7 @@ const Sidebar = ({ onLogout, isCollapsed, onToggleCollapse, userRole, user }) =>
                         Travel Authorization
                     </NavItem>
                     <NavItem to="/leave-management" icon={FiCalendar}>
-                        Leave Management
+                        Employee Leave Portal
                     </NavItem>
                 </NavSection>
 
@@ -227,6 +227,9 @@ const Sidebar = ({ onLogout, isCollapsed, onToggleCollapse, userRole, user }) =>
                     </NavItem>
                     <NavItem to="/taskforce-activity-log" icon={FiClipboard}>
                         Task Force Activity Log
+                    </NavItem>
+                    <NavItem to="/personnel-travel-logs" icon={FiNavigation}>
+                        Personnel Travel Logs
                     </NavItem>
                 </NavSection>
 

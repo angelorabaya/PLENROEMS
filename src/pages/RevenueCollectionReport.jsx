@@ -2,9 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../services/api';
 import {
-    Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
-    WidthType, AlignmentType, BorderStyle, HeadingLevel, ShadingType,
-    VerticalAlign, TableLayoutType
+    Document,
+    Packer,
+    Paragraph,
+    TextRun,
+    Table,
+    TableRow,
+    TableCell,
+    WidthType,
+    AlignmentType,
+    BorderStyle,
+    HeadingLevel,
+    ShadingType,
+    VerticalAlign,
+    TableLayoutType,
 } from 'docx';
 import { saveAs } from 'file-saver';
 import '../styles/revenue-collection-print.css';
@@ -67,33 +78,41 @@ const buildFeeRow = (label, amount, isTotalRow = false) => {
                 borders: { ...allBorders, top: topBorderStyle },
                 shading: isTotalRow ? { type: ShadingType.SOLID, color: 'F5F5F5' } : undefined,
                 verticalAlign: VerticalAlign.CENTER,
-                children: [new Paragraph({
-                    spacing: { before: 40, after: 40 },
-                    indent: { left: 120 },
-                    children: [new TextRun({
-                        text: label,
-                        bold: isTotalRow,
-                        size: isTotalRow ? 22 : 20,
-                        font: 'Segoe UI',
-                    })],
-                })],
+                children: [
+                    new Paragraph({
+                        spacing: { before: 40, after: 40 },
+                        indent: { left: 120 },
+                        children: [
+                            new TextRun({
+                                text: label,
+                                bold: isTotalRow,
+                                size: isTotalRow ? 22 : 20,
+                                font: 'Segoe UI',
+                            }),
+                        ],
+                    }),
+                ],
             }),
             new TableCell({
                 width: { size: 35, type: WidthType.PERCENTAGE },
                 borders: { ...allBorders, top: topBorderStyle },
                 shading: isTotalRow ? { type: ShadingType.SOLID, color: 'F5F5F5' } : undefined,
                 verticalAlign: VerticalAlign.CENTER,
-                children: [new Paragraph({
-                    alignment: AlignmentType.RIGHT,
-                    spacing: { before: 40, after: 40 },
-                    indent: { right: 120 },
-                    children: [new TextRun({
-                        text: formatCurrency(amount),
-                        bold: isTotalRow,
-                        size: isTotalRow ? 22 : 20,
-                        font: 'Segoe UI',
-                    })],
-                })],
+                children: [
+                    new Paragraph({
+                        alignment: AlignmentType.RIGHT,
+                        spacing: { before: 40, after: 40 },
+                        indent: { right: 120 },
+                        children: [
+                            new TextRun({
+                                text: formatCurrency(amount),
+                                bold: isTotalRow,
+                                size: isTotalRow ? 22 : 20,
+                                font: 'Segoe UI',
+                            }),
+                        ],
+                    }),
+                ],
             }),
         ],
     });
@@ -140,52 +159,108 @@ const RevenueCollectionReport = () => {
         if (!data) return;
 
         // Recalculate values (same logic as the component render)
-        const extFee = (Number(data.Share_Prov_30) || 0) + (Number(data.Share_Mun_30) || 0) + (Number(data.Share_Brgy_40) || 0);
+        const extFee =
+            (Number(data.Share_Prov_30) || 0) +
+            (Number(data.Share_Mun_30) || 0) +
+            (Number(data.Share_Brgy_40) || 0);
         const extFeeMGB = Number(data.MGB_Prov_30) || 0;
-        const total = extFee + extFeeMGB +
-            (Number(data.Admin_Fee) || 0) + (Number(data.Ecosystem_Fee) || 0) +
-            (Number(data.Admin_Ecosystem_Fee) || 0) + (Number(data.Other_Misc_Fee) || 0) +
-            (Number(data.Outbound_Fee) || 0) + (Number(data.Inbound_Fee) || 0) +
-            (Number(data.Sticker_Fee) || 0) + (Number(data.Reg_Conveyances_Fee) || 0) +
+        const total =
+            extFee +
+            extFeeMGB +
+            (Number(data.Admin_Fee) || 0) +
+            (Number(data.Ecosystem_Fee) || 0) +
+            (Number(data.Admin_Ecosystem_Fee) || 0) +
+            (Number(data.Other_Misc_Fee) || 0) +
+            (Number(data.Outbound_Fee) || 0) +
+            (Number(data.Inbound_Fee) || 0) +
+            (Number(data.Sticker_Fee) || 0) +
+            (Number(data.Reg_Conveyances_Fee) || 0) +
             (Number(data.Penalties_Fee) || 0);
 
         // --- Header Section ---
         const headerParagraphs = [
             new Paragraph({
-                alignment: AlignmentType.CENTER, spacing: { after: 0 }, children: [
-                    new TextRun({ text: 'REPUBLIC OF THE PHILIPPINES', bold: true, size: 24, font: 'Segoe UI' }),
-                ]
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 0 },
+                children: [
+                    new TextRun({
+                        text: 'REPUBLIC OF THE PHILIPPINES',
+                        bold: true,
+                        size: 24,
+                        font: 'Segoe UI',
+                    }),
+                ],
             }),
             new Paragraph({
-                alignment: AlignmentType.CENTER, spacing: { after: 0 }, children: [
-                    new TextRun({ text: 'Province of Misamis Oriental', size: 22, font: 'Segoe UI' }),
-                ]
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 0 },
+                children: [
+                    new TextRun({
+                        text: 'Province of Misamis Oriental',
+                        size: 22,
+                        font: 'Segoe UI',
+                    }),
+                ],
             }),
             new Paragraph({
-                alignment: AlignmentType.CENTER, spacing: { before: 80, after: 0 }, children: [
-                    new TextRun({ text: 'PROVINCIAL LOCAL ENVIRONMENT AND NATURAL RESOURCES OFFICE', bold: true, size: 20, font: 'Segoe UI', color: ACCENT_COLOR }),
-                ]
+                alignment: AlignmentType.CENTER,
+                spacing: { before: 80, after: 0 },
+                children: [
+                    new TextRun({
+                        text: 'PROVINCIAL LOCAL ENVIRONMENT AND NATURAL RESOURCES OFFICE',
+                        bold: true,
+                        size: 20,
+                        font: 'Segoe UI',
+                        color: ACCENT_COLOR,
+                    }),
+                ],
             }),
             new Paragraph({
-                alignment: AlignmentType.CENTER, spacing: { after: 0 }, children: [
-                    new TextRun({ text: 'Misortel Building, A. Luna St., Cagayan de Oro City', italics: true, size: 18, font: 'Segoe UI', color: MUTED }),
-                ]
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 0 },
+                children: [
+                    new TextRun({
+                        text: 'Misortel Building, A. Luna St., Cagayan de Oro City',
+                        italics: true,
+                        size: 18,
+                        font: 'Segoe UI',
+                        color: MUTED,
+                    }),
+                ],
             }),
             // Divider line
-            new Paragraph({ spacing: { before: 100, after: 100 }, border: { bottom: { style: BorderStyle.SINGLE, size: 2, color: BLACK } }, children: [] }),
+            new Paragraph({
+                spacing: { before: 100, after: 100 },
+                border: { bottom: { style: BorderStyle.SINGLE, size: 2, color: BLACK } },
+                children: [],
+            }),
         ];
 
         // --- Title Section ---
         const titleParagraphs = [
             new Paragraph({
-                alignment: AlignmentType.CENTER, spacing: { before: 200, after: 0 }, children: [
-                    new TextRun({ text: 'REVENUE COLLECTION REPORT', bold: true, size: 28, font: 'Segoe UI', color: ACCENT_COLOR }),
-                ]
+                alignment: AlignmentType.CENTER,
+                spacing: { before: 200, after: 0 },
+                children: [
+                    new TextRun({
+                        text: 'REVENUE COLLECTION REPORT',
+                        bold: true,
+                        size: 28,
+                        font: 'Segoe UI',
+                        color: ACCENT_COLOR,
+                    }),
+                ],
             }),
             new Paragraph({
-                alignment: AlignmentType.CENTER, spacing: { before: 40, after: 200 }, children: [
-                    new TextRun({ text: `For the Month of ${month}, ${year}`, size: 22, font: 'Segoe UI' }),
-                ]
+                alignment: AlignmentType.CENTER,
+                spacing: { before: 40, after: 200 },
+                children: [
+                    new TextRun({
+                        text: `For the Month of ${month}, ${year}`,
+                        size: 22,
+                        font: 'Segoe UI',
+                    }),
+                ],
             }),
         ];
 
@@ -198,22 +273,42 @@ const RevenueCollectionReport = () => {
                     borders: allBorders,
                     shading: { type: ShadingType.SOLID, color: ACCENT_COLOR },
                     verticalAlign: VerticalAlign.CENTER,
-                    children: [new Paragraph({
-                        alignment: AlignmentType.CENTER,
-                        spacing: { before: 60, after: 60 },
-                        children: [new TextRun({ text: 'PARTICULARS', bold: true, size: 20, font: 'Segoe UI', color: 'FFFFFF' })],
-                    })],
+                    children: [
+                        new Paragraph({
+                            alignment: AlignmentType.CENTER,
+                            spacing: { before: 60, after: 60 },
+                            children: [
+                                new TextRun({
+                                    text: 'PARTICULARS',
+                                    bold: true,
+                                    size: 20,
+                                    font: 'Segoe UI',
+                                    color: 'FFFFFF',
+                                }),
+                            ],
+                        }),
+                    ],
                 }),
                 new TableCell({
                     width: { size: 35, type: WidthType.PERCENTAGE },
                     borders: allBorders,
                     shading: { type: ShadingType.SOLID, color: ACCENT_COLOR },
                     verticalAlign: VerticalAlign.CENTER,
-                    children: [new Paragraph({
-                        alignment: AlignmentType.CENTER,
-                        spacing: { before: 60, after: 60 },
-                        children: [new TextRun({ text: 'AMOUNT (₱)', bold: true, size: 20, font: 'Segoe UI', color: 'FFFFFF' })],
-                    })],
+                    children: [
+                        new Paragraph({
+                            alignment: AlignmentType.CENTER,
+                            spacing: { before: 60, after: 60 },
+                            children: [
+                                new TextRun({
+                                    text: 'AMOUNT (₱)',
+                                    bold: true,
+                                    size: 20,
+                                    font: 'Segoe UI',
+                                    color: 'FFFFFF',
+                                }),
+                            ],
+                        }),
+                    ],
                 }),
             ],
         });
@@ -253,94 +348,166 @@ const RevenueCollectionReport = () => {
                 new TableRow({
                     children: [
                         new TableCell({
-                            width: { size: 50, type: WidthType.PERCENTAGE }, borders: noBorders, children: [
+                            width: { size: 50, type: WidthType.PERCENTAGE },
+                            borders: noBorders,
+                            children: [
                                 new Paragraph({
-                                    spacing: { before: 0, after: 600 }, children: [
-                                        new TextRun({ text: 'Prepared by:', size: 20, font: 'Segoe UI' }),
-                                    ]
+                                    spacing: { before: 0, after: 600 },
+                                    children: [
+                                        new TextRun({
+                                            text: 'Prepared by:',
+                                            size: 20,
+                                            font: 'Segoe UI',
+                                        }),
+                                    ],
                                 }),
-                            ]
+                            ],
                         }),
                         new TableCell({
-                            width: { size: 50, type: WidthType.PERCENTAGE }, borders: noBorders, children: [
+                            width: { size: 50, type: WidthType.PERCENTAGE },
+                            borders: noBorders,
+                            children: [
                                 new Paragraph({
-                                    spacing: { before: 0, after: 600 }, children: [
-                                        new TextRun({ text: 'Verified by:', size: 20, font: 'Segoe UI' }),
-                                    ]
+                                    spacing: { before: 0, after: 600 },
+                                    children: [
+                                        new TextRun({
+                                            text: 'Verified by:',
+                                            size: 20,
+                                            font: 'Segoe UI',
+                                        }),
+                                    ],
                                 }),
-                            ]
+                            ],
                         }),
-                    ]
+                    ],
                 }),
                 // Names row
                 new TableRow({
                     children: [
                         new TableCell({
-                            width: { size: 50, type: WidthType.PERCENTAGE }, borders: noBorders, children: [
+                            width: { size: 50, type: WidthType.PERCENTAGE },
+                            borders: noBorders,
+                            children: [
                                 new Paragraph({
-                                    alignment: AlignmentType.CENTER, border: { top: { style: BorderStyle.SINGLE, size: 1, color: BLACK } }, spacing: { before: 40, after: 0 }, children: [
-                                        new TextRun({ text: PREPARED_BY_NAME, bold: true, size: 22, font: 'Segoe UI' }),
-                                    ]
+                                    alignment: AlignmentType.CENTER,
+                                    border: {
+                                        top: { style: BorderStyle.SINGLE, size: 1, color: BLACK },
+                                    },
+                                    spacing: { before: 40, after: 0 },
+                                    children: [
+                                        new TextRun({
+                                            text: PREPARED_BY_NAME,
+                                            bold: true,
+                                            size: 22,
+                                            font: 'Segoe UI',
+                                        }),
+                                    ],
                                 }),
                                 new Paragraph({
-                                    alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [
-                                        new TextRun({ text: PREPARED_BY_TITLE, size: 20, font: 'Segoe UI' }),
-                                    ]
+                                    alignment: AlignmentType.CENTER,
+                                    spacing: { before: 0, after: 0 },
+                                    children: [
+                                        new TextRun({
+                                            text: PREPARED_BY_TITLE,
+                                            size: 20,
+                                            font: 'Segoe UI',
+                                        }),
+                                    ],
                                 }),
-                            ]
+                            ],
                         }),
                         new TableCell({
-                            width: { size: 50, type: WidthType.PERCENTAGE }, borders: noBorders, children: [
+                            width: { size: 50, type: WidthType.PERCENTAGE },
+                            borders: noBorders,
+                            children: [
                                 new Paragraph({
-                                    alignment: AlignmentType.CENTER, border: { top: { style: BorderStyle.SINGLE, size: 1, color: BLACK } }, spacing: { before: 40, after: 0 }, children: [
-                                        new TextRun({ text: VERIFIED_BY_NAME, bold: true, size: 22, font: 'Segoe UI' }),
-                                    ]
+                                    alignment: AlignmentType.CENTER,
+                                    border: {
+                                        top: { style: BorderStyle.SINGLE, size: 1, color: BLACK },
+                                    },
+                                    spacing: { before: 40, after: 0 },
+                                    children: [
+                                        new TextRun({
+                                            text: VERIFIED_BY_NAME,
+                                            bold: true,
+                                            size: 22,
+                                            font: 'Segoe UI',
+                                        }),
+                                    ],
                                 }),
                                 new Paragraph({
-                                    alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [
-                                        new TextRun({ text: VERIFIED_BY_TITLE, size: 20, font: 'Segoe UI' }),
-                                    ]
+                                    alignment: AlignmentType.CENTER,
+                                    spacing: { before: 0, after: 0 },
+                                    children: [
+                                        new TextRun({
+                                            text: VERIFIED_BY_TITLE,
+                                            size: 20,
+                                            font: 'Segoe UI',
+                                        }),
+                                    ],
                                 }),
-                            ]
+                            ],
                         }),
-                    ]
+                    ],
                 }),
             ],
         });
 
         // --- Footer ---
         const footerParagraphs = [
-            new Paragraph({ spacing: { before: 300 }, border: { top: { style: BorderStyle.SINGLE, size: 1, color: MUTED } }, children: [] }),
             new Paragraph({
-                alignment: AlignmentType.CENTER, spacing: { before: 60, after: 0 }, children: [
-                    new TextRun({ text: 'Provincial Local Environment and Natural Resources Office', italics: true, size: 16, font: 'Segoe UI', color: MUTED }),
-                ]
+                spacing: { before: 300 },
+                border: { top: { style: BorderStyle.SINGLE, size: 1, color: MUTED } },
+                children: [],
             }),
             new Paragraph({
-                alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [
-                    new TextRun({ text: 'Misortel Building, A. Luna St., Provincial Capitol Compound, Cagayan de Oro City', italics: true, size: 16, font: 'Segoe UI', color: MUTED }),
-                ]
+                alignment: AlignmentType.CENTER,
+                spacing: { before: 60, after: 0 },
+                children: [
+                    new TextRun({
+                        text: 'Provincial Local Environment and Natural Resources Office',
+                        italics: true,
+                        size: 16,
+                        font: 'Segoe UI',
+                        color: MUTED,
+                    }),
+                ],
+            }),
+            new Paragraph({
+                alignment: AlignmentType.CENTER,
+                spacing: { before: 0, after: 0 },
+                children: [
+                    new TextRun({
+                        text: 'Misortel Building, A. Luna St., Provincial Capitol Compound, Cagayan de Oro City',
+                        italics: true,
+                        size: 16,
+                        font: 'Segoe UI',
+                        color: MUTED,
+                    }),
+                ],
             }),
         ];
 
         // --- Build Document ---
         const doc = new Document({
-            sections: [{
-                properties: {
-                    page: {
-                        size: { width: 12240, height: 15840 }, // Letter size in twips
-                        margin: { top: 720, right: 900, bottom: 720, left: 900 },
+            sections: [
+                {
+                    properties: {
+                        page: {
+                            size: { width: 12240, height: 15840 }, // Letter size in twips
+                            margin: { top: 720, right: 900, bottom: 720, left: 900 },
+                        },
                     },
+                    children: [
+                        ...headerParagraphs,
+                        ...titleParagraphs,
+                        feesTable,
+                        new Paragraph({ spacing: { before: 400 }, children: [] }),
+                        signatureTable,
+                        ...footerParagraphs,
+                    ],
                 },
-                children: [
-                    ...headerParagraphs,
-                    ...titleParagraphs,
-                    feesTable,
-                    new Paragraph({ spacing: { before: 400 }, children: [] }),
-                    signatureTable,
-                    ...footerParagraphs,
-                ],
-            }],
+            ],
         });
 
         try {
@@ -355,8 +522,8 @@ const RevenueCollectionReport = () => {
     // Calculate extraction fee (sum of Province, Municipal, Barangay shares)
     const extractionFee = data
         ? (Number(data.Share_Prov_30) || 0) +
-        (Number(data.Share_Mun_30) || 0) +
-        (Number(data.Share_Brgy_40) || 0)
+          (Number(data.Share_Mun_30) || 0) +
+          (Number(data.Share_Brgy_40) || 0)
         : 0;
 
     // Calculate MGB Extraction Fee
@@ -365,16 +532,16 @@ const RevenueCollectionReport = () => {
     // Calculate total
     const totalAmount = data
         ? extractionFee +
-        extractionFeeMGB +
-        (Number(data.Admin_Fee) || 0) +
-        (Number(data.Ecosystem_Fee) || 0) +
-        (Number(data.Admin_Ecosystem_Fee) || 0) +
-        (Number(data.Other_Misc_Fee) || 0) +
-        (Number(data.Outbound_Fee) || 0) +
-        (Number(data.Inbound_Fee) || 0) +
-        (Number(data.Sticker_Fee) || 0) +
-        (Number(data.Reg_Conveyances_Fee) || 0) +
-        (Number(data.Penalties_Fee) || 0)
+          extractionFeeMGB +
+          (Number(data.Admin_Fee) || 0) +
+          (Number(data.Ecosystem_Fee) || 0) +
+          (Number(data.Admin_Ecosystem_Fee) || 0) +
+          (Number(data.Other_Misc_Fee) || 0) +
+          (Number(data.Outbound_Fee) || 0) +
+          (Number(data.Inbound_Fee) || 0) +
+          (Number(data.Sticker_Fee) || 0) +
+          (Number(data.Reg_Conveyances_Fee) || 0) +
+          (Number(data.Penalties_Fee) || 0)
         : 0;
 
     const shouldShowReport = !loading && !error && data !== null;
@@ -390,7 +557,11 @@ const RevenueCollectionReport = () => {
                     <button className="btn btn-primary" onClick={handlePrint}>
                         Print
                     </button>
-                    <button className="btn btn-primary" onClick={handleExportWord} disabled={!shouldShowReport}>
+                    <button
+                        className="btn btn-primary"
+                        onClick={handleExportWord}
+                        disabled={!shouldShowReport}
+                    >
                         Export to Word
                     </button>
                 </div>

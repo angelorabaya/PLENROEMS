@@ -344,16 +344,99 @@ const ClientTransactions = () => {
                             <table>
                                 <thead>
                                     <tr>
-                                        <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--secondary)' }}>Control No.</th>
-                                        <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--secondary)' }}>O.R. No.</th>
-                                        <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--secondary)' }}>O.R. Date</th>
-                                        <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--secondary)' }}>Item</th>
-                                        <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--secondary)' }}>Volume/Unit</th>
-                                        <th style={{ textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--secondary)' }}>Charge</th>
-                                        <th style={{ textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--secondary)' }}>Amount</th>
-                                        <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--secondary)' }}>Remarks</th>
+                                        <th
+                                            style={{
+                                                position: 'sticky',
+                                                top: 0,
+                                                zIndex: 10,
+                                                backgroundColor: 'var(--secondary)',
+                                            }}
+                                        >
+                                            Control No.
+                                        </th>
+                                        <th
+                                            style={{
+                                                position: 'sticky',
+                                                top: 0,
+                                                zIndex: 10,
+                                                backgroundColor: 'var(--secondary)',
+                                            }}
+                                        >
+                                            O.R. No.
+                                        </th>
+                                        <th
+                                            style={{
+                                                position: 'sticky',
+                                                top: 0,
+                                                zIndex: 10,
+                                                backgroundColor: 'var(--secondary)',
+                                            }}
+                                        >
+                                            O.R. Date
+                                        </th>
+                                        <th
+                                            style={{
+                                                position: 'sticky',
+                                                top: 0,
+                                                zIndex: 10,
+                                                backgroundColor: 'var(--secondary)',
+                                            }}
+                                        >
+                                            Item
+                                        </th>
+                                        <th
+                                            style={{
+                                                position: 'sticky',
+                                                top: 0,
+                                                zIndex: 10,
+                                                backgroundColor: 'var(--secondary)',
+                                            }}
+                                        >
+                                            Volume/Unit
+                                        </th>
+                                        <th
+                                            style={{
+                                                textAlign: 'right',
+                                                position: 'sticky',
+                                                top: 0,
+                                                zIndex: 10,
+                                                backgroundColor: 'var(--secondary)',
+                                            }}
+                                        >
+                                            Charge
+                                        </th>
+                                        <th
+                                            style={{
+                                                textAlign: 'right',
+                                                position: 'sticky',
+                                                top: 0,
+                                                zIndex: 10,
+                                                backgroundColor: 'var(--secondary)',
+                                            }}
+                                        >
+                                            Amount
+                                        </th>
+                                        <th
+                                            style={{
+                                                position: 'sticky',
+                                                top: 0,
+                                                zIndex: 10,
+                                                backgroundColor: 'var(--secondary)',
+                                            }}
+                                        >
+                                            Remarks
+                                        </th>
                                         {isAdmin && (
-                                            <th style={{ width: '60px', textAlign: 'center', position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--secondary)' }}>
+                                            <th
+                                                style={{
+                                                    width: '60px',
+                                                    textAlign: 'center',
+                                                    position: 'sticky',
+                                                    top: 0,
+                                                    zIndex: 10,
+                                                    backgroundColor: 'var(--secondary)',
+                                                }}
+                                            >
                                                 Actions
                                             </th>
                                         )}
@@ -368,11 +451,15 @@ const ClientTransactions = () => {
                                             month: '2-digit',
                                             day: '2-digit',
                                         });
-                                        const charge = parseFloat(detail.aop_charge || 0).toLocaleString('en-US', {
+                                        const charge = parseFloat(
+                                            detail.aop_charge || 0
+                                        ).toLocaleString('en-US', {
                                             minimumFractionDigits: 2,
                                             maximumFractionDigits: 2,
                                         });
-                                        const total = parseFloat(detail.aop_total || 0).toLocaleString('en-US', {
+                                        const total = parseFloat(
+                                            detail.aop_total || 0
+                                        ).toLocaleString('en-US', {
                                             minimumFractionDigits: 2,
                                             maximumFractionDigits: 2,
                                         });
@@ -384,8 +471,22 @@ const ClientTransactions = () => {
                                                 <td>{dateStr}</td>
                                                 <td>{detail.aop_item}</td>
                                                 <td>{detail.aop_volume}</td>
-                                                <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>{charge}</td>
-                                                <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>{total}</td>
+                                                <td
+                                                    style={{
+                                                        whiteSpace: 'nowrap',
+                                                        textAlign: 'right',
+                                                    }}
+                                                >
+                                                    {charge}
+                                                </td>
+                                                <td
+                                                    style={{
+                                                        whiteSpace: 'nowrap',
+                                                        textAlign: 'right',
+                                                    }}
+                                                >
+                                                    {total}
+                                                </td>
                                                 <td>{detail.aop_remarks}</td>
                                                 {isAdmin && (
                                                     <td style={{ textAlign: 'center' }}>

@@ -39,7 +39,7 @@ const NewApplication = () => {
             try {
                 setCurrentUser(JSON.parse(savedUser));
             } catch (e) {
-                console.error("Failed to parse user", e);
+                console.error('Failed to parse user', e);
             }
         }
         loadClients();
@@ -199,10 +199,10 @@ const NewApplication = () => {
                 prev.map((item, idx) =>
                     idx === index
                         ? {
-                            ...item,
-                            pr_source: fileName,
-                            pr_wsource: 1,
-                        }
+                              ...item,
+                              pr_source: fileName,
+                              pr_wsource: 1,
+                          }
                         : item
                 )
             );
