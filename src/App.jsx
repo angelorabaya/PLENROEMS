@@ -1,54 +1,71 @@
-import React, { useState } from 'react';
+import React, { Suspense, lazy, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import Login from './pages/Login';
 import Layout from './components/Layout';
-import Home from './pages/Home';
-import Clients from './pages/Clients';
-import PermitTypes from './pages/PermitTypes';
-import PermitReqs from './pages/PermitReqs';
-import Commodity from './pages/Commodity';
-import NatureOfPayment from './pages/NatureOfPayment';
-
-import AssessmentHistory from './pages/AssessmentHistory';
-import ClientTransactions from './pages/ClientTransactions';
-import VehicleRegistration from './pages/VehicleRegistration';
-import Placeholder from './components/Placeholder';
-import Assessment from './pages/Assessment';
-import AssessmentPreview from './pages/AssessmentPreview';
-import AssessmentShare from './pages/AssessmentShare';
-import NewApplication from './pages/NewApplication';
-import NewApplicationPreview from './pages/NewApplicationPreview';
-import ProductionAudit from './pages/ProductionAudit';
-import PermitHolder from './pages/PermitHolder';
-import ProductionAuditPreview from './pages/ProductionAuditPreview';
-import DeliveryReceipts from './pages/DeliveryReceipts';
-import DocumentReceiving from './pages/DocumentReceiving';
-import DocumentOutgoing from './pages/DocumentOutgoing';
-import DocumentProbing from './pages/DocumentProbing';
-import ActivityLogs from './pages/ActivityLogs';
-import ReportsHub from './pages/ReportsHub';
-import ComparativeIncomeReport from './pages/ComparativeIncomeReport';
-import RevenueCollectionReport from './pages/RevenueCollectionReport';
-import BarangayShareReport from './pages/BarangayShareReport';
-import BarangayShareBreakdown from './pages/BarangayShareBreakdown';
-import MunicipalShareReport from './pages/MunicipalShareReport';
-import ActivePermitteesReport from './pages/ActivePermitteesReport';
-import ActivePermitteesByMunicipalityReport from './pages/ActivePermitteesByMunicipalityReport';
-import TaskForceMonthly from './pages/TaskForceMonthly';
 import BackgroundShapes from './components/BackgroundShapes';
-import OrdinanceBot from './pages/OrdinanceBot';
-import TaskForce from './pages/TaskForce';
-import DailyCollection from './pages/DailyCollection';
-import TravelAuthorization from './pages/TravelAuthorization';
-import TaskForceActivityLog from './pages/TaskForceActivityLog';
-import PersonnelTravelLogs from './pages/PersonnelTravelLogs';
-import EmployeeLeavePortal from './pages/EmployeeLeavePortal';
-
 import { ThemeProvider } from './context/ThemeContext';
 import { getTodayPHT } from './utils/dateUtils';
 
+const Login = lazy(() => import('./pages/Login'));
+const Home = lazy(() => import('./pages/Home'));
+const Clients = lazy(() => import('./pages/Clients'));
+const EmployeeDirectory = lazy(() => import('./pages/EmployeeDirectory'));
+const PermitTypes = lazy(() => import('./pages/PermitTypes'));
+const PermitReqs = lazy(() => import('./pages/PermitReqs'));
+const Commodity = lazy(() => import('./pages/Commodity'));
+const NatureOfPayment = lazy(() => import('./pages/NatureOfPayment'));
+const AssessmentHistory = lazy(() => import('./pages/AssessmentHistory'));
+const ClientTransactions = lazy(() => import('./pages/ClientTransactions'));
+const VehicleRegistration = lazy(() => import('./pages/VehicleRegistration'));
+const PermitHolder = lazy(() => import('./pages/PermitHolder'));
+const NewApplication = lazy(() => import('./pages/NewApplication'));
+const NewApplicationPreview = lazy(() => import('./pages/NewApplicationPreview'));
+const Assessment = lazy(() => import('./pages/Assessment'));
+const AssessmentPreview = lazy(() => import('./pages/AssessmentPreview'));
+const AssessmentShare = lazy(() => import('./pages/AssessmentShare'));
+const ProductionAudit = lazy(() => import('./pages/ProductionAudit'));
+const DeliveryReceipts = lazy(() => import('./pages/DeliveryReceipts'));
+const TaskForce = lazy(() => import('./pages/TaskForce'));
+const ProductionAuditPreview = lazy(() => import('./pages/ProductionAuditPreview'));
+const DocumentReceiving = lazy(() => import('./pages/DocumentReceiving'));
+const DocumentOutgoing = lazy(() => import('./pages/DocumentOutgoing'));
+const DocumentProbing = lazy(() => import('./pages/DocumentProbing'));
+const ActivityLogs = lazy(() => import('./pages/ActivityLogs'));
+const ReportsHub = lazy(() => import('./pages/ReportsHub'));
+const ComparativeIncomeReport = lazy(() => import('./pages/ComparativeIncomeReport'));
+const RevenueCollectionReport = lazy(() => import('./pages/RevenueCollectionReport'));
+const BarangayShareReport = lazy(() => import('./pages/BarangayShareReport'));
+const BarangayShareBreakdown = lazy(() => import('./pages/BarangayShareBreakdown'));
+const MunicipalShareReport = lazy(() => import('./pages/MunicipalShareReport'));
+const ActivePermitteesReport = lazy(() => import('./pages/ActivePermitteesReport'));
+const ActivePermitteesByMunicipalityReport = lazy(
+    () => import('./pages/ActivePermitteesByMunicipalityReport')
+);
+const TaskForceMonthly = lazy(() => import('./pages/TaskForceMonthly'));
+const DailyCollection = lazy(() => import('./pages/DailyCollection'));
+const TaskForceActivityLog = lazy(() => import('./pages/TaskForceActivityLog'));
+const PersonnelTravelLogs = lazy(() => import('./pages/PersonnelTravelLogs'));
+const TravelAuthorization = lazy(() => import('./pages/TravelAuthorization'));
+const EmployeeLeavePortal = lazy(() => import('./pages/EmployeeLeavePortal'));
+const OrdinanceBot = lazy(() => import('./pages/OrdinanceBot'));
+
 const CURRENT_USER_KEY = 'currentUser';
 const CURRENT_USER_LOGIN_DATE_KEY = 'currentUserLoginDate';
+
+const RouteLoadingFallback = () => (
+    <div
+        style={{
+            minHeight: '100vh',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--muted-foreground, #64748b)',
+            fontSize: '0.95rem',
+            letterSpacing: '0.02em',
+        }}
+    >
+        Loading page...
+    </div>
+);
 
 const getTodayDateKey = () => getTodayPHT();
 
@@ -98,103 +115,118 @@ function App() {
         <ThemeProvider>
             <Router>
                 <BackgroundShapes />
-                <Routes>
-                    <Route
-                        path="/login"
-                        element={
-                            !currentUser ? (
-                                <Login onLogin={handleLogin} />
-                            ) : (
-                                <Navigate to="/home" replace />
-                            )
-                        }
-                    />
-
-                    <Route
-                        element={
-                            currentUser ? (
-                                <Layout onLogout={handleLogout} currentUser={currentUser} />
-                            ) : (
-                                <Navigate to="/login" replace />
-                            )
-                        }
-                    >
-                        <Route path="/home" element={<Home />} />
-                        <Route path="/clients" element={<Clients />} />
-                        <Route path="/permittypes" element={<PermitTypes />} />
-                        <Route path="/permitreqs" element={<PermitReqs />} />
-                        <Route path="/commodity" element={<Commodity />} />
-                        <Route path="/nature-of-payment" element={<NatureOfPayment />} />
-                        <Route path="/assessment-history" element={<AssessmentHistory />} />
+                <Suspense fallback={<RouteLoadingFallback />}>
+                    <Routes>
                         <Route
-                            path="/payment"
-                            element={<Navigate to="/assessment-history" replace />}
-                        />
-                        <Route path="/transactions" element={<ClientTransactions />} />
-
-                        <Route path="/vehicle" element={<VehicleRegistration />} />
-
-                        <Route path="/holder" element={<PermitHolder />} />
-                        <Route path="/newapp" element={<NewApplication />} />
-                        <Route path="/newapp/preview" element={<NewApplicationPreview />} />
-                        <Route path="/assessment" element={<Assessment />} />
-                        <Route path="/assessment/preview" element={<AssessmentPreview />} />
-                        <Route path="/assessment/share" element={<AssessmentShare />} />
-                        <Route path="/production-audit" element={<ProductionAudit />} />
-                        <Route path="/delivery-receipts" element={<DeliveryReceipts />} />
-                        <Route path="/taskforce" element={<TaskForce />} />
-                        <Route
-                            path="/production-audit/preview"
-                            element={<ProductionAuditPreview />}
-                        />
-                        <Route path="/doc-receiving" element={<DocumentReceiving />} />
-                        <Route path="/doc-outgoing" element={<DocumentOutgoing />} />
-                        <Route path="/doc-probing" element={<DocumentProbing />} />
-                        <Route path="/activitylogs" element={<ActivityLogs />} />
-                        <Route path="/reports-hub" element={<ReportsHub />} />
-                        <Route
-                            path="/reports/comparative-income"
-                            element={<ComparativeIncomeReport />}
-                        />
-                        <Route
-                            path="/reports/revenue-collection"
-                            element={<RevenueCollectionReport />}
-                        />
-                        <Route path="/reports/barangay-share" element={<BarangayShareReport />} />
-                        <Route
-                            path="/reports/barangay-share-breakdown"
-                            element={<BarangayShareBreakdown />}
-                        />
-                        <Route path="/reports/municipal-share" element={<MunicipalShareReport />} />
-                        <Route
-                            path="/reports/active-permittees"
-                            element={<ActivePermitteesReport />}
-                        />
-                        <Route
-                            path="/reports/active-permittees-by-municipality"
-                            element={<ActivePermitteesByMunicipalityReport />}
-                        />
-                        <Route
-                            path="/reports/monthly-environmental-load-monitoring"
-                            element={<TaskForceMonthly />}
-                        />
-                        <Route path="/daily-collection" element={<DailyCollection />} />
-                        <Route path="/taskforce-activity-log" element={<TaskForceActivityLog />} />
-                        <Route path="/personnel-travel-logs" element={<PersonnelTravelLogs />} />
-                        <Route
-                            path="/travel-authorization"
-                            element={<TravelAuthorization />}
-                        />
-                        <Route
-                            path="/leave-management"
-                            element={<EmployeeLeavePortal />}
+                            path="/login"
+                            element={
+                                !currentUser ? (
+                                    <Login onLogin={handleLogin} />
+                                ) : (
+                                    <Navigate to="/home" replace />
+                                )
+                            }
                         />
 
-                        <Route path="/ordinance-bot" element={<OrdinanceBot />} />
+                        <Route
+                            element={
+                                currentUser ? (
+                                    <Layout onLogout={handleLogout} currentUser={currentUser} />
+                                ) : (
+                                    <Navigate to="/login" replace />
+                                )
+                            }
+                        >
+                            <Route path="/home" element={<Home />} />
+                            <Route path="/clients" element={<Clients />} />
+                            <Route path="/employee-directory" element={<EmployeeDirectory />} />
+                            <Route path="/permittypes" element={<PermitTypes />} />
+                            <Route path="/permitreqs" element={<PermitReqs />} />
+                            <Route path="/commodity" element={<Commodity />} />
+                            <Route path="/nature-of-payment" element={<NatureOfPayment />} />
+                            <Route path="/assessment-history" element={<AssessmentHistory />} />
+                            <Route
+                                path="/payment"
+                                element={<Navigate to="/assessment-history" replace />}
+                            />
+                            <Route path="/transactions" element={<ClientTransactions />} />
 
-                        <Route path="/" element={<Navigate to="/home" replace />} />
-                    </Route>
-                </Routes>
+                            <Route path="/vehicle" element={<VehicleRegistration />} />
+
+                            <Route path="/holder" element={<PermitHolder />} />
+                            <Route path="/newapp" element={<NewApplication />} />
+                            <Route path="/newapp/preview" element={<NewApplicationPreview />} />
+                            <Route path="/assessment" element={<Assessment />} />
+                            <Route path="/assessment/preview" element={<AssessmentPreview />} />
+                            <Route path="/assessment/share" element={<AssessmentShare />} />
+                            <Route path="/production-audit" element={<ProductionAudit />} />
+                            <Route path="/delivery-receipts" element={<DeliveryReceipts />} />
+                            <Route path="/taskforce" element={<TaskForce />} />
+                            <Route
+                                path="/production-audit/preview"
+                                element={<ProductionAuditPreview />}
+                            />
+                            <Route path="/doc-receiving" element={<DocumentReceiving />} />
+                            <Route path="/doc-outgoing" element={<DocumentOutgoing />} />
+                            <Route path="/doc-probing" element={<DocumentProbing />} />
+                            <Route path="/activitylogs" element={<ActivityLogs />} />
+                            <Route path="/reports-hub" element={<ReportsHub />} />
+                            <Route
+                                path="/reports/comparative-income"
+                                element={<ComparativeIncomeReport />}
+                            />
+                            <Route
+                                path="/reports/revenue-collection"
+                                element={<RevenueCollectionReport />}
+                            />
+                            <Route
+                                path="/reports/barangay-share"
+                                element={<BarangayShareReport />}
+                            />
+                            <Route
+                                path="/reports/barangay-share-breakdown"
+                                element={<BarangayShareBreakdown />}
+                            />
+                            <Route
+                                path="/reports/municipal-share"
+                                element={<MunicipalShareReport />}
+                            />
+                            <Route
+                                path="/reports/active-permittees"
+                                element={<ActivePermitteesReport />}
+                            />
+                            <Route
+                                path="/reports/active-permittees-by-municipality"
+                                element={<ActivePermitteesByMunicipalityReport />}
+                            />
+                            <Route
+                                path="/reports/monthly-environmental-load-monitoring"
+                                element={<TaskForceMonthly />}
+                            />
+                            <Route path="/daily-collection" element={<DailyCollection />} />
+                            <Route
+                                path="/taskforce-activity-log"
+                                element={<TaskForceActivityLog />}
+                            />
+                            <Route
+                                path="/personnel-travel-logs"
+                                element={<PersonnelTravelLogs />}
+                            />
+                            <Route
+                                path="/travel-authorization"
+                                element={<TravelAuthorization />}
+                            />
+                            <Route
+                                path="/leave-management"
+                                element={<EmployeeLeavePortal />}
+                            />
+
+                            <Route path="/ordinance-bot" element={<OrdinanceBot />} />
+
+                            <Route path="/" element={<Navigate to="/home" replace />} />
+                        </Route>
+                    </Routes>
+                </Suspense>
             </Router>
         </ThemeProvider>
     );

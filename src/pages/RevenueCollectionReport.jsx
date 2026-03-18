@@ -1,23 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../services/api';
-import {
-    Document,
-    Packer,
-    Paragraph,
-    TextRun,
-    Table,
-    TableRow,
-    TableCell,
-    WidthType,
-    AlignmentType,
-    BorderStyle,
-    HeadingLevel,
-    ShadingType,
-    VerticalAlign,
-    TableLayoutType,
-} from 'docx';
-import { saveAs } from 'file-saver';
 import '../styles/revenue-collection-print.css';
 
 /* ============================================
@@ -157,6 +140,23 @@ const RevenueCollectionReport = () => {
 
     const handleExportWord = async () => {
         if (!data) return;
+
+        const [{ saveAs }, docx] = await Promise.all([import('file-saver'), import('docx')]);
+        const {
+            Document,
+            Packer,
+            Paragraph,
+            TextRun,
+            Table,
+            TableRow,
+            TableCell,
+            WidthType,
+            AlignmentType,
+            BorderStyle,
+            ShadingType,
+            VerticalAlign,
+            TableLayoutType,
+        } = docx;
 
         // Recalculate values (same logic as the component render)
         const extFee =
