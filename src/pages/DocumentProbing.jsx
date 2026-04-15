@@ -13,6 +13,9 @@ import {
 import { api } from '../services/api';
 import plenroLogo from '../plenro.png';
 import '../styles/global.css';
+import { formatDateTimePHT } from '../utils/dateUtils';
+
+const pad2 = (value) => String(value).padStart(2, '0');
 
 const TYPE_OPTIONS = [
     'Mining Documents',
@@ -40,24 +43,43 @@ const PURPOSE_OPTIONS = [
     'For Other Appropriate Actions',
 ];
 
+const formatPlainDateTimeParts = (year, month, day, hour, minute, second) => {
+    const hourNumber = Number(hour);
+    const displayHour = hourNumber % 12 || 12;
+    const meridiem = hourNumber >= 12 ? 'PM' : 'AM';
+    return `${month}/${day}/${year}, ${pad2(displayHour)}:${minute}:${second} ${meridiem}`;
+};
+
+const formatSqlLikeDateTime = (value) => {
+    if (typeof value !== 'string') return null;
+
+    const match = value.match(
+        /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z)?$/
+    );
+
+    if (!match) return null;
+
+    const [, year, month, day, hour, minute, second] = match;
+    return formatPlainDateTimeParts(year, month, day, hour, minute, second);
+};
+
 const formatDateTime = (value) => {
     if (!value) return '';
-    try {
-        const date = new Date(value);
-        if (isNaN(date.getTime())) return value;
 
-        return date.toLocaleString('en-US', {
-            timeZone: 'Asia/Manila',
+    const sqlLikeFormatted = formatSqlLikeDateTime(value);
+    if (sqlLikeFormatted) return sqlLikeFormatted;
+
+    return (
+        formatDateTimePHT(value, 'en-US', {
             year: 'numeric',
             month: '2-digit',
             day: '2-digit',
             hour: '2-digit',
             minute: '2-digit',
+            second: '2-digit',
             hour12: true,
-        });
-    } catch (e) {
-        return value;
-    }
+        }) || String(value)
+    );
 };
 
 const DEFAULT_ATTACHMENTS_BASE_PATH = '\\\\Enro-server\\servershare\\attachments\\';
@@ -131,6 +153,13 @@ const DocumentProbing = () => {
     useEffect(() => {
         loadEmployees();
     }, []);
+
+    useEffect(() => {
+        if (!error) return undefined;
+
+        const timer = setTimeout(() => setError(''), 3000);
+        return () => clearTimeout(timer);
+    }, [error]);
 
     const loadEmployees = async () => {
         try {

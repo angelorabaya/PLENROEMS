@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { FiX } from 'react-icons/fi';
-import { getTodayPHT } from '../../utils/dateUtils';
+import { formatDateInputPHT, getTodayPHT } from '../../utils/dateUtils';
 import './Modal.css';
 
 const DeliveryReceiptModal = ({ isOpen, onClose, onSave, receipt }) => {
@@ -17,7 +17,7 @@ const DeliveryReceiptModal = ({ isOpen, onClose, onSave, receipt }) => {
         if (receipt) {
             setFormData({
                 dr_releasedate: receipt.dr_releasedate
-                    ? new Date(receipt.dr_releasedate).toISOString().split('T')[0]
+                    ? formatDateInputPHT(receipt.dr_releasedate)
                     : getTodayPHT(),
                 dr_stubno: receipt.dr_stubno || '',
                 dr_stubfrom: receipt.dr_stubfrom || '',

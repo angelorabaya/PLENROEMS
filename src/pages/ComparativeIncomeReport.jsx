@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../services/api';
+import { getCurrentYearPHT } from '../utils/dateUtils';
 import '../styles/comparative-income-print.css';
 
 const DEFAULT_PREPARED_BY_NAME = 'GERAN JOHN T. FLORES';
@@ -40,7 +41,7 @@ const formatDateFull = () => {
 const ComparativeIncomeReport = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const initialYear = searchParams.get('year') || new Date().getFullYear();
+    const initialYear = searchParams.get('year') || getCurrentYearPHT();
 
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);

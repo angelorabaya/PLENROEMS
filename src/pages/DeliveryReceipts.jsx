@@ -14,6 +14,7 @@ import plenroLogo from '../plenro.png';
 import { FiEdit2, FiTrash2, FiChevronUp, FiChevronDown } from 'react-icons/fi';
 import DeliveryReceiptModal from '../components/modals/DeliveryReceiptModal';
 import DeleteModal from '../components/modals/DeleteModal';
+import { getUserPermissions } from '../utils/permissions';
 
 const DeliveryReceipts = () => {
     const { theme } = useTheme();
@@ -39,15 +40,7 @@ const DeliveryReceipts = () => {
 
     const { currentUser } = useOutletContext();
 
-    const isAdmin = useMemo(() => {
-        if (!currentUser) return false;
-
-        const role = currentUser.role?.toLowerCase() || '';
-        const username = currentUser.log_user?.toLowerCase()?.trim() || '';
-        const access = currentUser.log_access;
-
-        return role === 'admin' || username === 'admin' || access == 1;
-    }, [currentUser]);
+    const permissions = useMemo(() => getUserPermissions(currentUser), [currentUser]);
 
     // Pagination state
     const [sorting, setSorting] = useState([]);
@@ -243,15 +236,17 @@ const DeliveryReceipts = () => {
                 enableSorting: false,
                 cell: ({ row }) => (
                     <div className="actions-container">
-                        <button
-                            className="btn-edit"
-                            title="Edit"
-                            onClick={() => handleEditClick(row.original)}
-                        >
-                            <FiEdit2 className="icon-sm" />
-                        </button>
+                        {permissions.canUpdate && (
+                            <button
+                                className="btn-edit"
+                                title="Edit"
+                                onClick={() => handleEditClick(row.original)}
+                            >
+                                <FiEdit2 className="icon-sm" />
+                            </button>
+                        )}
 
-                        {isAdmin && (
+                        {permissions.canDelete && (
                             <button
                                 className="btn-delete"
                                 title="Delete"
@@ -264,7 +259,7 @@ const DeliveryReceipts = () => {
                 ),
             },
         ],
-        [isAdmin]
+        [permissions.canDelete, permissions.canUpdate]
     );
 
     // Initialize TanStack Table
@@ -303,13 +298,15 @@ const DeliveryReceipts = () => {
                     <h1 className="page-title">Delivery Receipts</h1>
                 </div>
                 <div className="page-actions">
-                    <button
-                        className="btn btn-primary"
-                        onClick={handleAddClick}
-                        disabled={!selectedClientId}
-                    >
-                        + Add New
-                    </button>
+                    {permissions.canCreate && (
+                        <button
+                            className="btn btn-primary"
+                            onClick={handleAddClick}
+                            disabled={!selectedClientId}
+                        >
+                            + Add New
+                        </button>
+                    )}
                 </div>
             </div>
 

@@ -12,6 +12,7 @@ import { api } from '../services/api';
 import NatureOfPaymentDetailModal from '../components/modals/NatureOfPaymentDetailModal';
 import DeleteModal from '../components/modals/DeleteModal';
 import '../styles/global.css';
+import { getUserPermissions } from '../utils/permissions';
 
 const NatureOfPayment = () => {
     const [natures, setNatures] = useState([]);
@@ -33,10 +34,7 @@ const NatureOfPayment = () => {
 
     // Check admin status
     const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
-    const isAdmin =
-        currentUser.log_user === 'admin' ||
-        currentUser.log_access === 1 ||
-        currentUser.log_access === '1';
+    const permissions = getUserPermissions(currentUser);
 
     const tableContainerRef = React.useRef(null);
 
@@ -196,14 +194,16 @@ const NatureOfPayment = () => {
                 enableSorting: false,
                 cell: ({ row }) => (
                     <div className="actions-container">
-                        <button
-                            className="btn-edit"
-                            onClick={() => handleEditDetail(row.original)}
-                            title="Edit"
-                        >
-                            <FiEdit2 className="icon-sm" />
-                        </button>
-                        {isAdmin && (
+                        {permissions.canUpdate && (
+                            <button
+                                className="btn-edit"
+                                onClick={() => handleEditDetail(row.original)}
+                                title="Edit"
+                            >
+                                <FiEdit2 className="icon-sm" />
+                            </button>
+                        )}
+                        {permissions.canDelete && (
                             <button
                                 className="btn-delete"
                                 onClick={() => handleDeleteClick(row.original)}
@@ -216,7 +216,7 @@ const NatureOfPayment = () => {
                 ),
             },
         ],
-        [isAdmin]
+        [permissions.canDelete, permissions.canUpdate]
     );
 
     // Initialize TanStack Table
@@ -262,7 +262,7 @@ const NatureOfPayment = () => {
                             disabled={!selectedNature}
                         />
                     </div>
-                    {selectedNature && (
+                    {selectedNature && permissions.canCreate && (
                         <button className="btn btn-primary" onClick={handleAddDetail}>
                             <FiPlus size={16} />
                             Add Detail

@@ -1,11 +1,12 @@
-import React, { Suspense, lazy, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import Layout from './components/Layout';
 import BackgroundShapes from './components/BackgroundShapes';
 import { ThemeProvider } from './context/ThemeContext';
-import { getTodayPHT } from './utils/dateUtils';
+import { api } from './services/api';
+import { applyServerTimeSnapshot, getTodayPHT } from './utils/dateUtils';
+import Login from './pages/Login';
 
-const Login = lazy(() => import('./pages/Login'));
+const Layout = lazy(() => import('./components/Layout'));
 const Home = lazy(() => import('./pages/Home'));
 const Clients = lazy(() => import('./pages/Clients'));
 const EmployeeDirectory = lazy(() => import('./pages/EmployeeDirectory'));
@@ -47,6 +48,7 @@ const PersonnelTravelLogs = lazy(() => import('./pages/PersonnelTravelLogs'));
 const TravelAuthorization = lazy(() => import('./pages/TravelAuthorization'));
 const EmployeeLeavePortal = lazy(() => import('./pages/EmployeeLeavePortal'));
 const OrdinanceBot = lazy(() => import('./pages/OrdinanceBot'));
+const UserManagement = lazy(() => import('./pages/UserManagement'));
 
 const CURRENT_USER_KEY = 'currentUser';
 const CURRENT_USER_LOGIN_DATE_KEY = 'currentUserLoginDate';
@@ -97,6 +99,50 @@ function App() {
     const [currentUser, setCurrentUser] = useState(() => {
         return getStoredCurrentUser();
     });
+    const [isServerTimeReady, setIsServerTimeReady] = useState(false);
+
+    useEffect(() => {
+        let isMounted = true;
+
+        const syncServerTime = async () => {
+            try {
+                const snapshot = await api.getServerTime();
+                if (!isMounted) return;
+
+                applyServerTimeSnapshot(snapshot);
+
+                const saved = localStorage.getItem(CURRENT_USER_KEY);
+                const loginDate = localStorage.getItem(CURRENT_USER_LOGIN_DATE_KEY);
+                const today = getTodayDateKey();
+
+                if (saved && loginDate && loginDate !== today) {
+                    setCurrentUser(null);
+                    localStorage.removeItem(CURRENT_USER_KEY);
+                    localStorage.removeItem(CURRENT_USER_LOGIN_DATE_KEY);
+                }
+            } catch (error) {
+                console.error('Failed to sync server time', error);
+            } finally {
+                if (isMounted) {
+                    setIsServerTimeReady(true);
+                }
+            }
+        };
+
+        syncServerTime();
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
+
+    if (!isServerTimeReady) {
+        return (
+            <ThemeProvider>
+                <RouteLoadingFallback />
+            </ThemeProvider>
+        );
+    }
 
     const handleLogin = (user) => {
         setCurrentUser(user);
@@ -212,14 +258,9 @@ function App() {
                                 path="/personnel-travel-logs"
                                 element={<PersonnelTravelLogs />}
                             />
-                            <Route
-                                path="/travel-authorization"
-                                element={<TravelAuthorization />}
-                            />
-                            <Route
-                                path="/leave-management"
-                                element={<EmployeeLeavePortal />}
-                            />
+                            <Route path="/travel-authorization" element={<TravelAuthorization />} />
+                            <Route path="/leave-management" element={<EmployeeLeavePortal />} />
+                            <Route path="/user-management" element={<UserManagement />} />
 
                             <Route path="/ordinance-bot" element={<OrdinanceBot />} />
 

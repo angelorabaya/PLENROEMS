@@ -5,6 +5,7 @@ const dotenv = require('dotenv');
 const path = require('path');
 const fs = require('fs');
 const { logActivity } = require('./utils/logger');
+const { toSqlDateLiteral, toSqlDateTimeLiteral } = require('./utils/dateTime');
 const bcrypt = require('bcrypt');
 const ExcelJS = require('exceljs');
 
@@ -13,129 +14,550 @@ const rootEnvPath = path.resolve(__dirname, '..', '.env');
 
 // Load backend-specific .env first
 try {
-  const parsed = dotenv.parse(fs.readFileSync(envPath));
-  Object.entries(parsed).forEach(([key, value]) => {
-    process.env[key] = value;
-  });
-  // eslint-disable-next-line no-console
-  console.log('📄 Loaded backend env from:', envPath);
+    const parsed = dotenv.parse(fs.readFileSync(envPath));
+    Object.entries(parsed).forEach(([key, value]) => {
+        process.env[key] = value;
+    });
+    // eslint-disable-next-line no-console
+    console.log('📄 Loaded backend env from:', envPath);
 } catch (err) {
-  // eslint-disable-next-line no-console
-  console.warn('⚠️  Failed to load backend .env file:', envPath, err.message);
+    // eslint-disable-next-line no-console
+    console.warn('⚠️  Failed to load backend .env file:', envPath, err.message);
 }
 
 // Load root .env for shared variables (like VITE_ATTACHMENTS_BASE_PATH)
 try {
-  const rootParsed = dotenv.parse(fs.readFileSync(rootEnvPath));
-  Object.entries(rootParsed).forEach(([key, value]) => {
-    // Only set if not already defined in backend .env
-    if (process.env[key] === undefined) {
-      process.env[key] = value;
-    }
-  });
-  // eslint-disable-next-line no-console
-  console.log('📄 Loaded root env from:', rootEnvPath);
+    const rootParsed = dotenv.parse(fs.readFileSync(rootEnvPath));
+    Object.entries(rootParsed).forEach(([key, value]) => {
+        // Only set if not already defined in backend .env
+        if (process.env[key] === undefined) {
+            process.env[key] = value;
+        }
+    });
+    // eslint-disable-next-line no-console
+    console.log('📄 Loaded root env from:', rootEnvPath);
 } catch (err) {
-  // eslint-disable-next-line no-console
-  console.warn('⚠️  Failed to load root .env file:', rootEnvPath, err.message);
+    // eslint-disable-next-line no-console
+    console.warn('⚠️  Failed to load root .env file:', rootEnvPath, err.message);
 }
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
-app.use(cors({
-  exposedHeaders: ['x-log-user', 'x-log-cname'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-log-user', 'x-log-cname']
-}));
+app.use(
+    cors({
+        exposedHeaders: ['x-log-user', 'x-log-cname'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'x-log-user', 'x-log-cname'],
+    })
+);
 
 // SQL Server Configuration
 const config = {
-  user: process.env.DB_USER || 'sa',
-  password: process.env.DB_PASSWORD || 'YourPassword123',
-  server: process.env.DB_SERVER || 'localhost',
-  database: process.env.DB_NAME || 'PLENRO',
-  authentication: {
-    type: 'default'
-  },
-  options: {
-    encrypt: false,
-    trustServerCertificate: true,
-    enableKeepAlive: true,
-    connectionTimeout: 30000,
-    requestTimeout: 30000
-  }
+    user: process.env.DB_USER || 'sa',
+    password: process.env.DB_PASSWORD || 'YourPassword123',
+    server: process.env.DB_SERVER || 'localhost',
+    database: process.env.DB_NAME || 'PLENRO',
+    authentication: {
+        type: 'default',
+    },
+    options: {
+        encrypt: false,
+        trustServerCertificate: true,
+        enableKeepAlive: true,
+        connectionTimeout: 30000,
+        requestTimeout: 30000,
+    },
 };
 
 let pool;
 const DEFAULT_ATTACHMENTS_BASE_PATH = '\\\\Enro-server\\servershare\\attachments\\';
 const normalizeAttachmentBasePath = (value) => {
-  const base = value && value.trim() ? value.trim() : DEFAULT_ATTACHMENTS_BASE_PATH;
-  const sanitized = base.replace(/[\\/]*$/, '');
-  return `${sanitized}\\`;
+    const base = value && value.trim() ? value.trim() : DEFAULT_ATTACHMENTS_BASE_PATH;
+    const sanitized = base.replace(/[\\/]*$/, '');
+    return `${sanitized}\\`;
 };
 // Support both ATTACHMENTS_BASE_PATH (backend) and VITE_ATTACHMENTS_BASE_PATH (shared)
 const ATTACHMENTS_BASE_PATH = normalizeAttachmentBasePath(
-  process.env.ATTACHMENTS_BASE_PATH || process.env.VITE_ATTACHMENTS_BASE_PATH
+    process.env.ATTACHMENTS_BASE_PATH || process.env.VITE_ATTACHMENTS_BASE_PATH
 );
+const SQL_MANILA_TIME_ZONE = 'Singapore Standard Time';
+const SQL_MANILA_NOW_EXPR = `CAST(SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE '${SQL_MANILA_TIME_ZONE}' AS datetime2(3))`;
+const SQL_MANILA_TODAY_EXPR = `CAST(${SQL_MANILA_NOW_EXPR} AS date)`;
+const SQL_MANILA_YEAR_EXPR = `DATEPART(YEAR, ${SQL_MANILA_TODAY_EXPR})`;
 console.log('📁 Attachments path:', ATTACHMENTS_BASE_PATH);
 
 // eslint-disable-next-line no-console
 console.log('📄 Effective DB env:', {
-  DB_SERVER: process.env.DB_SERVER,
-  DB_NAME: process.env.DB_NAME,
-  DB_USER: process.env.DB_USER
+    DB_SERVER: process.env.DB_SERVER,
+    DB_NAME: process.env.DB_NAME,
+    DB_USER: process.env.DB_USER,
 });
 
 // Initialize SQL Pool
 async function initializePool() {
-  try {
-    pool = new sql.ConnectionPool(config);
-    await pool.connect();
-    console.log('✅ SQL Server Connected Successfully!');
-    console.log(`📊 Connected to: ${config.server}/${config.database}`);
-    return true;
-  } catch (err) {
-    console.error('❌ SQL Server Connection Error:', err.message);
-    console.error('🔧 Check your .env file credentials');
-    setTimeout(initializePool, 5000);
-    return false;
-  }
+    try {
+        pool = new sql.ConnectionPool(config);
+        await pool.connect();
+        console.log('✅ SQL Server Connected Successfully!');
+        console.log(`📊 Connected to: ${config.server}/${config.database}`);
+        return true;
+    } catch (err) {
+        console.error('❌ SQL Server Connection Error:', err.message);
+        console.error('🔧 Check your .env file credentials');
+        setTimeout(initializePool, 5000);
+        return false;
+    }
 }
 
 initializePool();
 
 // Middleware to check pool connection
 const checkPool = (req, res, next) => {
-  if (!pool) {
-    return res.status(503).json({ error: 'Database connection not established' });
-  }
-  next();
+    if (!pool || !pool.connected) {
+        return res.status(503).json({ error: 'Database connection not established' });
+    }
+    next();
 };
 
 app.use(checkPool);
 
+// Prevent browser and proxy caching on API responses
+app.use('/api', (req, res, next) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    res.set('Surrogate-Control', 'no-store');
+    next();
+});
 
+app.get('/api/system/time', async (req, res) => {
+    try {
+        const request = pool.request();
+        const result = await request.query(`
+      SELECT
+        CONVERT(varchar(24), SYSUTCDATETIME(), 126) + 'Z' AS serverNowUtc,
+        CONVERT(varchar(23), ${SQL_MANILA_NOW_EXPR}, 126) AS manilaDateTime,
+        CONVERT(varchar(10), ${SQL_MANILA_TODAY_EXPR}, 23) AS manilaDate,
+        ${SQL_MANILA_YEAR_EXPR} AS manilaYear
+    `);
+
+        res.json(result.recordset[0] || null);
+    } catch (err) {
+        console.error('❌ Get System Time Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch server time: ' + err.message });
+    }
+});
 
 // ==================== LOGIN ENDPOINTS ====================
 
 // ==================== AUTHENTICATION ====================
 
-app.post('/api/login', async (req, res) => {
-  try {
-    const { log_user, log_pass } = req.body;
+const buildLoginUserPayload = (user, options = {}) => {
+    const normalizedRole = String(user.log_role || '')
+        .trim()
+        .toLowerCase();
+    return {
+        log_id: user.log_ctrlno,
+        log_user: user.log_user,
+        log_cname: user.log_cname,
+        log_empid: user.log_empid,
+        log_access: user.log_access,
+        log_mining: user.log_mining,
+        log_dmsr: user.log_dmsr,
+        log_dmst: user.log_dmst,
+        log_reports: user.log_reports,
+        log_role: user.log_role,
+        requirePasswordChange: Boolean(options.requirePasswordChange),
+        role: normalizedRole || 'viewer',
+    };
+};
 
-    if (!log_user || !log_pass) {
-      return res.status(400).json({ error: 'Username and password required' });
+const isAdminLoginUser = (user) => {
+    if (!user) return false;
+
+    const role = String(user.log_role || '')
+        .trim()
+        .toLowerCase();
+    const username = String(user.log_user || '')
+        .trim()
+        .toLowerCase();
+    const access = Number(user.log_access || 0);
+
+    return (
+        role === 'admin' ||
+        username === 'admin' ||
+        username === 'builtin administrator' ||
+        access === 1
+    );
+};
+
+const normalizeManagedUserRole = (value) => {
+    const normalized = String(value || '')
+        .trim()
+        .toLowerCase();
+
+    if (normalized === 'admin') return 'Admin';
+    if (normalized === 'editor') return 'Editor';
+    if (normalized === 'viewer') return 'Viewer';
+
+    return null;
+};
+
+const getManagedUserFlags = (role) => {
+    switch (role) {
+        case 'Admin':
+            return {
+                log_access: 1,
+                log_mining: true,
+                log_dmsr: true,
+                log_dmst: true,
+                log_reports: true,
+            };
+        case 'Editor':
+            return {
+                log_access: 0,
+                log_mining: true,
+                log_dmsr: true,
+                log_dmst: true,
+                log_reports: true,
+            };
+        case 'Viewer':
+            return {
+                log_access: 0,
+                log_mining: false,
+                log_dmsr: false,
+                log_dmst: false,
+                log_reports: true,
+            };
+        default:
+            return null;
+    }
+};
+
+const sanitizeManagedUserForAudit = (user) => {
+    if (!user) return user;
+
+    return {
+        ...user,
+        log_pass: user.log_pass !== undefined ? '[REDACTED]' : user.log_pass,
+        log_passhash: user.log_passhash ? '[REDACTED]' : user.log_passhash,
+    };
+};
+
+const isProtectedManagedUser = (logUser) =>
+    String(logUser || '')
+        .trim()
+        .toLowerCase() === 'admin';
+
+const requireAdminLogin = async (req, res) => {
+    const requestingUser = String(req.headers['x-log-user'] || '').trim();
+
+    if (!requestingUser) {
+        res.status(401).json({ error: 'Missing login context' });
+        return null;
     }
 
-    // Removed tbl_users query to fix "Invalid object name" error.
-    // Proceeding to tbl_login authentication.
+    const request = pool.request();
+    request.input('log_user', sql.NVarChar(255), requestingUser.toUpperCase());
 
-    // Fallback to old tbl_login for backward compatibility
-    const oldRequest = pool.request();
-    oldRequest.input('log_user', sql.VarChar, log_user.toUpperCase());
-    oldRequest.input('log_pass', sql.VarChar, log_pass);
+    const result = await request.query(`
+    SELECT [log_ctrlno]
+          ,[log_user]
+          ,[log_access]
+          ,[log_role]
+    FROM [tbl_login]
+    WHERE [log_user] = @log_user
+  `);
 
-    const oldResult = await oldRequest.query(`
+    const user = result.recordset[0];
+
+    if (!user) {
+        res.status(401).json({ error: 'Current user not found' });
+        return null;
+    }
+
+    if (!isAdminLoginUser(user)) {
+        res.status(403).json({ error: 'Admin access required' });
+        return null;
+    }
+
+    return user;
+};
+
+app.post('/api/login', async (req, res) => {
+    try {
+        const { log_user, log_pass } = req.body;
+
+        if (!log_user || !log_pass) {
+            return res.status(400).json({ error: 'Username and password required' });
+        }
+
+        const loginRequest = pool.request();
+        loginRequest.input('log_user', sql.VarChar, log_user.toUpperCase());
+
+        const loginResult = await loginRequest.query(`
+      SELECT [log_ctrlno]
+            ,[log_user]
+            ,[log_pass]
+            ,[log_passhash]
+            ,[log_access]
+            ,[log_cname]
+            ,[log_empid]
+            ,[log_mining]
+            ,[log_dmsr]
+            ,[log_dmst]
+            ,[log_reports]
+            ,[log_role]
+      FROM [tbl_login] 
+      WHERE log_user = @log_user
+    `);
+
+        if (loginResult.recordset.length === 0) {
+            return res.status(401).json({ error: 'Invalid username or password' });
+        }
+
+        const user = loginResult.recordset[0];
+        const storedHash = (user.log_passhash || '').trim();
+        const storedLegacyPassword = user.log_pass || '';
+
+        let isPasswordValid = false;
+        let requirePasswordChange = false;
+
+        if (storedHash) {
+            isPasswordValid = await bcrypt.compare(log_pass, storedHash);
+        } else {
+            isPasswordValid = storedLegacyPassword === log_pass;
+            requirePasswordChange = isPasswordValid;
+        }
+
+        if (!isPasswordValid) {
+            return res.status(401).json({ error: 'Invalid username or password' });
+        }
+
+        res.json(buildLoginUserPayload(user, { requirePasswordChange }));
+    } catch (err) {
+        console.error('Login Error:', err.message);
+        res.status(500).json({ error: 'Login failed: ' + err.message });
+    }
+});
+
+app.post('/api/login/change-password', async (req, res) => {
+    try {
+        const { log_user, old_password, new_password } = req.body;
+
+        if (!log_user || !old_password || !new_password) {
+            return res
+                .status(400)
+                .json({ error: 'Username, old password, and new password are required' });
+        }
+
+        if (new_password.length < 8) {
+            return res
+                .status(400)
+                .json({ error: 'New password must be at least 8 characters long' });
+        }
+
+        const request = pool.request();
+        request.input('log_user', sql.VarChar, String(log_user).toUpperCase());
+
+        const result = await request.query(`
+      SELECT [log_ctrlno]
+            ,[log_user]
+            ,[log_pass]
+            ,[log_passhash]
+            ,[log_access]
+            ,[log_cname]
+            ,[log_empid]
+            ,[log_mining]
+            ,[log_dmsr]
+            ,[log_dmst]
+            ,[log_reports]
+            ,[log_role]
+      FROM [tbl_login]
+      WHERE [log_user] = @log_user
+    `);
+
+        if (result.recordset.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const user = result.recordset[0];
+        const storedHash = (user.log_passhash || '').trim();
+        const storedLegacyPassword = user.log_pass || '';
+
+        let oldPasswordMatches = false;
+        if (storedHash) {
+            oldPasswordMatches = await bcrypt.compare(old_password, storedHash);
+        } else {
+            oldPasswordMatches = storedLegacyPassword === old_password;
+        }
+
+        if (!oldPasswordMatches) {
+            return res.status(401).json({ error: 'Old password is incorrect' });
+        }
+
+        const newHash = await bcrypt.hash(new_password, 10);
+
+        const updateRequest = pool.request();
+        updateRequest.input('log_ctrlno', sql.Int, user.log_ctrlno);
+        updateRequest.input('log_passhash', sql.NVarChar(255), newHash);
+
+        await updateRequest.query(`
+      UPDATE [tbl_login]
+      SET [log_passhash] = @log_passhash
+      WHERE [log_ctrlno] = @log_ctrlno
+    `);
+
+        res.json({
+            success: true,
+            user: buildLoginUserPayload(user, { requirePasswordChange: false }),
+        });
+    } catch (err) {
+        console.error('Change Password Error:', err.message);
+        res.status(500).json({ error: 'Failed to change password: ' + err.message });
+    }
+});
+
+app.get('/api/users', async (req, res) => {
+    try {
+        if (!(await requireAdminLogin(req, res))) return;
+
+        const result = await pool.request().query(`
+      SELECT [log_ctrlno]
+            ,[log_user]
+            ,[log_pass]
+            ,[log_cname]
+            ,[log_passhash]
+            ,[log_role]
+      FROM [tbl_login]
+      ORDER BY [log_user]
+    `);
+
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('Get Users Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch users: ' + err.message });
+    }
+});
+
+app.post('/api/users', async (req, res) => {
+    try {
+        if (!(await requireAdminLogin(req, res))) return;
+
+        const normalizedUser = String(req.body.log_user || '')
+            .trim()
+            .toUpperCase();
+        const password = String(req.body.password || '');
+        const displayName = String(req.body.log_cname || '').trim();
+        const normalizedRole = normalizeManagedUserRole(req.body.log_role);
+
+        if (!normalizedUser || !displayName || !normalizedRole) {
+            return res.status(400).json({ error: 'User, name, and role are required' });
+        }
+
+        if (password.length < 8) {
+            return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+        }
+
+        const roleFlags = getManagedUserFlags(normalizedRole);
+        const passwordHash = await bcrypt.hash(password, 10);
+
+        const duplicateRequest = pool.request();
+        duplicateRequest.input('log_user', sql.NVarChar(255), normalizedUser);
+        const duplicateResult = await duplicateRequest.query(`
+      SELECT TOP 1 [log_ctrlno]
+      FROM [tbl_login]
+      WHERE [log_user] = @log_user
+    `);
+
+        if (duplicateResult.recordset.length > 0) {
+            return res.status(409).json({ error: 'User already exists' });
+        }
+
+        const insertRequest = pool.request();
+        insertRequest.input('log_user', sql.NVarChar(255), normalizedUser);
+        insertRequest.input('log_pass', sql.NVarChar(255), '');
+        insertRequest.input('log_access', sql.Int, roleFlags.log_access);
+        insertRequest.input('log_cname', sql.NVarChar(255), displayName);
+        insertRequest.input('log_empid', sql.Int, null);
+        insertRequest.input('log_mining', sql.Bit, roleFlags.log_mining);
+        insertRequest.input('log_dmsr', sql.Bit, roleFlags.log_dmsr);
+        insertRequest.input('log_dmst', sql.Bit, roleFlags.log_dmst);
+        insertRequest.input('log_reports', sql.Bit, roleFlags.log_reports);
+        insertRequest.input('log_passhash', sql.NVarChar(255), passwordHash);
+        insertRequest.input('log_role', sql.NVarChar(100), normalizedRole);
+
+        const insertResult = await insertRequest.query(`
+      INSERT INTO [tbl_login]
+           ([log_user]
+           ,[log_pass]
+           ,[log_access]
+           ,[log_cname]
+           ,[log_empid]
+           ,[log_mining]
+           ,[log_dmsr]
+           ,[log_dmst]
+           ,[log_reports]
+           ,[log_passhash]
+           ,[log_role])
+      OUTPUT inserted.[log_ctrlno]
+      VALUES
+           (@log_user
+           ,@log_pass
+           ,@log_access
+           ,@log_cname
+           ,@log_empid
+           ,@log_mining
+           ,@log_dmsr
+           ,@log_dmst
+           ,@log_reports
+           ,@log_passhash
+           ,@log_role)
+    `);
+
+        await logActivity(pool, req, {
+            action: 'CREATE',
+            tableName: 'tbl_login',
+            recordId: insertResult.recordset[0]?.log_ctrlno || normalizedUser,
+            newValues: sanitizeManagedUserForAudit({
+                log_user: normalizedUser,
+                log_pass: '',
+                log_cname: displayName,
+                log_passhash: passwordHash,
+                log_role: normalizedRole,
+            }),
+        });
+
+        res.json({ message: 'User created successfully' });
+    } catch (err) {
+        console.error('Create User Error:', err.message);
+        res.status(500).json({ error: 'Failed to create user: ' + err.message });
+    }
+});
+
+app.put('/api/users/:id', async (req, res) => {
+    try {
+        const adminUser = await requireAdminLogin(req, res);
+        if (!adminUser) return;
+
+        const { id } = req.params;
+        const normalizedUser = String(req.body.log_user || '')
+            .trim()
+            .toUpperCase();
+        const password = String(req.body.password || '');
+        const displayName = String(req.body.log_cname || '').trim();
+        const normalizedRole = normalizeManagedUserRole(req.body.log_role);
+
+        if (!normalizedUser || !displayName || !normalizedRole) {
+            return res.status(400).json({ error: 'User, name, and role are required' });
+        }
+
+        if (password && password.length < 8) {
+            return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+        }
+
+        const existingRequest = pool.request();
+        existingRequest.input('log_ctrlno', sql.Int, Number(id));
+        const existingResult = await existingRequest.query(`
       SELECT [log_ctrlno]
             ,[log_user]
             ,[log_pass]
@@ -146,43 +568,191 @@ app.post('/api/login', async (req, res) => {
             ,[log_dmsr]
             ,[log_dmst]
             ,[log_reports]
-      FROM [tbl_login] 
-      WHERE log_user = @log_user AND log_pass = @log_pass
+            ,[log_passhash]
+            ,[log_role]
+      FROM [tbl_login]
+      WHERE [log_ctrlno] = @log_ctrlno
     `);
 
-    if (oldResult.recordset.length === 0) {
-      return res.status(401).json({ error: 'Invalid username or password' });
-    }
+        if (existingResult.recordset.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
 
-    const user = oldResult.recordset[0];
-    res.json({
-      log_id: user.log_ctrlno,
-      log_user: user.log_user,
-      log_cname: user.log_cname,
-      log_access: user.log_access,
-      log_mining: user.log_mining,
-      log_dmsr: user.log_dmsr,
-      log_dmst: user.log_dmst,
-      log_reports: user.log_reports,
-      role: 'viewer', // Keeping default role logic for now unless access levels map to roles
-      role_id: 4
-    });
-  } catch (err) {
-    console.error('Login Error:', err.message);
-    res.status(500).json({ error: 'Login failed: ' + err.message });
-  }
+        const existingUser = existingResult.recordset[0];
+
+        if (isProtectedManagedUser(existingUser.log_user)) {
+            return res.status(400).json({ error: 'The admin account cannot be edited' });
+        }
+
+        if (
+            String(existingUser.log_user || '')
+                .trim()
+                .toUpperCase() ===
+                String(adminUser.log_user || '')
+                    .trim()
+                    .toUpperCase() &&
+            String(normalizedRole || '')
+                .trim()
+                .toLowerCase() !==
+                String(existingUser.log_role || '')
+                    .trim()
+                    .toLowerCase()
+        ) {
+            return res
+                .status(400)
+                .json({ error: 'You cannot change your own role while logged in' });
+        }
+
+        const duplicateRequest = pool.request();
+        duplicateRequest.input('log_user', sql.NVarChar(255), normalizedUser);
+        duplicateRequest.input('log_ctrlno', sql.Int, Number(id));
+        const duplicateResult = await duplicateRequest.query(`
+      SELECT TOP 1 [log_ctrlno]
+      FROM [tbl_login]
+      WHERE [log_user] = @log_user
+        AND [log_ctrlno] <> @log_ctrlno
+    `);
+
+        if (duplicateResult.recordset.length > 0) {
+            return res.status(409).json({ error: 'User already exists' });
+        }
+
+        const roleFlags = getManagedUserFlags(normalizedRole);
+        const passwordHash = password ? await bcrypt.hash(password, 10) : existingUser.log_passhash;
+        const legacyPassword = password ? '' : existingUser.log_pass;
+
+        const updateRequest = pool.request();
+        updateRequest.input('log_ctrlno', sql.Int, Number(id));
+        updateRequest.input('log_user', sql.NVarChar(255), normalizedUser);
+        updateRequest.input('log_pass', sql.NVarChar(255), legacyPassword);
+        updateRequest.input('log_access', sql.Int, roleFlags.log_access);
+        updateRequest.input('log_cname', sql.NVarChar(255), displayName);
+        updateRequest.input('log_mining', sql.Bit, roleFlags.log_mining);
+        updateRequest.input('log_dmsr', sql.Bit, roleFlags.log_dmsr);
+        updateRequest.input('log_dmst', sql.Bit, roleFlags.log_dmst);
+        updateRequest.input('log_reports', sql.Bit, roleFlags.log_reports);
+        updateRequest.input('log_passhash', sql.NVarChar(255), passwordHash);
+        updateRequest.input('log_role', sql.NVarChar(100), normalizedRole);
+
+        await updateRequest.query(`
+      UPDATE [tbl_login]
+      SET [log_user] = @log_user,
+          [log_pass] = @log_pass,
+          [log_access] = @log_access,
+          [log_cname] = @log_cname,
+          [log_mining] = @log_mining,
+          [log_dmsr] = @log_dmsr,
+          [log_dmst] = @log_dmst,
+          [log_reports] = @log_reports,
+          [log_passhash] = @log_passhash,
+          [log_role] = @log_role
+      WHERE [log_ctrlno] = @log_ctrlno
+    `);
+
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_login',
+            recordId: id,
+            oldValues: sanitizeManagedUserForAudit(existingUser),
+            newValues: sanitizeManagedUserForAudit({
+                ...existingUser,
+                log_user: normalizedUser,
+                log_pass: legacyPassword,
+                log_access: roleFlags.log_access,
+                log_cname: displayName,
+                log_mining: roleFlags.log_mining,
+                log_dmsr: roleFlags.log_dmsr,
+                log_dmst: roleFlags.log_dmst,
+                log_reports: roleFlags.log_reports,
+                log_passhash: passwordHash,
+                log_role: normalizedRole,
+            }),
+        });
+
+        res.json({ message: 'User updated successfully' });
+    } catch (err) {
+        console.error('Update User Error:', err.message);
+        res.status(500).json({ error: 'Failed to update user: ' + err.message });
+    }
 });
 
+app.delete('/api/users/:id', async (req, res) => {
+    try {
+        const adminUser = await requireAdminLogin(req, res);
+        if (!adminUser) return;
 
+        const { id } = req.params;
+
+        const existingRequest = pool.request();
+        existingRequest.input('log_ctrlno', sql.Int, Number(id));
+        const existingResult = await existingRequest.query(`
+      SELECT [log_ctrlno]
+            ,[log_user]
+            ,[log_pass]
+            ,[log_access]
+            ,[log_cname]
+            ,[log_empid]
+            ,[log_mining]
+            ,[log_dmsr]
+            ,[log_dmst]
+            ,[log_reports]
+            ,[log_passhash]
+            ,[log_role]
+      FROM [tbl_login]
+      WHERE [log_ctrlno] = @log_ctrlno
+    `);
+
+        if (existingResult.recordset.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const existingUser = existingResult.recordset[0];
+
+        if (isProtectedManagedUser(existingUser.log_user)) {
+            return res.status(400).json({ error: 'The admin account cannot be deleted' });
+        }
+
+        if (
+            String(existingUser.log_user || '')
+                .trim()
+                .toUpperCase() ===
+            String(adminUser.log_user || '')
+                .trim()
+                .toUpperCase()
+        ) {
+            return res
+                .status(400)
+                .json({ error: 'You cannot delete your own account while logged in' });
+        }
+
+        const deleteRequest = pool.request();
+        deleteRequest.input('log_ctrlno', sql.Int, Number(id));
+        await deleteRequest.query(`
+      DELETE FROM [tbl_login]
+      WHERE [log_ctrlno] = @log_ctrlno
+    `);
+
+        await logActivity(pool, req, {
+            action: 'DELETE',
+            tableName: 'tbl_login',
+            recordId: id,
+            oldValues: sanitizeManagedUserForAudit(existingUser),
+        });
+
+        res.json({ message: 'User deleted successfully' });
+    } catch (err) {
+        console.error('Delete User Error:', err.message);
+        res.status(500).json({ error: 'Failed to delete user: ' + err.message });
+    }
+});
 
 // ==================== CLIENTS ENDPOINTS ====================
 
-
 app.get('/api/clients', async (req, res) => {
-  try {
-    const request = pool.request();
+    try {
+        const request = pool.request();
 
-    const result = await request.query(`
+        const result = await request.query(`
       SELECT [ph_ctrlno]
             ,[ph_lname]
             ,[ph_fname]
@@ -201,38 +771,77 @@ app.get('/api/clients', async (req, res) => {
       ORDER BY [ph_cname]
     `);
 
-    console.log(`✅ Fetched ${result.recordset.length} clients`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Clients Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch clients: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} clients`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Clients Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch clients: ' + err.message });
+    }
+});
+
+app.get('/api/clients/applicants', async (req, res) => {
+    try {
+        const request = pool.request();
+
+        const result = await request.query(`
+      SELECT c.ph_ctrlno,
+             c.ph_cname,
+             CONCAT_WS(', ', NULLIF(TRIM(c.ph_address1), ''), NULLIF(TRIM(c.ph_address2), '')) AS caddress,
+             c.ph_TIN,
+             c.ph_contact,
+             c.ph_ctype,
+             c.ph_tpermit
+      FROM tbl_client AS c
+      WHERE (c.ph_ctype = 'New Applicant' AND c.ph_tpermit IS NULL)
+         OR (c.ph_ctype = 'Permit Holder - Applicant')
+      ORDER BY c.ph_cname;
+    `);
+
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('Get Applicant Clients Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch applicant clients: ' + err.message });
+    }
 });
 
 app.post('/api/clients', async (req, res) => {
-  try {
-    const { ph_lname, ph_fname, ph_minitial, ph_suffix, ph_cname, ph_address1, ph_address2, ph_TIN, ph_photosrc, ph_ctype, ph_contact, ph_corporate, ph_tpermit } = req.body;
+    try {
+        const {
+            ph_lname,
+            ph_fname,
+            ph_minitial,
+            ph_suffix,
+            ph_cname,
+            ph_address1,
+            ph_address2,
+            ph_TIN,
+            ph_photosrc,
+            ph_ctype,
+            ph_contact,
+            ph_corporate,
+            ph_tpermit,
+        } = req.body;
 
-    if (!ph_cname) {
-      return res.status(400).json({ error: 'Company name is required' });
-    }
+        if (!ph_cname) {
+            return res.status(400).json({ error: 'Company name is required' });
+        }
 
-    const request = pool.request();
-    request.input('ph_lname', sql.VarChar(100), ph_lname || null);
-    request.input('ph_fname', sql.VarChar(100), ph_fname || null);
-    request.input('ph_minitial', sql.VarChar(1), ph_minitial || null);
-    request.input('ph_suffix', sql.VarChar(50), ph_suffix || null);
-    request.input('ph_cname', sql.VarChar(150), ph_cname);
-    request.input('ph_address1', sql.VarChar(200), ph_address1);
-    request.input('ph_address2', sql.VarChar(200), ph_address2 || null);
-    request.input('ph_TIN', sql.VarChar(50), ph_TIN || null);
-    request.input('ph_photosrc', sql.VarChar(255), ph_photosrc || null);
-    request.input('ph_ctype', sql.VarChar(50), ph_ctype);
-    request.input('ph_contact', sql.VarChar(50), ph_contact);
-    request.input('ph_corporate', sql.Bit, ph_corporate ? 1 : 0);
-    request.input('ph_tpermit', sql.VarChar(50), ph_tpermit || null);
+        const request = pool.request();
+        request.input('ph_lname', sql.VarChar(100), ph_lname || null);
+        request.input('ph_fname', sql.VarChar(100), ph_fname || null);
+        request.input('ph_minitial', sql.VarChar(1), ph_minitial || null);
+        request.input('ph_suffix', sql.VarChar(50), ph_suffix || null);
+        request.input('ph_cname', sql.VarChar(150), ph_cname);
+        request.input('ph_address1', sql.VarChar(200), ph_address1);
+        request.input('ph_address2', sql.VarChar(200), ph_address2 || null);
+        request.input('ph_TIN', sql.VarChar(50), ph_TIN || null);
+        request.input('ph_photosrc', sql.VarChar(255), ph_photosrc || null);
+        request.input('ph_ctype', sql.VarChar(50), ph_ctype);
+        request.input('ph_contact', sql.VarChar(50), ph_contact);
+        request.input('ph_corporate', sql.Bit, ph_corporate ? 1 : 0);
+        request.input('ph_tpermit', sql.VarChar(50), ph_tpermit || null);
 
-    await request.query(`
+        await request.query(`
       INSERT INTO [tbl_client]
            ([ph_lname]
            ,[ph_fname]
@@ -264,58 +873,74 @@ app.post('/api/clients', async (req, res) => {
            ,@ph_tpermit)
     `);
 
-    // In a real scenario, you'd get the inserted ID. 
-    // Since we didn't capture it in the original query, we might just log 'New Record' or similar, 
-    // OR update the query above to use OUTPUT inserted.ph_ctrlno. I added OUTPUT above.
-    // However, execute() or query() result handling depends on library. 
-    // Let's assume we want to query the name or just log the payload.
-    await logActivity(pool, req, {
-      action: 'CREATE',
-      tableName: 'tbl_client',
-      recordId: ph_cname,
-      newValues: req.body
-    });
+        // In a real scenario, you'd get the inserted ID.
+        // Since we didn't capture it in the original query, we might just log 'New Record' or similar,
+        // OR update the query above to use OUTPUT inserted.ph_ctrlno. I added OUTPUT above.
+        // However, execute() or query() result handling depends on library.
+        // Let's assume we want to query the name or just log the payload.
+        await logActivity(pool, req, {
+            action: 'CREATE',
+            tableName: 'tbl_client',
+            recordId: ph_cname,
+            newValues: req.body,
+        });
 
-    console.log('✅ Client added successfully');
-    res.json({ message: 'Client added successfully' });
-  } catch (err) {
-    console.error('❌ Add Client Error:', err.message);
-    res.status(500).json({ error: 'Failed to add client: ' + err.message });
-  }
+        console.log('✅ Client added successfully');
+        res.json({ message: 'Client added successfully' });
+    } catch (err) {
+        console.error('❌ Add Client Error:', err.message);
+        res.status(500).json({ error: 'Failed to add client: ' + err.message });
+    }
 });
 
 app.put('/api/clients/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { ph_lname, ph_fname, ph_minitial, ph_suffix, ph_cname, ph_address1, ph_address2, ph_TIN, ph_photosrc, ph_ctype, ph_contact, ph_corporate, ph_tpermit } = req.body;
+    try {
+        const { id } = req.params;
+        const {
+            ph_lname,
+            ph_fname,
+            ph_minitial,
+            ph_suffix,
+            ph_cname,
+            ph_address1,
+            ph_address2,
+            ph_TIN,
+            ph_photosrc,
+            ph_ctype,
+            ph_contact,
+            ph_corporate,
+            ph_tpermit,
+        } = req.body;
 
-    if (!ph_cname) {
-      return res.status(400).json({ error: 'Company name is required' });
-    }
+        if (!ph_cname) {
+            return res.status(400).json({ error: 'Company name is required' });
+        }
 
-    // 1. Fetch old values
-    const getKeyReq = pool.request();
-    getKeyReq.input('ph_ctrlno', sql.Int, id);
-    const splitResult = await getKeyReq.query('SELECT * FROM tbl_client WHERE ph_ctrlno = @ph_ctrlno');
-    const oldValues = splitResult.recordset[0];
+        // 1. Fetch old values
+        const getKeyReq = pool.request();
+        getKeyReq.input('ph_ctrlno', sql.Int, id);
+        const splitResult = await getKeyReq.query(
+            'SELECT * FROM tbl_client WHERE ph_ctrlno = @ph_ctrlno'
+        );
+        const oldValues = splitResult.recordset[0];
 
-    const request = pool.request();
-    request.input('ph_ctrlno', sql.Int, id);
-    request.input('ph_lname', sql.VarChar(100), ph_lname || null);
-    request.input('ph_fname', sql.VarChar(100), ph_fname || null);
-    request.input('ph_minitial', sql.VarChar(1), ph_minitial || null);
-    request.input('ph_suffix', sql.VarChar(50), ph_suffix || null);
-    request.input('ph_cname', sql.VarChar(150), ph_cname);
-    request.input('ph_address1', sql.VarChar(200), ph_address1);
-    request.input('ph_address2', sql.VarChar(200), ph_address2 || null);
-    request.input('ph_TIN', sql.VarChar(50), ph_TIN || null);
-    request.input('ph_photosrc', sql.VarChar(255), ph_photosrc || null);
-    request.input('ph_ctype', sql.VarChar(50), ph_ctype);
-    request.input('ph_contact', sql.VarChar(50), ph_contact);
-    request.input('ph_corporate', sql.Bit, ph_corporate ? 1 : 0);
-    request.input('ph_tpermit', sql.VarChar(50), ph_tpermit || null);
+        const request = pool.request();
+        request.input('ph_ctrlno', sql.Int, id);
+        request.input('ph_lname', sql.VarChar(100), ph_lname || null);
+        request.input('ph_fname', sql.VarChar(100), ph_fname || null);
+        request.input('ph_minitial', sql.VarChar(1), ph_minitial || null);
+        request.input('ph_suffix', sql.VarChar(50), ph_suffix || null);
+        request.input('ph_cname', sql.VarChar(150), ph_cname);
+        request.input('ph_address1', sql.VarChar(200), ph_address1);
+        request.input('ph_address2', sql.VarChar(200), ph_address2 || null);
+        request.input('ph_TIN', sql.VarChar(50), ph_TIN || null);
+        request.input('ph_photosrc', sql.VarChar(255), ph_photosrc || null);
+        request.input('ph_ctype', sql.VarChar(50), ph_ctype);
+        request.input('ph_contact', sql.VarChar(50), ph_contact);
+        request.input('ph_corporate', sql.Bit, ph_corporate ? 1 : 0);
+        request.input('ph_tpermit', sql.VarChar(50), ph_tpermit || null);
 
-    await request.query(`
+        await request.query(`
       UPDATE [tbl_client]
       SET [ph_lname] = @ph_lname
          ,[ph_fname] = @ph_fname
@@ -333,133 +958,277 @@ app.put('/api/clients/:id', async (req, res) => {
       WHERE [ph_ctrlno] = @ph_ctrlno
     `);
 
-    // 2. Log Activity
-    await logActivity(pool, req, {
-      action: 'UPDATE',
-      tableName: 'tbl_client',
-      recordId: id,
-      oldValues: oldValues,
-      newValues: req.body
-    });
+        // 2. Log Activity
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_client',
+            recordId: id,
+            oldValues: oldValues,
+            newValues: req.body,
+        });
 
-    console.log(`✅ Client ${id} updated successfully`);
-    res.json({ message: 'Client updated successfully' });
-  } catch (err) {
-    console.error('❌ Update Client Error:', err.message);
-    res.status(500).json({ error: 'Failed to update client: ' + err.message });
-  }
+        console.log(`✅ Client ${id} updated successfully`);
+        res.json({ message: 'Client updated successfully' });
+    } catch (err) {
+        console.error('❌ Update Client Error:', err.message);
+        res.status(500).json({ error: 'Failed to update client: ' + err.message });
+    }
 });
 
 app.put('/api/clients/:id/permit-holder', async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
 
-    if (!id) {
-      return res.status(400).json({ error: 'Client id is required' });
-    }
+        if (!id) {
+            return res.status(400).json({ error: 'Client id is required' });
+        }
 
-    const getReq = pool.request();
-    getReq.input('ph_ctrlno', sql.Int, id);
-    const existing = await getReq.query('SELECT * FROM tbl_client WHERE ph_ctrlno = @ph_ctrlno');
+        const getReq = pool.request();
+        getReq.input('ph_ctrlno', sql.Int, id);
+        const existing = await getReq.query(
+            'SELECT * FROM tbl_client WHERE ph_ctrlno = @ph_ctrlno'
+        );
 
-    if (!existing.recordset.length) {
-      return res.status(404).json({ error: 'Client not found' });
-    }
+        if (!existing.recordset.length) {
+            return res.status(404).json({ error: 'Client not found' });
+        }
 
-    const request = pool.request();
-    request.input('ph_ctrlno', sql.Int, id);
+        const request = pool.request();
+        request.input('ph_ctrlno', sql.Int, id);
 
-    await request.query(`
+        await request.query(`
       UPDATE tbl_client
       SET ph_ctype = 'Permit Holder',
           ph_tpermit = NULL
       WHERE ph_ctrlno = @ph_ctrlno
     `);
 
-    await logActivity(pool, req, {
-      action: 'UPDATE',
-      tableName: 'tbl_client',
-      recordId: id,
-      oldValues: existing.recordset[0],
-      newValues: { ph_ctype: 'Permit Holder', ph_tpermit: null }
-    });
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_client',
+            recordId: id,
+            oldValues: existing.recordset[0],
+            newValues: { ph_ctype: 'Permit Holder', ph_tpermit: null },
+        });
 
-    res.json({ message: 'Client updated to Permit Holder' });
-  } catch (err) {
-    console.error('❌ Update Client Permit Holder Error:', err.message);
-    res.status(500).json({ error: 'Failed to update client: ' + err.message });
-  }
+        res.json({ message: 'Client updated to Permit Holder' });
+    } catch (err) {
+        console.error('❌ Update Client Permit Holder Error:', err.message);
+        res.status(500).json({ error: 'Failed to update client: ' + err.message });
+    }
 });
 
 app.delete('/api/clients/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
 
-    // 1. Fetch old values for logging
-    const getReq = pool.request();
-    getReq.input('ph_ctrlno', sql.Int, id);
-    const existing = await getReq.query('SELECT * FROM [tbl_client] WHERE [ph_ctrlno] = @ph_ctrlno');
-    const oldValues = existing.recordset[0];
+        // 1. Fetch old values for logging
+        const getReq = pool.request();
+        getReq.input('ph_ctrlno', sql.Int, id);
+        const existing = await getReq.query(
+            'SELECT * FROM [tbl_client] WHERE [ph_ctrlno] = @ph_ctrlno'
+        );
+        const oldValues = existing.recordset[0];
 
-    const request = pool.request();
-    request.input('ph_ctrlno', sql.Int, id);
+        const request = pool.request();
+        request.input('ph_ctrlno', sql.Int, id);
 
-    await request.query(
-      'DELETE FROM [tbl_client] WHERE [ph_ctrlno] = @ph_ctrlno'
-    );
+        await request.query('DELETE FROM [tbl_client] WHERE [ph_ctrlno] = @ph_ctrlno');
 
-    // 2. Log Activity
-    if (oldValues) {
-      await logActivity(pool, req, {
-        action: 'DELETE',
-        tableName: 'tbl_client',
-        recordId: id,
-        oldValues: oldValues
-      });
+        // 2. Log Activity
+        if (oldValues) {
+            await logActivity(pool, req, {
+                action: 'DELETE',
+                tableName: 'tbl_client',
+                recordId: id,
+                oldValues: oldValues,
+            });
+        }
+
+        console.log(`✅ Client ${id} deleted successfully`);
+        res.json({ message: 'Client deleted successfully' });
+    } catch (err) {
+        console.error('❌ Delete Client Error:', err.message);
+        res.status(500).json({ error: 'Failed to delete client: ' + err.message });
     }
+});
 
-    console.log(`✅ Client ${id} deleted successfully`);
-    res.json({ message: 'Client deleted successfully' });
-  } catch (err) {
-    console.error('❌ Delete Client Error:', err.message);
-    res.status(500).json({ error: 'Failed to delete client: ' + err.message });
-  }
+// ==================== EMPLOYEE DIRECTORY ENDPOINTS ====================
+
+app.get('/api/employee-directory', async (req, res) => {
+    try {
+        const request = pool.request();
+        const result = await request.query(`
+      SELECT emp_ctrlno, emp_name
+      FROM tbl_enroemp
+      ORDER BY emp_name
+    `);
+
+        console.log(`Fetched ${result.recordset.length} employee directory records`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('Get Employee Directory Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch employee directory: ' + err.message });
+    }
+});
+
+app.post('/api/employee-directory', async (req, res) => {
+    try {
+        const emp_name = (req.body.emp_name || '').trim();
+
+        if (!emp_name) {
+            return res.status(400).json({ error: 'Employee name is required' });
+        }
+
+        const request = pool.request();
+        request.input('emp_name', sql.VarChar(200), emp_name);
+
+        const result = await request.query(`
+      INSERT INTO tbl_enroemp (emp_name)
+      OUTPUT inserted.emp_ctrlno
+      VALUES (@emp_name)
+    `);
+
+        const insertedId = result.recordset[0]?.emp_ctrlno;
+
+        await logActivity(pool, req, {
+            action: 'CREATE',
+            tableName: 'tbl_enroemp',
+            recordId: insertedId || emp_name,
+            newValues: { emp_name },
+        });
+
+        console.log(`Created employee directory record: ${insertedId}`);
+        res.json({ success: true, message: 'Employee added successfully', emp_ctrlno: insertedId });
+    } catch (err) {
+        console.error('Create Employee Directory Error:', err.message);
+        res.status(500).json({ error: 'Failed to add employee: ' + err.message });
+    }
+});
+
+app.put('/api/employee-directory/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const emp_name = (req.body.emp_name || '').trim();
+
+        if (!emp_name) {
+            return res.status(400).json({ error: 'Employee name is required' });
+        }
+
+        const getReq = pool.request();
+        getReq.input('id', sql.Int, id);
+        const existing = await getReq.query(`
+      SELECT emp_ctrlno, emp_name
+      FROM tbl_enroemp
+      WHERE emp_ctrlno = @id
+    `);
+
+        if (!existing.recordset.length) {
+            return res.status(404).json({ error: 'Employee not found' });
+        }
+
+        const request = pool.request();
+        request.input('id', sql.Int, id);
+        request.input('emp_name', sql.VarChar(200), emp_name);
+
+        await request.query(`
+      UPDATE tbl_enroemp
+      SET emp_name = @emp_name
+      WHERE emp_ctrlno = @id
+    `);
+
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_enroemp',
+            recordId: id,
+            oldValues: existing.recordset[0],
+            newValues: { emp_name },
+        });
+
+        console.log(`Updated employee directory record: ${id}`);
+        res.json({ success: true, message: 'Employee updated successfully' });
+    } catch (err) {
+        console.error('Update Employee Directory Error:', err.message);
+        res.status(500).json({ error: 'Failed to update employee: ' + err.message });
+    }
+});
+
+app.delete('/api/employee-directory/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const getReq = pool.request();
+        getReq.input('id', sql.Int, id);
+        const existing = await getReq.query(`
+      SELECT emp_ctrlno, emp_name
+      FROM tbl_enroemp
+      WHERE emp_ctrlno = @id
+    `);
+
+        if (!existing.recordset.length) {
+            return res.status(404).json({ error: 'Employee not found' });
+        }
+
+        const request = pool.request();
+        request.input('id', sql.Int, id);
+        await request.query('DELETE FROM tbl_enroemp WHERE emp_ctrlno = @id');
+
+        await logActivity(pool, req, {
+            action: 'DELETE',
+            tableName: 'tbl_enroemp',
+            recordId: id,
+            oldValues: existing.recordset[0],
+        });
+
+        console.log(`Deleted employee directory record: ${id}`);
+        res.json({ success: true, message: 'Employee deleted successfully' });
+    } catch (err) {
+        console.error('Delete Employee Directory Error:', err.message);
+
+        if (err.number === 547) {
+            return res.status(400).json({
+                error: 'Cannot delete employee because it is being used in other records.',
+            });
+        }
+
+        res.status(500).json({ error: 'Failed to delete employee: ' + err.message });
+    }
 });
 
 // ==================== PERMIT TYPES ENDPOINTS ====================
 
 app.get('/api/permittypes', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT [tp_ctrlno]
             ,[tp_code]
             ,[tp_desc]
             ,[tp_expyear]
       FROM [tbl_permittype]
     `);
-    console.log(`✅ Fetched ${result.recordset.length} permit types`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Permit Types Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch permit types: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} permit types`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Permit Types Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch permit types: ' + err.message });
+    }
 });
 
 app.post('/api/permittypes', async (req, res) => {
-  try {
-    const { tp_code, tp_desc, tp_expyear } = req.body;
+    try {
+        const { tp_code, tp_desc, tp_expyear } = req.body;
 
-    if (!tp_code || !tp_desc) {
-      return res.status(400).json({ error: 'Code and description are required' });
-    }
+        if (!tp_code || !tp_desc) {
+            return res.status(400).json({ error: 'Code and description are required' });
+        }
 
-    const request = pool.request();
-    request.input('tp_code', sql.VarChar(50), tp_code);
-    request.input('tp_desc', sql.VarChar(200), tp_desc);
-    request.input('tp_expyear', sql.Float, tp_expyear || 0);
+        const request = pool.request();
+        request.input('tp_code', sql.VarChar(50), tp_code);
+        request.input('tp_desc', sql.VarChar(200), tp_desc);
+        request.input('tp_expyear', sql.Float, tp_expyear || 0);
 
-    await request.query(`
+        await request.query(`
       INSERT INTO [tbl_permittype]
            ([tp_code]
            ,[tp_desc]
@@ -471,43 +1240,45 @@ app.post('/api/permittypes', async (req, res) => {
            ,@tp_expyear)
     `);
 
-    await logActivity(pool, req, {
-      action: 'CREATE',
-      tableName: 'tbl_permittype',
-      recordId: tp_code,
-      newValues: req.body
-    });
+        await logActivity(pool, req, {
+            action: 'CREATE',
+            tableName: 'tbl_permittype',
+            recordId: tp_code,
+            newValues: req.body,
+        });
 
-    console.log('✅ Permit type added successfully');
-    res.json({ message: 'Permit type added successfully' });
-  } catch (err) {
-    console.error('❌ Add Permit Type Error:', err.message);
-    res.status(500).json({ error: 'Failed to add permit type: ' + err.message });
-  }
+        console.log('✅ Permit type added successfully');
+        res.json({ message: 'Permit type added successfully' });
+    } catch (err) {
+        console.error('❌ Add Permit Type Error:', err.message);
+        res.status(500).json({ error: 'Failed to add permit type: ' + err.message });
+    }
 });
 
 app.put('/api/permittypes/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { tp_code, tp_desc, tp_expyear } = req.body;
+    try {
+        const { id } = req.params;
+        const { tp_code, tp_desc, tp_expyear } = req.body;
 
-    if (!tp_code || !tp_desc) {
-      return res.status(400).json({ error: 'Code and description are required' });
-    }
+        if (!tp_code || !tp_desc) {
+            return res.status(400).json({ error: 'Code and description are required' });
+        }
 
-    // 1. Fetch old values
-    const getReq = pool.request();
-    getReq.input('tp_ctrlno', sql.Int, id);
-    const splitResult = await getReq.query('SELECT * FROM tbl_permittype WHERE tp_ctrlno = @tp_ctrlno');
-    const oldValues = splitResult.recordset[0];
+        // 1. Fetch old values
+        const getReq = pool.request();
+        getReq.input('tp_ctrlno', sql.Int, id);
+        const splitResult = await getReq.query(
+            'SELECT * FROM tbl_permittype WHERE tp_ctrlno = @tp_ctrlno'
+        );
+        const oldValues = splitResult.recordset[0];
 
-    const request = pool.request();
-    request.input('tp_ctrlno', sql.Int, id);
-    request.input('tp_code', sql.VarChar(50), tp_code);
-    request.input('tp_desc', sql.VarChar(200), tp_desc);
-    request.input('tp_expyear', sql.Float, tp_expyear || 0);
+        const request = pool.request();
+        request.input('tp_ctrlno', sql.Int, id);
+        request.input('tp_code', sql.VarChar(50), tp_code);
+        request.input('tp_desc', sql.VarChar(200), tp_desc);
+        request.input('tp_expyear', sql.Float, tp_expyear || 0);
 
-    await request.query(`
+        await request.query(`
       UPDATE [tbl_permittype]
       SET [tp_code] = @tp_code
          ,[tp_desc] = @tp_desc
@@ -515,88 +1286,104 @@ app.put('/api/permittypes/:id', async (req, res) => {
       WHERE [tp_ctrlno] = @tp_ctrlno
     `);
 
-    await logActivity(pool, req, {
-      action: 'UPDATE',
-      tableName: 'tbl_permittype',
-      recordId: id,
-      oldValues: oldValues,
-      newValues: req.body
-    });
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_permittype',
+            recordId: id,
+            oldValues: oldValues,
+            newValues: req.body,
+        });
 
-    console.log(`✅ Permit type ${id} updated successfully`);
-    res.json({ message: 'Permit type updated successfully' });
-  } catch (err) {
-    console.error('❌ Update Permit Type Error:', err.message);
-    res.status(500).json({ error: 'Failed to update permit type: ' + err.message });
-  }
+        console.log(`✅ Permit type ${id} updated successfully`);
+        res.json({ message: 'Permit type updated successfully' });
+    } catch (err) {
+        console.error('❌ Update Permit Type Error:', err.message);
+        res.status(500).json({ error: 'Failed to update permit type: ' + err.message });
+    }
 });
 
 app.delete('/api/permittypes/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
 
-    // 1. Fetch old values
-    const getReq = pool.request();
-    getReq.input('tp_ctrlno', sql.Int, id);
-    const existing = await getReq.query('SELECT * FROM tbl_permittype WHERE tp_ctrlno = @tp_ctrlno');
-    const oldValues = existing.recordset[0];
+        // 1. Fetch old values
+        const getReq = pool.request();
+        getReq.input('tp_ctrlno', sql.Int, id);
+        const existing = await getReq.query(
+            'SELECT * FROM tbl_permittype WHERE tp_ctrlno = @tp_ctrlno'
+        );
+        const oldValues = existing.recordset[0];
 
-    const request = pool.request();
-    request.input('tp_ctrlno', sql.Int, id);
+        const request = pool.request();
+        request.input('tp_ctrlno', sql.Int, id);
 
-    await request.query(
-      'DELETE FROM [tbl_permittype] WHERE [tp_ctrlno] = @tp_ctrlno'
-    );
+        await request.query('DELETE FROM [tbl_permittype] WHERE [tp_ctrlno] = @tp_ctrlno');
 
-    if (oldValues) {
-      await logActivity(pool, req, {
-        action: 'DELETE',
-        tableName: 'tbl_permittype',
-        recordId: id,
-        oldValues: oldValues
-      });
+        if (oldValues) {
+            await logActivity(pool, req, {
+                action: 'DELETE',
+                tableName: 'tbl_permittype',
+                recordId: id,
+                oldValues: oldValues,
+            });
+        }
+
+        console.log(`✅ Permit type ${id} deleted successfully`);
+        res.json({ message: 'Permit type deleted successfully' });
+    } catch (err) {
+        console.error('❌ Delete Permit Type Error:', err.message);
+        res.status(500).json({ error: 'Failed to delete permit type: ' + err.message });
     }
-
-    console.log(`✅ Permit type ${id} deleted successfully`);
-    res.json({ message: 'Permit type deleted successfully' });
-  } catch (err) {
-    console.error('❌ Delete Permit Type Error:', err.message);
-    res.status(500).json({ error: 'Failed to delete permit type: ' + err.message });
-  }
 });
 
 // ==================== PERMIT REQUIREMENTS ENDPOINTS ====================
 
 app.get('/api/permitreqs', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT [pr_ctrlno]
             ,[pr_status]
             ,[pr_desc]
       FROM [tbl_permitreq]
     `);
-    console.log(`✅ Fetched ${result.recordset.length} permit requirements`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Permit Requirements Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch permit requirements: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} permit requirements`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Permit Requirements Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch permit requirements: ' + err.message });
+    }
+});
+
+app.get('/api/permitreqs/statuses', async (req, res) => {
+    try {
+        const request = pool.request();
+        const result = await request.query(`
+      SELECT DISTINCT TRIM(pr_status) AS pr_status
+      FROM tbl_permitreq
+      WHERE pr_status IS NOT NULL
+      ORDER BY pr_status;
+    `);
+
+        res.json(result.recordset || []);
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to fetch requirement types: ' + err.message });
+    }
 });
 
 app.post('/api/permitreqs', async (req, res) => {
-  try {
-    const { pr_status, pr_desc } = req.body;
+    try {
+        const { pr_status, pr_desc } = req.body;
 
-    if (!pr_status || !pr_desc) {
-      return res.status(400).json({ error: 'Status and description required' });
-    }
+        if (!pr_status || !pr_desc) {
+            return res.status(400).json({ error: 'Status and description required' });
+        }
 
-    const request = pool.request();
-    request.input('pr_status', sql.VarChar(50), pr_status);
-    request.input('pr_desc', sql.VarChar(500), pr_desc);
+        const request = pool.request();
+        request.input('pr_status', sql.VarChar(50), pr_status);
+        request.input('pr_desc', sql.VarChar(500), pr_desc);
 
-    await request.query(`
+        await request.query(`
       INSERT INTO [tbl_permitreq]
            ([pr_status]
            ,[pr_desc])
@@ -606,131 +1393,133 @@ app.post('/api/permitreqs', async (req, res) => {
            ,@pr_desc)
     `);
 
-    await logActivity(pool, req, {
-      action: 'CREATE',
-      tableName: 'tbl_permitreq',
-      recordId: pr_desc, // Using description as ID ref if CTRLNO not easily available without extra query, or just logging payload
-      newValues: req.body
-    });
+        await logActivity(pool, req, {
+            action: 'CREATE',
+            tableName: 'tbl_permitreq',
+            recordId: pr_desc, // Using description as ID ref if CTRLNO not easily available without extra query, or just logging payload
+            newValues: req.body,
+        });
 
-    console.log('✅ Permit requirement added successfully');
-    res.json({ message: 'Permit requirement added successfully' });
-  } catch (err) {
-    console.error('❌ Add Permit Requirement Error:', err.message);
-    res.status(500).json({ error: 'Failed to add permit requirement: ' + err.message });
-  }
+        console.log('✅ Permit requirement added successfully');
+        res.json({ message: 'Permit requirement added successfully' });
+    } catch (err) {
+        console.error('❌ Add Permit Requirement Error:', err.message);
+        res.status(500).json({ error: 'Failed to add permit requirement: ' + err.message });
+    }
 });
 
 app.put('/api/permitreqs/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { pr_status, pr_desc } = req.body;
+    try {
+        const { id } = req.params;
+        const { pr_status, pr_desc } = req.body;
 
-    if (!pr_status || !pr_desc) {
-      return res.status(400).json({ error: 'Status and description required' });
-    }
+        if (!pr_status || !pr_desc) {
+            return res.status(400).json({ error: 'Status and description required' });
+        }
 
-    // 1. Fetch old values
-    const getReq = pool.request();
-    getReq.input('pr_ctrlno', sql.Int, id);
-    const splitResult = await getReq.query('SELECT * FROM tbl_permitreq WHERE pr_ctrlno = @pr_ctrlno');
-    const oldValues = splitResult.recordset[0];
+        // 1. Fetch old values
+        const getReq = pool.request();
+        getReq.input('pr_ctrlno', sql.Int, id);
+        const splitResult = await getReq.query(
+            'SELECT * FROM tbl_permitreq WHERE pr_ctrlno = @pr_ctrlno'
+        );
+        const oldValues = splitResult.recordset[0];
 
-    const request = pool.request();
-    request.input('pr_ctrlno', sql.Int, id);
-    request.input('pr_status', sql.VarChar(50), pr_status);
-    request.input('pr_desc', sql.VarChar(500), pr_desc);
+        const request = pool.request();
+        request.input('pr_ctrlno', sql.Int, id);
+        request.input('pr_status', sql.VarChar(50), pr_status);
+        request.input('pr_desc', sql.VarChar(500), pr_desc);
 
-    await request.query(`
+        await request.query(`
       UPDATE [tbl_permitreq]
       SET [pr_status] = @pr_status
          ,[pr_desc] = @pr_desc
       WHERE [pr_ctrlno] = @pr_ctrlno
     `);
 
-    await logActivity(pool, req, {
-      action: 'UPDATE',
-      tableName: 'tbl_permitreq',
-      recordId: id,
-      oldValues: oldValues,
-      newValues: req.body
-    });
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_permitreq',
+            recordId: id,
+            oldValues: oldValues,
+            newValues: req.body,
+        });
 
-    console.log(`✅ Permit requirement ${id} updated successfully`);
-    res.json({ message: 'Permit requirement updated successfully' });
-  } catch (err) {
-    console.error('❌ Update Permit Requirement Error:', err.message);
-    res.status(500).json({ error: 'Failed to update permit requirement: ' + err.message });
-  }
+        console.log(`✅ Permit requirement ${id} updated successfully`);
+        res.json({ message: 'Permit requirement updated successfully' });
+    } catch (err) {
+        console.error('❌ Update Permit Requirement Error:', err.message);
+        res.status(500).json({ error: 'Failed to update permit requirement: ' + err.message });
+    }
 });
 
 app.delete('/api/permitreqs/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
 
-    // 1. Fetch old values
-    const getReq = pool.request();
-    getReq.input('pr_ctrlno', sql.Int, id);
-    const existing = await getReq.query('SELECT * FROM tbl_permitreq WHERE pr_ctrlno = @pr_ctrlno');
-    const oldValues = existing.recordset[0];
+        // 1. Fetch old values
+        const getReq = pool.request();
+        getReq.input('pr_ctrlno', sql.Int, id);
+        const existing = await getReq.query(
+            'SELECT * FROM tbl_permitreq WHERE pr_ctrlno = @pr_ctrlno'
+        );
+        const oldValues = existing.recordset[0];
 
-    const request = pool.request();
-    request.input('pr_ctrlno', sql.Int, id);
+        const request = pool.request();
+        request.input('pr_ctrlno', sql.Int, id);
 
-    await request.query(
-      'DELETE FROM [tbl_permitreq] WHERE [pr_ctrlno] = @pr_ctrlno'
-    );
+        await request.query('DELETE FROM [tbl_permitreq] WHERE [pr_ctrlno] = @pr_ctrlno');
 
-    if (oldValues) {
-      await logActivity(pool, req, {
-        action: 'DELETE',
-        tableName: 'tbl_permitreq',
-        recordId: id,
-        oldValues: oldValues
-      });
+        if (oldValues) {
+            await logActivity(pool, req, {
+                action: 'DELETE',
+                tableName: 'tbl_permitreq',
+                recordId: id,
+                oldValues: oldValues,
+            });
+        }
+
+        console.log(`✅ Permit requirement ${id} deleted successfully`);
+        res.json({ message: 'Permit requirement deleted successfully' });
+    } catch (err) {
+        console.error('❌ Delete Permit Requirement Error:', err.message);
+        res.status(500).json({ error: 'Failed to delete permit requirement: ' + err.message });
     }
-
-    console.log(`✅ Permit requirement ${id} deleted successfully`);
-    res.json({ message: 'Permit requirement deleted successfully' });
-  } catch (err) {
-    console.error('❌ Delete Permit Requirement Error:', err.message);
-    res.status(500).json({ error: 'Failed to delete permit requirement: ' + err.message });
-  }
 });
 
 // ==================== COMMODITY ENDPOINTS ====================
 
 app.get('/api/commodities', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT [cm_ctrlno]
             ,[cm_desc]
             ,[cm_kind]
       FROM [tbl_commodity]
       ORDER BY [cm_desc]
     `);
-    console.log(`✅ Fetched ${result.recordset.length} commodities`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Commodities Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch commodities: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} commodities`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Commodities Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch commodities: ' + err.message });
+    }
 });
 
 app.post('/api/commodities', async (req, res) => {
-  try {
-    const { cm_desc, cm_kind } = req.body;
+    try {
+        const { cm_desc, cm_kind } = req.body;
 
-    if (!cm_desc) {
-      return res.status(400).json({ error: 'Description is required' });
-    }
+        if (!cm_desc) {
+            return res.status(400).json({ error: 'Description is required' });
+        }
 
-    const request = pool.request();
-    request.input('cm_desc', sql.VarChar(200), cm_desc);
-    request.input('cm_kind', sql.VarChar(50), cm_kind || null);
+        const request = pool.request();
+        request.input('cm_desc', sql.VarChar(200), cm_desc);
+        request.input('cm_kind', sql.VarChar(50), cm_kind || null);
 
-    await request.query(`
+        await request.query(`
       INSERT INTO [tbl_commodity]
            ([cm_desc]
            ,[cm_kind])
@@ -740,145 +1529,147 @@ app.post('/api/commodities', async (req, res) => {
            ,@cm_kind)
     `);
 
-    await logActivity(pool, req, {
-      action: 'CREATE',
-      tableName: 'tbl_commodity',
-      recordId: cm_desc,
-      newValues: req.body
-    });
+        await logActivity(pool, req, {
+            action: 'CREATE',
+            tableName: 'tbl_commodity',
+            recordId: cm_desc,
+            newValues: req.body,
+        });
 
-    console.log('✅ Commodity added successfully');
-    res.json({ message: 'Commodity added successfully' });
-  } catch (err) {
-    console.error('❌ Add Commodity Error:', err.message);
-    res.status(500).json({ error: 'Failed to add commodity: ' + err.message });
-  }
+        console.log('✅ Commodity added successfully');
+        res.json({ message: 'Commodity added successfully' });
+    } catch (err) {
+        console.error('❌ Add Commodity Error:', err.message);
+        res.status(500).json({ error: 'Failed to add commodity: ' + err.message });
+    }
 });
 
 app.put('/api/commodities/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { cm_desc, cm_kind } = req.body;
+    try {
+        const { id } = req.params;
+        const { cm_desc, cm_kind } = req.body;
 
-    if (!cm_desc) {
-      return res.status(400).json({ error: 'Description is required' });
-    }
+        if (!cm_desc) {
+            return res.status(400).json({ error: 'Description is required' });
+        }
 
-    // 1. Fetch old values
-    const getReq = pool.request();
-    getReq.input('cm_ctrlno', sql.Int, id);
-    const splitResult = await getReq.query('SELECT * FROM tbl_commodity WHERE cm_ctrlno = @cm_ctrlno');
-    const oldValues = splitResult.recordset[0];
+        // 1. Fetch old values
+        const getReq = pool.request();
+        getReq.input('cm_ctrlno', sql.Int, id);
+        const splitResult = await getReq.query(
+            'SELECT * FROM tbl_commodity WHERE cm_ctrlno = @cm_ctrlno'
+        );
+        const oldValues = splitResult.recordset[0];
 
-    const request = pool.request();
-    request.input('cm_ctrlno', sql.Int, id);
-    request.input('cm_desc', sql.VarChar(200), cm_desc);
-    request.input('cm_kind', sql.VarChar(50), cm_kind || null);
+        const request = pool.request();
+        request.input('cm_ctrlno', sql.Int, id);
+        request.input('cm_desc', sql.VarChar(200), cm_desc);
+        request.input('cm_kind', sql.VarChar(50), cm_kind || null);
 
-    await request.query(`
+        await request.query(`
       UPDATE [tbl_commodity]
       SET [cm_desc] = @cm_desc
          ,[cm_kind] = @cm_kind
       WHERE [cm_ctrlno] = @cm_ctrlno
     `);
 
-    await logActivity(pool, req, {
-      action: 'UPDATE',
-      tableName: 'tbl_commodity',
-      recordId: id,
-      oldValues: oldValues,
-      newValues: req.body
-    });
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_commodity',
+            recordId: id,
+            oldValues: oldValues,
+            newValues: req.body,
+        });
 
-    console.log(`✅ Commodity ${id} updated successfully`);
-    res.json({ message: 'Commodity updated successfully' });
-  } catch (err) {
-    console.error('❌ Update Commodity Error:', err.message);
-    res.status(500).json({ error: 'Failed to update commodity: ' + err.message });
-  }
+        console.log(`✅ Commodity ${id} updated successfully`);
+        res.json({ message: 'Commodity updated successfully' });
+    } catch (err) {
+        console.error('❌ Update Commodity Error:', err.message);
+        res.status(500).json({ error: 'Failed to update commodity: ' + err.message });
+    }
 });
 
 app.delete('/api/commodities/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
 
-    // 1. Fetch old values
-    const getReq = pool.request();
-    getReq.input('cm_ctrlno', sql.Int, id);
-    const existing = await getReq.query('SELECT * FROM tbl_commodity WHERE cm_ctrlno = @cm_ctrlno');
-    const oldValues = existing.recordset[0];
+        // 1. Fetch old values
+        const getReq = pool.request();
+        getReq.input('cm_ctrlno', sql.Int, id);
+        const existing = await getReq.query(
+            'SELECT * FROM tbl_commodity WHERE cm_ctrlno = @cm_ctrlno'
+        );
+        const oldValues = existing.recordset[0];
 
-    const request = pool.request();
-    request.input('cm_ctrlno', sql.Int, id);
+        const request = pool.request();
+        request.input('cm_ctrlno', sql.Int, id);
 
-    await request.query(
-      'DELETE FROM [tbl_commodity] WHERE [cm_ctrlno] = @cm_ctrlno'
-    );
+        await request.query('DELETE FROM [tbl_commodity] WHERE [cm_ctrlno] = @cm_ctrlno');
 
-    if (oldValues) {
-      await logActivity(pool, req, {
-        action: 'DELETE',
-        tableName: 'tbl_commodity',
-        recordId: id,
-        oldValues: oldValues
-      });
+        if (oldValues) {
+            await logActivity(pool, req, {
+                action: 'DELETE',
+                tableName: 'tbl_commodity',
+                recordId: id,
+                oldValues: oldValues,
+            });
+        }
+
+        console.log(`✅ Commodity ${id} deleted successfully`);
+        res.json({ message: 'Commodity deleted successfully' });
+    } catch (err) {
+        console.error('❌ Delete Commodity Error:', err.message);
+        res.status(500).json({ error: 'Failed to delete commodity: ' + err.message });
     }
-
-    console.log(`✅ Commodity ${id} deleted successfully`);
-    res.json({ message: 'Commodity deleted successfully' });
-  } catch (err) {
-    console.error('❌ Delete Commodity Error:', err.message);
-    res.status(500).json({ error: 'Failed to delete commodity: ' + err.message });
-  }
 });
 
 // ==================== NATURE OF PAYMENT ENDPOINTS ====================
 
 // Get all nature of payments (for dropdown)
 app.get('/api/natureofpaymentlist', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT [np_ctrlno]
             ,[np_desc]
       FROM [tbl_natureofpayment]
       ORDER BY [np_desc]
     `);
-    console.log(`✅ Fetched ${result.recordset.length} nature of payments`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Nature of Payments Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch nature of payments: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} nature of payments`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Nature of Payments Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch nature of payments: ' + err.message });
+    }
 });
 
 // Get distinct measures for dropdown
 app.get('/api/natureofpaymentmeasures', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT DISTINCT [np_measure]
       FROM [tbl_natureofpaymentdtl]
       WHERE [np_measure] IS NOT NULL AND [np_measure] != ''
       ORDER BY [np_measure]
     `);
-    const measures = result.recordset.map(r => r.np_measure);
-    console.log(`✅ Fetched ${measures.length} distinct measures`);
-    res.json(measures);
-  } catch (err) {
-    console.error('❌ Get Measures Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch measures: ' + err.message });
-  }
+        const measures = result.recordset.map((r) => r.np_measure);
+        console.log(`✅ Fetched ${measures.length} distinct measures`);
+        res.json(measures);
+    } catch (err) {
+        console.error('❌ Get Measures Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch measures: ' + err.message });
+    }
 });
 
 // Get nature of payment details by parent ID
 app.get('/api/natureofpaymentdetails/:npCtrlno', async (req, res) => {
-  try {
-    const { npCtrlno } = req.params;
-    const request = pool.request();
-    request.input('np_lnkctrl', sql.Int, npCtrlno);
+    try {
+        const { npCtrlno } = req.params;
+        const request = pool.request();
+        request.input('np_lnkctrl', sql.Int, npCtrlno);
 
-    const result = await request.query(`
+        const result = await request.query(`
       SELECT [np_ctrlno]
             ,[np_lnkctrl]
             ,[np_desc]
@@ -890,32 +1681,37 @@ app.get('/api/natureofpaymentdetails/:npCtrlno', async (req, res) => {
       WHERE [np_lnkctrl] = @np_lnkctrl
       ORDER BY [np_desc]
     `);
-    console.log(`✅ Fetched ${result.recordset.length} nature of payment details for ID ${npCtrlno}`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Nature of Payment Details Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch nature of payment details: ' + err.message });
-  }
+        console.log(
+            `✅ Fetched ${result.recordset.length} nature of payment details for ID ${npCtrlno}`
+        );
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Nature of Payment Details Error:', err.message);
+        res.status(500).json({
+            error: 'Failed to fetch nature of payment details: ' + err.message,
+        });
+    }
 });
 
 // Create nature of payment detail
 app.post('/api/natureofpaymentdetails', async (req, res) => {
-  try {
-    const { np_lnkctrl, np_desc, np_unitcharge, np_ucsecond, np_ucthird, np_measure } = req.body;
+    try {
+        const { np_lnkctrl, np_desc, np_unitcharge, np_ucsecond, np_ucthird, np_measure } =
+            req.body;
 
-    if (!np_lnkctrl || !np_desc) {
-      return res.status(400).json({ error: 'Nature ID and description are required' });
-    }
+        if (!np_lnkctrl || !np_desc) {
+            return res.status(400).json({ error: 'Nature ID and description are required' });
+        }
 
-    const request = pool.request();
-    request.input('np_lnkctrl', sql.Int, np_lnkctrl);
-    request.input('np_desc', sql.VarChar(200), np_desc);
-    request.input('np_unitcharge', sql.Float, np_unitcharge || 0);
-    request.input('np_ucsecond', sql.Float, np_ucsecond || 0);
-    request.input('np_ucthird', sql.Float, np_ucthird || 0);
-    request.input('np_measure', sql.VarChar(100), np_measure || null);
+        const request = pool.request();
+        request.input('np_lnkctrl', sql.Int, np_lnkctrl);
+        request.input('np_desc', sql.VarChar(200), np_desc);
+        request.input('np_unitcharge', sql.Float, np_unitcharge || 0);
+        request.input('np_ucsecond', sql.Float, np_ucsecond || 0);
+        request.input('np_ucthird', sql.Float, np_ucthird || 0);
+        request.input('np_measure', sql.VarChar(100), np_measure || null);
 
-    await request.query(`
+        await request.query(`
       INSERT INTO [tbl_natureofpaymentdtl]
            ([np_lnkctrl]
            ,[np_desc]
@@ -933,46 +1729,48 @@ app.post('/api/natureofpaymentdetails', async (req, res) => {
            ,@np_measure)
     `);
 
-    await logActivity(pool, req, {
-      action: 'CREATE',
-      tableName: 'tbl_natureofpaymentdtl',
-      recordId: np_desc,
-      newValues: req.body
-    });
+        await logActivity(pool, req, {
+            action: 'CREATE',
+            tableName: 'tbl_natureofpaymentdtl',
+            recordId: np_desc,
+            newValues: req.body,
+        });
 
-    console.log('✅ Nature of payment detail added successfully');
-    res.json({ message: 'Nature of payment detail added successfully' });
-  } catch (err) {
-    console.error('❌ Add Nature of Payment Detail Error:', err.message);
-    res.status(500).json({ error: 'Failed to add nature of payment detail: ' + err.message });
-  }
+        console.log('✅ Nature of payment detail added successfully');
+        res.json({ message: 'Nature of payment detail added successfully' });
+    } catch (err) {
+        console.error('❌ Add Nature of Payment Detail Error:', err.message);
+        res.status(500).json({ error: 'Failed to add nature of payment detail: ' + err.message });
+    }
 });
 
 // Update nature of payment detail
 app.put('/api/natureofpaymentdetails/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { np_desc, np_unitcharge, np_ucsecond, np_ucthird, np_measure } = req.body;
+    try {
+        const { id } = req.params;
+        const { np_desc, np_unitcharge, np_ucsecond, np_ucthird, np_measure } = req.body;
 
-    if (!np_desc) {
-      return res.status(400).json({ error: 'Description is required' });
-    }
+        if (!np_desc) {
+            return res.status(400).json({ error: 'Description is required' });
+        }
 
-    // Fetch old values
-    const getReq = pool.request();
-    getReq.input('np_ctrlno', sql.Int, id);
-    const existing = await getReq.query('SELECT * FROM tbl_natureofpaymentdtl WHERE np_ctrlno = @np_ctrlno');
-    const oldValues = existing.recordset[0];
+        // Fetch old values
+        const getReq = pool.request();
+        getReq.input('np_ctrlno', sql.Int, id);
+        const existing = await getReq.query(
+            'SELECT * FROM tbl_natureofpaymentdtl WHERE np_ctrlno = @np_ctrlno'
+        );
+        const oldValues = existing.recordset[0];
 
-    const request = pool.request();
-    request.input('np_ctrlno', sql.Int, id);
-    request.input('np_desc', sql.VarChar(200), np_desc);
-    request.input('np_unitcharge', sql.Float, np_unitcharge || 0);
-    request.input('np_ucsecond', sql.Float, np_ucsecond || 0);
-    request.input('np_ucthird', sql.Float, np_ucthird || 0);
-    request.input('np_measure', sql.VarChar(100), np_measure || null);
+        const request = pool.request();
+        request.input('np_ctrlno', sql.Int, id);
+        request.input('np_desc', sql.VarChar(200), np_desc);
+        request.input('np_unitcharge', sql.Float, np_unitcharge || 0);
+        request.input('np_ucsecond', sql.Float, np_ucsecond || 0);
+        request.input('np_ucthird', sql.Float, np_ucthird || 0);
+        request.input('np_measure', sql.VarChar(100), np_measure || null);
 
-    await request.query(`
+        await request.query(`
       UPDATE [tbl_natureofpaymentdtl]
       SET [np_desc] = @np_desc
          ,[np_unitcharge] = @np_unitcharge
@@ -982,63 +1780,67 @@ app.put('/api/natureofpaymentdetails/:id', async (req, res) => {
       WHERE [np_ctrlno] = @np_ctrlno
     `);
 
-    await logActivity(pool, req, {
-      action: 'UPDATE',
-      tableName: 'tbl_natureofpaymentdtl',
-      recordId: id,
-      oldValues: oldValues,
-      newValues: req.body
-    });
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_natureofpaymentdtl',
+            recordId: id,
+            oldValues: oldValues,
+            newValues: req.body,
+        });
 
-    console.log(`✅ Nature of payment detail ${id} updated successfully`);
-    res.json({ message: 'Nature of payment detail updated successfully' });
-  } catch (err) {
-    console.error('❌ Update Nature of Payment Detail Error:', err.message);
-    res.status(500).json({ error: 'Failed to update nature of payment detail: ' + err.message });
-  }
+        console.log(`✅ Nature of payment detail ${id} updated successfully`);
+        res.json({ message: 'Nature of payment detail updated successfully' });
+    } catch (err) {
+        console.error('❌ Update Nature of Payment Detail Error:', err.message);
+        res.status(500).json({
+            error: 'Failed to update nature of payment detail: ' + err.message,
+        });
+    }
 });
 
 // Delete nature of payment detail
 app.delete('/api/natureofpaymentdetails/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
 
-    // Fetch old values for logging
-    const getReq = pool.request();
-    getReq.input('np_ctrlno', sql.Int, id);
-    const existing = await getReq.query('SELECT * FROM tbl_natureofpaymentdtl WHERE np_ctrlno = @np_ctrlno');
-    const oldValues = existing.recordset[0];
+        // Fetch old values for logging
+        const getReq = pool.request();
+        getReq.input('np_ctrlno', sql.Int, id);
+        const existing = await getReq.query(
+            'SELECT * FROM tbl_natureofpaymentdtl WHERE np_ctrlno = @np_ctrlno'
+        );
+        const oldValues = existing.recordset[0];
 
-    const request = pool.request();
-    request.input('np_ctrlno', sql.Int, id);
+        const request = pool.request();
+        request.input('np_ctrlno', sql.Int, id);
 
-    await request.query(
-      'DELETE FROM [tbl_natureofpaymentdtl] WHERE [np_ctrlno] = @np_ctrlno'
-    );
+        await request.query('DELETE FROM [tbl_natureofpaymentdtl] WHERE [np_ctrlno] = @np_ctrlno');
 
-    if (oldValues) {
-      await logActivity(pool, req, {
-        action: 'DELETE',
-        tableName: 'tbl_natureofpaymentdtl',
-        recordId: id,
-        oldValues: oldValues
-      });
+        if (oldValues) {
+            await logActivity(pool, req, {
+                action: 'DELETE',
+                tableName: 'tbl_natureofpaymentdtl',
+                recordId: id,
+                oldValues: oldValues,
+            });
+        }
+
+        console.log(`✅ Nature of payment detail ${id} deleted successfully`);
+        res.json({ message: 'Nature of payment detail deleted successfully' });
+    } catch (err) {
+        console.error('❌ Delete Nature of Payment Detail Error:', err.message);
+        res.status(500).json({
+            error: 'Failed to delete nature of payment detail: ' + err.message,
+        });
     }
-
-    console.log(`✅ Nature of payment detail ${id} deleted successfully`);
-    res.json({ message: 'Nature of payment detail deleted successfully' });
-  } catch (err) {
-    console.error('❌ Delete Nature of Payment Detail Error:', err.message);
-    res.status(500).json({ error: 'Failed to delete nature of payment detail: ' + err.message });
-  }
 });
 
 // ==================== PAYMENT REGISTRATIONS ENDPOINTS ====================
 
 app.get('/api/paymentregistrations', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT tbl_assessmenthdr.aop_control, 
              tbl_assessmenthdr.aop_ctrlno,
              tbl_client.ph_cname, 
@@ -1051,66 +1853,65 @@ app.get('/api/paymentregistrations', async (req, res) => {
       WHERE (((tbl_assessmenthdr.aop_orno) IS NULL))
       ORDER BY tbl_assessmenthdr.aop_ctrlno DESC
     `);
-    console.log(`✅ Fetched ${result.recordset.length} payment registrations`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Payment Registrations Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch payment registrations: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} payment registrations`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Payment Registrations Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch payment registrations: ' + err.message });
+    }
 });
 
 app.delete('/api/paymentregistrations/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
 
-    const request = pool.request();
-    request.input('aop_ctrlno', sql.Int, id);
+        const request = pool.request();
+        request.input('aop_ctrlno', sql.Int, id);
 
-    // Find control number for detail deletion
-    const existing = await request.query(
-      'SELECT * FROM tbl_assessmenthdr WHERE aop_ctrlno = @aop_ctrlno'
-    );
+        // Find control number for detail deletion
+        const existing = await request.query(
+            'SELECT * FROM tbl_assessmenthdr WHERE aop_ctrlno = @aop_ctrlno'
+        );
 
-    if (!existing.recordset.length) {
-      return res.status(404).json({ error: 'Payment registration not found' });
+        if (!existing.recordset.length) {
+            return res.status(404).json({ error: 'Payment registration not found' });
+        }
+
+        const oldValues = existing.recordset[0];
+        const controlNo = oldValues.aop_control;
+
+        // Delete detail rows first, then header
+        const detailRequest = pool.request();
+        detailRequest.input('aop_control', sql.VarChar, controlNo);
+        await detailRequest.query('DELETE FROM tbl_assessmentdtl WHERE aop_control = @aop_control');
+
+        const headerRequest = pool.request();
+        headerRequest.input('aop_ctrlno', sql.Int, id);
+        await headerRequest.query('DELETE FROM tbl_assessmenthdr WHERE aop_ctrlno = @aop_ctrlno');
+
+        await logActivity(pool, req, {
+            action: 'DELETE',
+            tableName: 'tbl_assessmenthdr',
+            recordId: id, // or controlNo, but ID matches header. ControlNo is more readable? let's stick to recordId or maybe controlNo.
+            // Other logs use PK. Let's use id (aop_ctrlno) or controlNo.
+            // Given prompt "deleted from AssessmentHistory", maybe user wants to see control #.
+            // But `recordId` is usually the PK. I'll use `id` but maybe include controlNo in details? behavior in client/header is `id`.
+            oldValues: oldValues,
+        });
+
+        console.log(`✅ Payment registration ${id} deleted successfully`);
+        res.json({ message: 'Payment registration deleted successfully' });
+    } catch (err) {
+        console.error('❌ Delete Payment Registration Error:', err.message);
+        res.status(500).json({ error: 'Failed to delete payment registration: ' + err.message });
     }
-
-    const oldValues = existing.recordset[0];
-    const controlNo = oldValues.aop_control;
-
-    // Delete detail rows first, then header
-    const detailRequest = pool.request();
-    detailRequest.input('aop_control', sql.VarChar, controlNo);
-    await detailRequest.query('DELETE FROM tbl_assessmentdtl WHERE aop_control = @aop_control');
-
-    const headerRequest = pool.request();
-    headerRequest.input('aop_ctrlno', sql.Int, id);
-    await headerRequest.query('DELETE FROM tbl_assessmenthdr WHERE aop_ctrlno = @aop_ctrlno');
-
-    await logActivity(pool, req, {
-      action: 'DELETE',
-      tableName: 'tbl_assessmenthdr',
-      recordId: id, // or controlNo, but ID matches header. ControlNo is more readable? let's stick to recordId or maybe controlNo. 
-      // Other logs use PK. Let's use id (aop_ctrlno) or controlNo. 
-      // Given prompt "deleted from AssessmentHistory", maybe user wants to see control #.
-      // But `recordId` is usually the PK. I'll use `id` but maybe include controlNo in details? behavior in client/header is `id`.
-      oldValues: oldValues
-    });
-
-    console.log(`✅ Payment registration ${id} deleted successfully`);
-    res.json({ message: 'Payment registration deleted successfully' });
-  } catch (err) {
-    console.error('❌ Delete Payment Registration Error:', err.message);
-    res.status(500).json({ error: 'Failed to delete payment registration: ' + err.message });
-  }
 });
-
 
 // GET /api/clienttransactions
 // Returns clients with assessment records (where aop_orno is not null)
 app.get('/api/clienttransactions', async (req, res) => {
-  try {
-    const query = `
+    try {
+        const query = `
       SELECT tbl_client.ph_cname, tbl_client.ph_address1, tbl_client.ph_address2, 
              tbl_client.ph_TIN, tbl_client.ph_contact, tbl_client.ph_ctrlno
       FROM tbl_assessmenthdr 
@@ -1121,20 +1922,20 @@ app.get('/api/clienttransactions', async (req, res) => {
       ORDER BY tbl_client.ph_cname
     `;
 
-    const result = await pool.request().query(query);
-    res.json(result.recordset);
-  } catch (err) {
-    console.error('Error fetching transaction clients:', err);
-    res.status(500).json({ error: 'Failed to fetch clients' });
-  }
+        const result = await pool.request().query(query);
+        res.json(result.recordset);
+    } catch (err) {
+        console.error('Error fetching transaction clients:', err);
+        res.status(500).json({ error: 'Failed to fetch clients' });
+    }
 });
 
 // GET /api/assessmentdetails/:clientId
 // Returns assessment details for a specific client
 app.get('/api/assessmentdetails/:clientId', async (req, res) => {
-  try {
-    const clientId = req.params.clientId;
-    const query = `
+    try {
+        const clientId = req.params.clientId;
+        const query = `
       SELECT tbl_assessmenthdr.aop_control, tbl_assessmenthdr.aop_orno, 
              tbl_assessmenthdr.aop_ordate, tbl_assessmentdtl.aop_item, 
              tbl_assessmentdtl.aop_volume, tbl_assessmentdtl.aop_charge, 
@@ -1148,102 +1949,107 @@ app.get('/api/assessmentdetails/:clientId', async (req, res) => {
       ORDER BY tbl_assessmenthdr.aop_ordate DESC, tbl_assessmentdtl.aop_ctrlno
     `;
 
-    const result = await pool.request().query(query);
-    res.json(result.recordset);
-  } catch (err) {
-    console.error('Error fetching assessment details:', err);
-    res.status(500).json({ error: 'Failed to fetch assessment details' });
-  }
+        const result = await pool.request().query(query);
+        res.json(result.recordset);
+    } catch (err) {
+        console.error('Error fetching assessment details:', err);
+        res.status(500).json({ error: 'Failed to fetch assessment details' });
+    }
 });
 
 // DELETE /api/assessmentdetails/:id
 // Deletes assessment detail and header rows by aop_control
 app.delete('/api/assessmentdetails/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const request = pool.request();
-    request.input('aop_control', sql.VarChar(50), id);
+    try {
+        const { id } = req.params;
+        const request = pool.request();
+        request.input('aop_control', sql.VarChar(50), id);
 
-    // Fetch old values for audit logging
-    const existingDtl = await request.query('SELECT * FROM tbl_assessmentdtl WHERE aop_control = @aop_control');
-    const existingHdr = await request.query('SELECT * FROM tbl_assessmenthdr WHERE aop_control = @aop_control');
+        // Fetch old values for audit logging
+        const existingDtl = await request.query(
+            'SELECT * FROM tbl_assessmentdtl WHERE aop_control = @aop_control'
+        );
+        const existingHdr = await request.query(
+            'SELECT * FROM tbl_assessmenthdr WHERE aop_control = @aop_control'
+        );
 
-    const oldValuesDtl = existingDtl.recordset;
-    const oldValuesHdr = existingHdr.recordset[0];
+        const oldValuesDtl = existingDtl.recordset;
+        const oldValuesHdr = existingHdr.recordset[0];
 
-    if (oldValuesDtl.length === 0 && !oldValuesHdr) {
-      return res.status(404).json({ error: 'Assessment record not found' });
+        if (oldValuesDtl.length === 0 && !oldValuesHdr) {
+            return res.status(404).json({ error: 'Assessment record not found' });
+        }
+
+        // Delete from detail table first (child records)
+        await request.query('DELETE FROM tbl_assessmentdtl WHERE aop_control = @aop_control');
+
+        // Delete from header table (parent record)
+        await request.query('DELETE FROM tbl_assessmenthdr WHERE aop_control = @aop_control');
+
+        await logActivity(pool, req, {
+            action: 'DELETE',
+            tableName: 'tbl_assessmenthdr/tbl_assessmentdtl',
+            recordId: id,
+            oldValues: { header: oldValuesHdr, details: oldValuesDtl },
+        });
+
+        console.log(`✅ Assessment ${id} deleted successfully`);
+        res.json({ message: 'Assessment deleted successfully' });
+    } catch (err) {
+        console.error('❌ Delete Assessment Error:', err.message);
+        res.status(500).json({ error: 'Failed to delete assessment: ' + err.message });
     }
-
-    // Delete from detail table first (child records)
-    await request.query('DELETE FROM tbl_assessmentdtl WHERE aop_control = @aop_control');
-
-    // Delete from header table (parent record)
-    await request.query('DELETE FROM tbl_assessmenthdr WHERE aop_control = @aop_control');
-
-    await logActivity(pool, req, {
-      action: 'DELETE',
-      tableName: 'tbl_assessmenthdr/tbl_assessmentdtl',
-      recordId: id,
-      oldValues: { header: oldValuesHdr, details: oldValuesDtl }
-    });
-
-    console.log(`✅ Assessment ${id} deleted successfully`);
-    res.json({ message: 'Assessment deleted successfully' });
-  } catch (err) {
-    console.error('❌ Delete Assessment Error:', err.message);
-    res.status(500).json({ error: 'Failed to delete assessment: ' + err.message });
-  }
 });
-
 
 // DELETE /api/clients/:id
 app.delete('/api/clients/:id', async (req, res) => {
-  try {
-    const { id } = req.params; // Changed from clientId to id to match route param
-    const request = pool.request();
-    request.input('ph_ctrlno', sql.Int, id); // Changed from clientId to ph_ctrlno
+    try {
+        const { id } = req.params; // Changed from clientId to id to match route param
+        const request = pool.request();
+        request.input('ph_ctrlno', sql.Int, id); // Changed from clientId to ph_ctrlno
 
-    // Fetch old values for logging
-    const existingClient = await request.query('SELECT * FROM tbl_client WHERE ph_ctrlno = @ph_ctrlno');
-    const oldValues = existingClient.recordset[0];
+        // Fetch old values for logging
+        const existingClient = await request.query(
+            'SELECT * FROM tbl_client WHERE ph_ctrlno = @ph_ctrlno'
+        );
+        const oldValues = existingClient.recordset[0];
 
-    if (!oldValues) {
-      return res.status(404).json({ error: 'Client not found' });
+        if (!oldValues) {
+            return res.status(404).json({ error: 'Client not found' });
+        }
+
+        // Delete related records first (e.g., from tbl_assessmenthdr, tbl_clientpermit)
+        // This assumes cascading deletes are not set up or we want explicit control.
+        // For simplicity, let's assume direct deletion for now, or add specific deletes for related tables if needed.
+        // Example: await request.query('DELETE FROM tbl_assessmenthdr WHERE aop_clientid = @ph_ctrlno');
+        // Example: await request.query('DELETE FROM tbl_clientpermit WHERE ph_lnkctrl = @ph_ctrlno');
+
+        await request.query('DELETE FROM tbl_client WHERE ph_ctrlno = @ph_ctrlno');
+
+        await logActivity(pool, req, {
+            action: 'DELETE',
+            tableName: 'tbl_client',
+            recordId: id,
+            oldValues: oldValues,
+        });
+
+        console.log(`✅ Client ${id} deleted successfully`);
+        res.json({ message: 'Client deleted successfully' });
+    } catch (err) {
+        console.error('❌ Delete Client Error:', err.message);
+        res.status(500).json({ error: 'Failed to delete client: ' + err.message });
     }
-
-    // Delete related records first (e.g., from tbl_assessmenthdr, tbl_clientpermit)
-    // This assumes cascading deletes are not set up or we want explicit control.
-    // For simplicity, let's assume direct deletion for now, or add specific deletes for related tables if needed.
-    // Example: await request.query('DELETE FROM tbl_assessmenthdr WHERE aop_clientid = @ph_ctrlno');
-    // Example: await request.query('DELETE FROM tbl_clientpermit WHERE ph_lnkctrl = @ph_ctrlno');
-
-    await request.query('DELETE FROM tbl_client WHERE ph_ctrlno = @ph_ctrlno');
-
-    await logActivity(pool, req, {
-      action: 'DELETE',
-      tableName: 'tbl_client',
-      recordId: id,
-      oldValues: oldValues
-    });
-
-    console.log(`✅ Client ${id} deleted successfully`);
-    res.json({ message: 'Client deleted successfully' });
-  } catch (err) {
-    console.error('❌ Delete Client Error:', err.message);
-    res.status(500).json({ error: 'Failed to delete client: ' + err.message });
-  }
 });
 
 // GET /api/clienttransactions/:clientId/nature
 // Returns distinct nature of payment values for a client
 app.get('/api/clienttransactions/:clientId/nature', async (req, res) => {
-  try {
-    const { clientId } = req.params;
-    const request = pool.request();
-    request.input('clientId', sql.Int, clientId);
+    try {
+        const { clientId } = req.params;
+        const request = pool.request();
+        request.input('clientId', sql.Int, clientId);
 
-    const result = await request.query(`
+        const result = await request.query(`
       SELECT aop_nature
       FROM tbl_assessmenthdr
       WHERE aop_clientid = @clientId
@@ -1251,22 +2057,22 @@ app.get('/api/clienttransactions/:clientId/nature', async (req, res) => {
       ORDER BY aop_nature
     `);
 
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('Error fetching nature of payment:', err);
-    res.status(500).json({ error: 'Failed to fetch nature of payment' });
-  }
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('Error fetching nature of payment:', err);
+        res.status(500).json({ error: 'Failed to fetch nature of payment' });
+    }
 });
 
 // GET /api/assessments/:controlNo
 // Returns assessment header and details by control number
 app.get('/api/assessments/:controlNo', async (req, res) => {
-  try {
-    const { controlNo } = req.params;
-    const headerRequest = pool.request();
-    headerRequest.input('aop_control', sql.VarChar(50), controlNo);
+    try {
+        const { controlNo } = req.params;
+        const headerRequest = pool.request();
+        headerRequest.input('aop_control', sql.VarChar(50), controlNo);
 
-    const headerResult = await headerRequest.query(`
+        const headerResult = await headerRequest.query(`
       SELECT h.*, 
              c.ph_cname, c.ph_address1, c.ph_address2, c.ph_TIN
       FROM tbl_assessmenthdr h
@@ -1274,37 +2080,37 @@ app.get('/api/assessments/:controlNo', async (req, res) => {
       WHERE h.aop_control = @aop_control
     `);
 
-    if (!headerResult.recordset.length) {
-      return res.status(404).json({ error: 'Assessment not found' });
-    }
+        if (!headerResult.recordset.length) {
+            return res.status(404).json({ error: 'Assessment not found' });
+        }
 
-    const header = headerResult.recordset[0];
+        const header = headerResult.recordset[0];
 
-    const detailRequest = pool.request();
-    detailRequest.input('aop_control', sql.VarChar(50), controlNo);
+        const detailRequest = pool.request();
+        detailRequest.input('aop_control', sql.VarChar(50), controlNo);
 
-    const detailResult = await detailRequest.query(`
+        const detailResult = await detailRequest.query(`
       SELECT aop_item, aop_volume, aop_charge, aop_total, aop_measure, aop_permitno
       FROM tbl_assessmentdtl
       WHERE aop_control = @aop_control
       ORDER BY aop_ctrlno
     `);
 
-    res.json({
-      header,
-      details: detailResult.recordset || []
-    });
-  } catch (err) {
-    console.error('Error fetching assessment by control:', err);
-    res.status(500).json({ error: 'Failed to fetch assessment: ' + err.message });
-  }
+        res.json({
+            header,
+            details: detailResult.recordset || [],
+        });
+    } catch (err) {
+        console.error('Error fetching assessment by control:', err);
+        res.status(500).json({ error: 'Failed to fetch assessment: ' + err.message });
+    }
 });
 
 // GET /api/newapplication/clients
 // Returns clients with permit numbers
 app.get('/api/newapplication/clients', async (_req, res) => {
-  try {
-    const query = `
+    try {
+        const query = `
       SELECT tbl_client.ph_ctrlno,
              tbl_client.ph_cname,
              tbl_client.ph_address1,
@@ -1316,19 +2122,19 @@ app.get('/api/newapplication/clients', async (_req, res) => {
       WHERE tbl_client.ph_tpermit IS NOT NULL AND tbl_client.ph_tpermit <> ''
       ORDER BY tbl_client.ph_cname
     `;
-    const result = await pool.request().query(query);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('Error fetching new application clients:', err);
-    res.status(500).json({ error: 'Failed to fetch clients: ' + err.message });
-  }
+        const result = await pool.request().query(query);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('Error fetching new application clients:', err);
+        res.status(500).json({ error: 'Failed to fetch clients: ' + err.message });
+    }
 });
 
 // GET /api/productionaudit/clients
 // Returns permit holder clients for Production Audit
 app.get('/api/productionaudit/clients', async (_req, res) => {
-  try {
-    const query = `
+    try {
+        const query = `
       SELECT DISTINCT
              tbl_client.ph_cname,
              tbl_client.ph_address1,
@@ -1342,27 +2148,27 @@ app.get('/api/productionaudit/clients', async (_req, res) => {
       WHERE tbl_client.ph_ctype = 'Permit Holder'
       ORDER BY tbl_client.ph_cname
       `;
-    const result = await pool.request().query(query);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('Error fetching production audit clients:', err);
-    res.status(500).json({ error: 'Failed to fetch production audit clients: ' + err.message });
-  }
+        const result = await pool.request().query(query);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('Error fetching production audit clients:', err);
+        res.status(500).json({ error: 'Failed to fetch production audit clients: ' + err.message });
+    }
 });
 
 // GET /api/permitholder/permits/:clientId
 // Returns permits for a specific client for Permit Holder page
 app.get('/api/permitholder/permits/:clientId', async (req, res) => {
-  try {
-    const { clientId } = req.params;
-    if (!clientId) {
-      return res.status(400).json({ error: 'Client ID is required' });
-    }
+    try {
+        const { clientId } = req.params;
+        if (!clientId) {
+            return res.status(400).json({ error: 'Client ID is required' });
+        }
 
-    const request = pool.request();
-    request.input('clientId', sql.Int, clientId);
+        const request = pool.request();
+        request.input('clientId', sql.Int, clientId);
 
-    const query = `
+        const query = `
       SELECT
           ph_ctrlno,
           ph_permitno,
@@ -1380,84 +2186,100 @@ app.get('/api/permitholder/permits/:clientId', async (req, res) => {
       ORDER BY ph_dto DESC
     `;
 
-    const result = await request.query(query);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('Error fetching permit holder permits:', err);
-    res.status(500).json({ error: 'Failed to fetch permits: ' + err.message });
-  }
+        const result = await request.query(query);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('Error fetching permit holder permits:', err);
+        res.status(500).json({ error: 'Failed to fetch permits: ' + err.message });
+    }
 });
 
 // POST /api/permitholder/permits
 // Creates a new client permit
 app.post('/api/permitholder/permits', async (req, res) => {
-  try {
-    const {
-      clientId,
-      permitNo,
-      municipality,
-      barangay1,
-      barangay2,
-      volume,
-      area,
-      dateFrom,
-      dateTo,
-      source
-    } = req.body || {};
+    try {
+        const {
+            clientId,
+            permitNo,
+            municipality,
+            barangay1,
+            barangay2,
+            volume,
+            area,
+            dateFrom,
+            dateTo,
+            source,
+        } = req.body || {};
 
-    if (!clientId || !permitNo) {
-      return res.status(400).json({ error: 'Client ID and Permit No. are required' });
-    }
+        if (!clientId || !permitNo) {
+            return res.status(400).json({ error: 'Client ID and Permit No. are required' });
+        }
 
-    const request = pool.request();
-    request.input('clientId', sql.Int, clientId);
-    request.input('permitNo', sql.VarChar(100), permitNo);
-    request.input('municipality', sql.VarChar(200), municipality || '');
-    request.input('barangay1', sql.VarChar(200), barangay1 || '');
-    request.input('barangay2', sql.VarChar(200), barangay2 || '');
-    request.input('volume', sql.Decimal(18, 2), volume ?? 0);
-    request.input('area', sql.Decimal(18, 2), area ?? 0);
-    request.input('dateFrom', sql.Date, dateFrom || null);
-    request.input('dateTo', sql.Date, dateTo || null);
-    request.input('source', sql.VarChar(100), source || permitNo || null);
+        const request = pool.request();
+        request.input('clientId', sql.Int, clientId);
+        request.input('permitNo', sql.VarChar(100), permitNo);
+        request.input('municipality', sql.VarChar(200), municipality || '');
+        request.input('barangay1', sql.VarChar(200), barangay1 || '');
+        request.input('barangay2', sql.VarChar(200), barangay2 || '');
+        request.input('volume', sql.Decimal(18, 2), volume ?? 0);
+        request.input('area', sql.Decimal(18, 2), area ?? 0);
+        request.input('dateFrom', sql.Date, dateFrom || null);
+        request.input('dateTo', sql.Date, dateTo || null);
+        request.input('source', sql.VarChar(100), source || permitNo || null);
 
-    const result = await request.query(`
+        const result = await request.query(`
       INSERT INTO tbl_clientpermit (ph_lnkctrl, ph_permitno, ph_mun, ph_brgy, ph_brgy2, ph_volume, ph_area, ph_dfrom, ph_dto, ph_source)
       OUTPUT inserted.ph_ctrlno, inserted.ph_lnkctrl, inserted.ph_permitno, inserted.ph_mun, inserted.ph_brgy, inserted.ph_brgy2, inserted.ph_volume, inserted.ph_area, inserted.ph_dfrom, inserted.ph_dto, inserted.ph_attach, inserted.ph_source
       VALUES (@clientId, @permitNo, @municipality, @barangay1, @barangay2, @volume, @area, @dateFrom, @dateTo, @source)
     `);
 
-    console.log('✅ Client permit created successfully');
-    res.json(result.recordset?.[0] || {});
-  } catch (err) {
-    console.error('Error creating client permit:', err);
-    res.status(500).json({ error: 'Failed to create permit: ' + err.message });
-  }
+        console.log('✅ Client permit created successfully');
+        await logActivity(pool, req, {
+            action: 'CREATE',
+            tableName: 'tbl_clientpermit',
+            recordId: result.recordset?.[0]?.ph_ctrlno || permitNo,
+            newValues: result.recordset?.[0] || req.body,
+        });
+        res.json(result.recordset?.[0] || {});
+    } catch (err) {
+        console.error('Error creating client permit:', err);
+        res.status(500).json({ error: 'Failed to create permit: ' + err.message });
+    }
 });
 
 // PUT /api/permitholder/permits/:id
 // Updates an existing client permit
 app.put('/api/permitholder/permits/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { permitNo, municipality, barangay1, barangay2, volume, area, dateFrom, dateTo } = req.body || {};
+    try {
+        const { id } = req.params;
+        const { permitNo, municipality, barangay1, barangay2, volume, area, dateFrom, dateTo } =
+            req.body || {};
 
-    if (!id || !permitNo) {
-      return res.status(400).json({ error: 'ID and Permit No. are required' });
-    }
+        if (!id || !permitNo) {
+            return res.status(400).json({ error: 'ID and Permit No. are required' });
+        }
 
-    const request = pool.request();
-    request.input('id', sql.Int, parseInt(id, 10));
-    request.input('permitNo', sql.VarChar(100), permitNo);
-    request.input('municipality', sql.VarChar(200), municipality || '');
-    request.input('barangay1', sql.VarChar(200), barangay1 || '');
-    request.input('barangay2', sql.VarChar(200), barangay2 || '');
-    request.input('volume', sql.Decimal(18, 2), volume ?? 0);
-    request.input('area', sql.Decimal(18, 2), area ?? 0);
-    request.input('dateFrom', sql.Date, dateFrom || null);
-    request.input('dateTo', sql.Date, dateTo || null);
+        const oldRequest = pool.request();
+        oldRequest.input('id', sql.Int, parseInt(id, 10));
+        const oldResult = await oldRequest.query(`
+      SELECT *
+      FROM tbl_clientpermit
+      WHERE ph_ctrlno = @id
+    `);
+        const oldValues = oldResult.recordset?.[0];
 
-    const result = await request.query(`
+        const request = pool.request();
+        request.input('id', sql.Int, parseInt(id, 10));
+        request.input('permitNo', sql.VarChar(100), permitNo);
+        request.input('municipality', sql.VarChar(200), municipality || '');
+        request.input('barangay1', sql.VarChar(200), barangay1 || '');
+        request.input('barangay2', sql.VarChar(200), barangay2 || '');
+        request.input('volume', sql.Decimal(18, 2), volume ?? 0);
+        request.input('area', sql.Decimal(18, 2), area ?? 0);
+        request.input('dateFrom', sql.Date, dateFrom || null);
+        request.input('dateTo', sql.Date, dateTo || null);
+
+        const result = await request.query(`
       UPDATE tbl_clientpermit
       SET ph_permitno = @permitNo,
           ph_mun = @municipality,
@@ -1471,60 +2293,84 @@ app.put('/api/permitholder/permits/:id', async (req, res) => {
       WHERE ph_ctrlno = @id
     `);
 
-    if (!result.recordset?.length) {
-      return res.status(404).json({ error: 'Permit not found' });
-    }
+        if (!result.recordset?.length) {
+            return res.status(404).json({ error: 'Permit not found' });
+        }
 
-    console.log(`✅ Client permit ${id} updated successfully`);
-    res.json(result.recordset[0]);
-  } catch (err) {
-    console.error('Error updating client permit:', err);
-    res.status(500).json({ error: 'Failed to update permit: ' + err.message });
-  }
+        console.log(`✅ Client permit ${id} updated successfully`);
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_clientpermit',
+            recordId: id,
+            oldValues,
+            newValues: result.recordset[0],
+        });
+        res.json(result.recordset[0]);
+    } catch (err) {
+        console.error('Error updating client permit:', err);
+        res.status(500).json({ error: 'Failed to update permit: ' + err.message });
+    }
 });
 
 // DELETE /api/permitholder/permits/:id
 // Deletes a client permit
 app.delete('/api/permitholder/permits/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    if (!id) {
-      return res.status(400).json({ error: 'ID is required' });
-    }
+    try {
+        const { id } = req.params;
+        if (!id) {
+            return res.status(400).json({ error: 'ID is required' });
+        }
 
-    const request = pool.request();
-    request.input('id', sql.Int, parseInt(id, 10));
+        const oldRequest = pool.request();
+        oldRequest.input('id', sql.Int, parseInt(id, 10));
+        const oldResult = await oldRequest.query(`
+      SELECT *
+      FROM tbl_clientpermit
+      WHERE ph_ctrlno = @id
+    `);
+        const oldValues = oldResult.recordset?.[0];
 
-    const result = await request.query(`
+        const request = pool.request();
+        request.input('id', sql.Int, parseInt(id, 10));
+
+        const result = await request.query(`
       DELETE FROM tbl_clientpermit
       WHERE ph_ctrlno = @id
     `);
 
-    if (!result.rowsAffected?.[0]) {
-      return res.status(404).json({ error: 'Permit not found' });
-    }
+        if (!result.rowsAffected?.[0]) {
+            return res.status(404).json({ error: 'Permit not found' });
+        }
 
-    console.log(`✅ Client permit ${id} deleted successfully`);
-    res.json({ success: true });
-  } catch (err) {
-    console.error('Error deleting client permit:', err);
-    res.status(500).json({ error: 'Failed to delete permit: ' + err.message });
-  }
+        console.log(`✅ Client permit ${id} deleted successfully`);
+        if (oldValues) {
+            await logActivity(pool, req, {
+                action: 'DELETE',
+                tableName: 'tbl_clientpermit',
+                recordId: id,
+                oldValues,
+            });
+        }
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error deleting client permit:', err);
+        res.status(500).json({ error: 'Failed to delete permit: ' + err.message });
+    }
 });
 
 // GET /api/productionaudit/permits/:clientId
 // Returns permits for a specific client (ordered by validity end date desc)
 app.get('/api/productionaudit/permits/:clientId', async (req, res) => {
-  try {
-    const { clientId } = req.params;
-    if (!clientId) {
-      return res.status(400).json({ error: 'Client ID is required' });
-    }
+    try {
+        const { clientId } = req.params;
+        if (!clientId) {
+            return res.status(400).json({ error: 'Client ID is required' });
+        }
 
-    const request = pool.request();
-    request.input('clientId', sql.VarChar(50), clientId);
+        const request = pool.request();
+        request.input('clientId', sql.VarChar(50), clientId);
 
-    const query = `
+        const query = `
       SELECT tbl_clientpermit.ph_lnkctrl,
              tbl_clientpermit.ph_permitno,
              tbl_clientpermit.ph_dfrom,
@@ -1535,33 +2381,33 @@ app.get('/api/productionaudit/permits/:clientId', async (req, res) => {
       ORDER BY tbl_clientpermit.ph_dto DESC
     `;
 
-    const result = await request.query(query);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('Error fetching production audit permits:', err);
-    res.status(500).json({ error: 'Failed to fetch production audit permits: ' + err.message });
-  }
+        const result = await request.query(query);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('Error fetching production audit permits:', err);
+        res.status(500).json({ error: 'Failed to fetch production audit permits: ' + err.message });
+    }
 });
 
 // GET /api/productionaudit/production/:permitNo
 // Returns production records for a permit number with volume paid derived from assessment history
 app.get('/api/productionaudit/production/:permitNo', async (req, res) => {
-  try {
-    const { permitNo } = req.params;
-    const { clientId } = req.query;
-    if (!permitNo) {
-      return res.status(400).json({ error: 'Permit number is required' });
-    }
-    if (!clientId) {
-      return res.status(400).json({ error: 'Client id is required' });
-    }
+    try {
+        const { permitNo } = req.params;
+        const { clientId } = req.query;
+        if (!permitNo) {
+            return res.status(400).json({ error: 'Permit number is required' });
+        }
+        if (!clientId) {
+            return res.status(400).json({ error: 'Client id is required' });
+        }
 
-    const request = pool.request();
-    request.input('permitNo', sql.VarChar(200), permitNo);
-    request.input('clientId', sql.Int, clientId);
-    request.input('naturePattern', sql.VarChar(200), '%Government Share%');
+        const request = pool.request();
+        request.input('permitNo', sql.VarChar(200), permitNo);
+        request.input('clientId', sql.Int, clientId);
+        request.input('naturePattern', sql.VarChar(200), '%Government Share%');
 
-    const query = `
+        const query = `
       WITH PermitWindow AS (
           SELECT
               DATEADD(MONTH, 1, DATEFROMPARTS(YEAR(cp.ph_dfrom), MONTH(cp.ph_dfrom), 1)) AS start_month,
@@ -1639,61 +2485,61 @@ app.get('/api/productionaudit/production/:permitNo', async (req, res) => {
       OPTION (MAXRECURSION 120);
     `;
 
-    const result = await request.query(query);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('Error fetching production audit data:', err);
-    res.status(500).json({ error: 'Failed to fetch production audit data: ' + err.message });
-  }
+        const result = await request.query(query);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('Error fetching production audit data:', err);
+        res.status(500).json({ error: 'Failed to fetch production audit data: ' + err.message });
+    }
 });
 
 // POST /api/productionaudit/production
 app.post('/api/productionaudit/production', async (req, res) => {
-  try {
-    const { permitNo, date, volumeExtracted, volumeSold } = req.body || {};
-    if (!permitNo || !date) {
-      return res.status(400).json({ error: 'permitNo and date are required' });
-    }
+    try {
+        const { permitNo, date, volumeExtracted, volumeSold } = req.body || {};
+        if (!permitNo || !date) {
+            return res.status(400).json({ error: 'permitNo and date are required' });
+        }
 
-    // Check if a record already exists for the same month and permit (prevent duplicates)
-    const checkReq = pool.request();
-    checkReq.input('permitNo', sql.VarChar(200), permitNo);
-    checkReq.input('date', sql.Date, date);
-    const existingCheck = await checkReq.query(`
+        // Check if a record already exists for the same month and permit (prevent duplicates)
+        const checkReq = pool.request();
+        checkReq.input('permitNo', sql.VarChar(200), permitNo);
+        checkReq.input('date', sql.Date, date);
+        const existingCheck = await checkReq.query(`
       SELECT pr_ctrlno FROM tbl_production
       WHERE pr_permitno = @permitNo
         AND YEAR(pr_date) = YEAR(@date)
         AND MONTH(pr_date) = MONTH(@date)
     `);
 
-    const request = pool.request();
-    request.input('permitNo', sql.VarChar(200), permitNo);
-    request.input('date', sql.Date, date);
-    request.input('vExtracted', sql.Decimal(18, 2), volumeExtracted ?? 0);
-    request.input('vSold', sql.Decimal(18, 2), volumeSold ?? 0);
+        const request = pool.request();
+        request.input('permitNo', sql.VarChar(200), permitNo);
+        request.input('date', sql.Date, date);
+        request.input('vExtracted', sql.Decimal(18, 2), volumeExtracted ?? 0);
+        request.input('vSold', sql.Decimal(18, 2), volumeSold ?? 0);
 
-    let result;
-    if (existingCheck.recordset.length > 0) {
-      // Update existing record instead of creating a duplicate
-      const existingId = existingCheck.recordset[0].pr_ctrlno;
-      request.input('id', sql.Int, existingId);
+        let result;
+        if (existingCheck.recordset.length > 0) {
+            // Update existing record instead of creating a duplicate
+            const existingId = existingCheck.recordset[0].pr_ctrlno;
+            request.input('id', sql.Int, existingId);
 
-      // Delete any extra duplicates for this month/permit, keep only one
-      if (existingCheck.recordset.length > 1) {
-        const delReq = pool.request();
-        delReq.input('keepId', sql.Int, existingId);
-        delReq.input('permitNo2', sql.VarChar(200), permitNo);
-        delReq.input('date2', sql.Date, date);
-        await delReq.query(`
+            // Delete any extra duplicates for this month/permit, keep only one
+            if (existingCheck.recordset.length > 1) {
+                const delReq = pool.request();
+                delReq.input('keepId', sql.Int, existingId);
+                delReq.input('permitNo2', sql.VarChar(200), permitNo);
+                delReq.input('date2', sql.Date, date);
+                await delReq.query(`
           DELETE FROM tbl_production
           WHERE pr_permitno = @permitNo2
             AND YEAR(pr_date) = YEAR(@date2)
             AND MONTH(pr_date) = MONTH(@date2)
             AND pr_ctrlno <> @keepId
         `);
-      }
+            }
 
-      result = await request.query(`
+            result = await request.query(`
         UPDATE tbl_production
         SET pr_date = @date,
             pr_vextracted = @vExtracted,
@@ -1702,75 +2548,83 @@ app.post('/api/productionaudit/production', async (req, res) => {
         WHERE pr_ctrlno = @id
       `);
 
-      await logActivity(pool, req, {
-        action: 'UPDATE',
-        tableName: 'tbl_production',
-        recordId: existingId,
-        newValues: { ...req.body, pr_ctrlno: existingId, note: 'upsert - record already existed for this month' }
-      });
-    } else {
-      // Insert new record
-      result = await request.query(`
+            await logActivity(pool, req, {
+                action: 'UPDATE',
+                tableName: 'tbl_production',
+                recordId: existingId,
+                newValues: {
+                    ...req.body,
+                    pr_ctrlno: existingId,
+                    note: 'upsert - record already existed for this month',
+                },
+            });
+        } else {
+            // Insert new record
+            result = await request.query(`
         INSERT INTO tbl_production (pr_date, pr_vextracted, pr_vsold, pr_permitno)
         OUTPUT inserted.pr_ctrlno, inserted.pr_date, inserted.pr_vextracted, inserted.pr_vsold, inserted.pr_permitno
         VALUES (@date, @vExtracted, @vSold, @permitNo)
       `);
 
-      await logActivity(pool, req, {
-        action: 'CREATE',
-        tableName: 'tbl_production',
-        recordId: result.recordset?.[0]?.pr_ctrlno || permitNo,
-        newValues: { ...req.body, pr_ctrlno: result.recordset?.[0]?.pr_ctrlno }
-      });
-    }
+            await logActivity(pool, req, {
+                action: 'CREATE',
+                tableName: 'tbl_production',
+                recordId: result.recordset?.[0]?.pr_ctrlno || permitNo,
+                newValues: { ...req.body, pr_ctrlno: result.recordset?.[0]?.pr_ctrlno },
+            });
+        }
 
-    res.json(result.recordset?.[0] || {});
-  } catch (err) {
-    console.error('Error creating production audit data:', err);
-    res.status(500).json({ error: 'Failed to create production data: ' + err.message });
-  }
+        res.json(result.recordset?.[0] || {});
+    } catch (err) {
+        console.error('Error creating production audit data:', err);
+        res.status(500).json({ error: 'Failed to create production data: ' + err.message });
+    }
 });
 
 // PUT /api/productionaudit/production/:id
 app.put('/api/productionaudit/production/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { permitNo, date, volumeExtracted, volumeSold } = req.body || {};
-    if (!id || !permitNo || !date) {
-      return res.status(400).json({ error: 'id, permitNo, and date are required' });
-    }
+    try {
+        const { id } = req.params;
+        const { permitNo, date, volumeExtracted, volumeSold } = req.body || {};
+        if (!id || !permitNo || !date) {
+            return res.status(400).json({ error: 'id, permitNo, and date are required' });
+        }
 
-    // 1. Fetch old values
-    const getReq = pool.request();
-    getReq.input('pr_ctrlno', sql.Int, parseInt(id, 10));
-    const existing = await getReq.query('SELECT * FROM tbl_production WHERE pr_ctrlno = @pr_ctrlno');
-    const oldValues = existing.recordset[0];
+        // 1. Fetch old values
+        const getReq = pool.request();
+        getReq.input('pr_ctrlno', sql.Int, parseInt(id, 10));
+        const existing = await getReq.query(
+            'SELECT * FROM tbl_production WHERE pr_ctrlno = @pr_ctrlno'
+        );
+        const oldValues = existing.recordset[0];
 
-    // 2. Delete any duplicate records for the same month/permit (consolidate)
-    const delReq = pool.request();
-    delReq.input('keepId', sql.Int, parseInt(id, 10));
-    delReq.input('permitNo', sql.VarChar(200), permitNo);
-    delReq.input('date', sql.Date, date);
-    const delResult = await delReq.query(`
+        // 2. Delete any duplicate records for the same month/permit (consolidate)
+        const delReq = pool.request();
+        delReq.input('keepId', sql.Int, parseInt(id, 10));
+        delReq.input('permitNo', sql.VarChar(200), permitNo);
+        delReq.input('date', sql.Date, date);
+        const delResult = await delReq.query(`
       DELETE FROM tbl_production
       WHERE pr_permitno = @permitNo
         AND YEAR(pr_date) = YEAR(@date)
         AND MONTH(pr_date) = MONTH(@date)
         AND pr_ctrlno <> @keepId
     `);
-    if (delResult.rowsAffected?.[0] > 0) {
-      console.log(`Consolidated ${delResult.rowsAffected[0]} duplicate production record(s) for permit ${permitNo} month ${date}`);
-    }
+        if (delResult.rowsAffected?.[0] > 0) {
+            console.log(
+                `Consolidated ${delResult.rowsAffected[0]} duplicate production record(s) for permit ${permitNo} month ${date}`
+            );
+        }
 
-    // 3. Perform Update on the kept record
-    const request = pool.request();
-    request.input('id', sql.Int, parseInt(id, 10));
-    request.input('permitNo', sql.VarChar(200), permitNo);
-    request.input('date', sql.Date, date);
-    request.input('vExtracted', sql.Decimal(18, 2), volumeExtracted ?? 0);
-    request.input('vSold', sql.Decimal(18, 2), volumeSold ?? 0);
+        // 3. Perform Update on the kept record
+        const request = pool.request();
+        request.input('id', sql.Int, parseInt(id, 10));
+        request.input('permitNo', sql.VarChar(200), permitNo);
+        request.input('date', sql.Date, date);
+        request.input('vExtracted', sql.Decimal(18, 2), volumeExtracted ?? 0);
+        request.input('vSold', sql.Decimal(18, 2), volumeSold ?? 0);
 
-    const result = await request.query(`
+        const result = await request.query(`
       UPDATE tbl_production
       SET pr_date = @date,
           pr_vextracted = @vExtracted,
@@ -1780,315 +2634,682 @@ app.put('/api/productionaudit/production/:id', async (req, res) => {
       WHERE pr_ctrlno = @id
     `);
 
-    if (!result.recordset?.length) {
-      return res.status(404).json({ error: 'Production record not found' });
+        if (!result.recordset?.length) {
+            return res.status(404).json({ error: 'Production record not found' });
+        }
+
+        // 4. Log Activity
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_production',
+            recordId: id,
+            oldValues: oldValues,
+            newValues: req.body,
+        });
+
+        res.json(result.recordset[0]);
+    } catch (err) {
+        console.error('Error updating production audit data:', err);
+        res.status(500).json({ error: 'Failed to update production data: ' + err.message });
     }
-
-    // 4. Log Activity
-    await logActivity(pool, req, {
-      action: 'UPDATE',
-      tableName: 'tbl_production',
-      recordId: id,
-      oldValues: oldValues,
-      newValues: req.body
-    });
-
-    res.json(result.recordset[0]);
-  } catch (err) {
-    console.error('Error updating production audit data:', err);
-    res.status(500).json({ error: 'Failed to update production data: ' + err.message });
-  }
 });
 
 // DELETE /api/productionaudit/production/:id
 app.delete('/api/productionaudit/production/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    if (!id) {
-      return res.status(400).json({ error: 'id is required' });
-    }
+    try {
+        const { id } = req.params;
+        if (!id) {
+            return res.status(400).json({ error: 'id is required' });
+        }
 
-    // 1. Fetch old values
-    const getReq = pool.request();
-    getReq.input('pr_ctrlno', sql.Int, parseInt(id, 10));
-    const existing = await getReq.query('SELECT * FROM tbl_production WHERE pr_ctrlno = @pr_ctrlno');
-    const oldValues = existing.recordset[0];
+        // 1. Fetch old values
+        const getReq = pool.request();
+        getReq.input('pr_ctrlno', sql.Int, parseInt(id, 10));
+        const existing = await getReq.query(
+            'SELECT * FROM tbl_production WHERE pr_ctrlno = @pr_ctrlno'
+        );
+        const oldValues = existing.recordset[0];
 
-    // 2. Perform Delete
-    const request = pool.request();
-    request.input('id', sql.Int, parseInt(id, 10));
+        // 2. Perform Delete
+        const request = pool.request();
+        request.input('id', sql.Int, parseInt(id, 10));
 
-    const result = await request.query(`
+        const result = await request.query(`
       DELETE FROM tbl_production
       WHERE pr_ctrlno = @id
     `);
 
-    if (!result.rowsAffected?.[0]) {
-      return res.status(404).json({ error: 'Production record not found' });
-    }
+        if (!result.rowsAffected?.[0]) {
+            return res.status(404).json({ error: 'Production record not found' });
+        }
 
-    // 3. Log Activity
-    if (oldValues) {
-      await logActivity(pool, req, {
-        action: 'DELETE',
-        tableName: 'tbl_production',
-        recordId: id,
-        oldValues: oldValues
-      });
-    }
+        // 3. Log Activity
+        if (oldValues) {
+            await logActivity(pool, req, {
+                action: 'DELETE',
+                tableName: 'tbl_production',
+                recordId: id,
+                oldValues: oldValues,
+            });
+        }
 
-    res.json({ success: true });
-  } catch (err) {
-    console.error('Error deleting production audit data:', err);
-    res.status(500).json({ error: 'Failed to delete production data: ' + err.message });
-  }
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error deleting production audit data:', err);
+        res.status(500).json({ error: 'Failed to delete production data: ' + err.message });
+    }
 });
 
 // GET /api/newapplication/requirements/:permitNo
 // Returns permit requirements for a given permit number
 app.get('/api/newapplication/requirements/:permitNo', async (req, res) => {
-  try {
-    const { permitNo } = req.params;
-    if (!permitNo) {
-      return res.status(400).json({ error: 'Permit number is required' });
-    }
+    try {
+        const { permitNo } = req.params;
+        if (!permitNo) {
+            return res.status(400).json({ error: 'Permit number is required' });
+        }
 
-    const request = pool.request();
-    request.input('permitNo', sql.VarChar(100), permitNo);
+        const request = pool.request();
+        request.input('permitNo', sql.VarChar(100), permitNo);
 
-    const result = await request.query(`
+        const result = await request.query(`
       SELECT tbl_permitreqnewapp.pr_desc, tbl_permitreqnewapp.pr_source, tbl_permitreqnewapp.pr_wsource
       FROM tbl_permitreqnewapp
       WHERE tbl_permitreqnewapp.pr_permitno = @permitNo
       ORDER BY tbl_permitreqnewapp.pr_desc
     `);
 
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('Error fetching new application requirements:', err);
-    res.status(500).json({ error: 'Failed to fetch requirements: ' + err.message });
-  }
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('Error fetching new application requirements:', err);
+        res.status(500).json({ error: 'Failed to fetch requirements: ' + err.message });
+    }
 });
 
 // POST /api/newapplication/requirements/attachment
 // Updates the attachment info for a permit requirement
 app.post('/api/newapplication/requirements/attachment', async (req, res) => {
-  try {
-    const { permitNo, description, fileName, attached } = req.body || {};
-    if (!permitNo || !description || !fileName) {
-      return res.status(400).json({ error: 'permitNo, description, and fileName are required' });
-    }
+    try {
+        const { permitNo, description, fileName, attached } = req.body || {};
+        if (!permitNo || !description || !fileName) {
+            return res
+                .status(400)
+                .json({ error: 'permitNo, description, and fileName are required' });
+        }
 
-    const request = pool.request();
-    request.input('permitNo', sql.VarChar(100), permitNo);
-    request.input('description', sql.VarChar(255), description);
-    request.input('fileName', sql.VarChar(255), fileName);
-    request.input('attached', sql.Bit, attached ? 1 : 0);
+        const request = pool.request();
+        request.input('permitNo', sql.VarChar(100), permitNo);
+        request.input('description', sql.VarChar(255), description);
+        request.input('fileName', sql.VarChar(255), fileName);
+        request.input('attached', sql.Bit, attached ? 1 : 0);
 
-    const result = await request.query(`
+        const result = await request.query(`
       UPDATE tbl_permitreqnewapp
       SET pr_source = @fileName,
           pr_wsource = @attached
       WHERE pr_permitno = @permitNo AND pr_desc = @description
     `);
 
-    if (result.rowsAffected?.[0] === 0) {
-      return res.status(404).json({ error: 'Requirement not found for update' });
-    }
+        if (result.rowsAffected?.[0] === 0) {
+            return res.status(404).json({ error: 'Requirement not found for update' });
+        }
 
-    res.json({ success: true });
-  } catch (err) {
-    console.error('Error updating requirement attachment:', err);
-    res.status(500).json({ error: 'Failed to update attachment: ' + err.message });
-  }
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_permitreqnewapp',
+            recordId: `${permitNo}:${description}`,
+            newValues: {
+                pr_permitno: permitNo,
+                pr_desc: description,
+                pr_source: fileName,
+                pr_wsource: attached ? 1 : 0,
+            },
+        });
+
+        if (oldValues) {
+            await logActivity(pool, req, {
+                action: 'DELETE',
+                tableName: 'tbl_clientpermit',
+                recordId: id,
+                oldValues,
+            });
+        }
+        if (oldValues) {
+            await logActivity(pool, req, {
+                action: 'DELETE',
+                tableName: 'tbl_clientpermit',
+                recordId: id,
+                oldValues,
+            });
+        }
+        if (oldValues) {
+            await logActivity(pool, req, {
+                action: 'DELETE',
+                tableName: 'tbl_clientpermit',
+                recordId: id,
+                oldValues,
+            });
+        }
+        if (oldValues) {
+            await logActivity(pool, req, {
+                action: 'DELETE',
+                tableName: 'tbl_clientpermit',
+                recordId: id,
+                oldValues,
+            });
+        }
+        if (oldValues) {
+            await logActivity(pool, req, {
+                action: 'DELETE',
+                tableName: 'tbl_clientpermit',
+                recordId: id,
+                oldValues,
+            });
+        }
+        if (oldValues) {
+            await logActivity(pool, req, {
+                action: 'DELETE',
+                tableName: 'tbl_clientpermit',
+                recordId: id,
+                oldValues,
+            });
+        }
+        if (oldValues) {
+            await logActivity(pool, req, {
+                action: 'DELETE',
+                tableName: 'tbl_clientpermit',
+                recordId: id,
+                oldValues,
+            });
+        }
+        if (oldValues) {
+            await logActivity(pool, req, {
+                action: 'DELETE',
+                tableName: 'tbl_clientpermit',
+                recordId: id,
+                oldValues,
+            });
+        }
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error updating requirement attachment:', err);
+        res.status(500).json({ error: 'Failed to update attachment: ' + err.message });
+    }
+});
+
+app.post('/api/newapplication/process-applicant', async (req, res) => {
+    const transaction = new sql.Transaction(pool);
+
+    try {
+        const { clientId, applicantName, tempPermitNo, requirementType } = req.body || {};
+        const normalizedPermitNo = String(tempPermitNo || '').trim();
+        const normalizedRequirementType = String(requirementType || '').trim();
+        const normalizedApplicantName = String(applicantName || '').trim();
+
+        if (!clientId || !normalizedApplicantName || !normalizedPermitNo || !normalizedRequirementType) {
+            return res.status(400).json({
+                error: 'clientId, applicantName, tempPermitNo, and requirementType are required',
+            });
+        }
+
+        await transaction.begin();
+
+        const lookupRequest = new sql.Request(transaction);
+        lookupRequest.input('clientId', sql.Int, Number(clientId));
+        lookupRequest.input('applicantName', sql.VarChar(150), normalizedApplicantName);
+        const clientLookup = await lookupRequest.query(`
+      SELECT TOP 1 ph_ctrlno, ph_cname
+      FROM tbl_client
+      WHERE ph_ctrlno = @clientId
+        AND ph_cname = @applicantName
+    `);
+
+        if (clientLookup.recordset.length === 0) {
+            await transaction.rollback();
+            return res.status(404).json({ error: 'Applicant not found' });
+        }
+
+        const updateRequest = new sql.Request(transaction);
+        updateRequest.input('clientId', sql.Int, Number(clientId));
+        updateRequest.input('tempPermitNo', sql.VarChar(100), normalizedPermitNo);
+        await updateRequest.query(`
+      UPDATE tbl_client
+      SET ph_tpermit = @tempPermitNo
+      WHERE ph_ctrlno = @clientId
+    `);
+
+        const insertRequest = new sql.Request(transaction);
+        insertRequest.input('clientId', sql.Int, Number(clientId));
+        insertRequest.input('requirementType', sql.VarChar(100), normalizedRequirementType);
+        insertRequest.input('tempPermitNo', sql.VarChar(100), normalizedPermitNo);
+        const insertResult = await insertRequest.query(`
+      INSERT INTO tbl_permitreqnewapp (
+          pr_clientid,
+          pr_status,
+          pr_desc,
+          pr_source,
+          pr_wsource,
+          pr_permitno
+      )
+      SELECT
+          @clientId AS pr_clientid,
+          p.pr_status,
+          p.pr_desc,
+          '' AS pr_source,
+          0 AS pr_wsource,
+          @tempPermitNo AS pr_permitno
+      FROM tbl_permitreq AS p
+      WHERE p.pr_status = @requirementType
+        AND NOT EXISTS (
+            SELECT 1
+            FROM tbl_permitreqnewapp AS n
+            WHERE n.pr_clientid = @clientId
+              AND n.pr_status = p.pr_status
+              AND n.pr_desc = p.pr_desc
+              AND n.pr_permitno = @tempPermitNo
+        )
+      ORDER BY p.pr_desc
+    `);
+
+        await transaction.commit();
+
+        await logActivity(pool, req, {
+            action: 'CREATE',
+            tableName: 'tbl_permitreqnewapp',
+            recordId: normalizedPermitNo,
+            newValues: {
+                clientId: Number(clientId),
+                applicantName: normalizedApplicantName,
+                permitNo: normalizedPermitNo,
+                requirementType: normalizedRequirementType,
+                rowsInserted: insertResult.rowsAffected?.[0] || 0,
+            },
+        });
+
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_client',
+            recordId: Number(clientId),
+            newValues: {
+                ph_ctrlno: Number(clientId),
+                ph_cname: normalizedApplicantName,
+                ph_tpermit: normalizedPermitNo,
+            },
+        });
+
+        res.json({
+            success: true,
+            clientId: Number(clientId),
+            permitNo: normalizedPermitNo,
+            requirementType: normalizedRequirementType,
+            rowsInserted: insertResult.rowsAffected?.[0] || 0,
+        });
+    } catch (err) {
+        try {
+            if (transaction._aborted !== true) {
+                await transaction.rollback();
+            }
+        } catch {}
+        console.error('Error processing applicant:', err);
+        res.status(500).json({ error: 'Failed to process applicant: ' + err.message });
+    }
+});
+
+// DELETE /api/newapplication
+// Deletes a new application's requirement rows and clears the client's temporary permit number
+app.delete('/api/newapplication', async (req, res) => {
+    const transaction = new sql.Transaction(pool);
+
+    try {
+        const permitNo = String(req.body?.permitNo || '').trim();
+        const clientName = String(req.body?.clientName || '').trim();
+
+        if (!permitNo || !clientName) {
+            return res.status(400).json({ error: 'permitNo and clientName are required' });
+        }
+
+        await transaction.begin();
+
+        const deleteRequirementsRequest = new sql.Request(transaction);
+        deleteRequirementsRequest.input('permitNo', sql.VarChar(100), permitNo);
+        await deleteRequirementsRequest.query(`
+      DELETE FROM tbl_permitreqnewapp
+      WHERE pr_permitno = @permitNo;
+    `);
+
+        const updateClientRequest = new sql.Request(transaction);
+        updateClientRequest.input('clientName', sql.VarChar(255), clientName);
+        const updateClientResult = await updateClientRequest.query(`
+      UPDATE tbl_client
+      SET ph_tpermit = NULL
+      WHERE ph_cname = @clientName;
+    `);
+
+        if ((updateClientResult.rowsAffected?.[0] || 0) === 0) {
+            await transaction.rollback();
+            return res.status(404).json({ error: 'Client not found for permit reset' });
+        }
+
+        await transaction.commit();
+
+        await logActivity(pool, req, {
+            action: 'DELETE',
+            tableName: 'tbl_permitreqnewapp',
+            recordId: permitNo,
+            oldValues: {
+                pr_permitno: permitNo,
+            },
+        });
+
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_client',
+            recordId: clientName,
+            newValues: {
+                ph_cname: clientName,
+                ph_tpermit: null,
+            },
+        });
+
+        res.json({ success: true });
+    } catch (err) {
+        try {
+            if (transaction._aborted !== true) {
+                await transaction.rollback();
+            }
+        } catch {}
+        console.error('Error deleting new application:', err);
+        res.status(500).json({ error: 'Failed to delete new application: ' + err.message });
+    }
+});
+
+// POST /api/newapplication/upload
+// Saves a PDF attachment file to the configured attachments directory
+app.post('/api/newapplication/upload', async (req, res) => {
+    try {
+        const { filename, contentBase64 } = req.body || {};
+        if (!filename || !contentBase64) {
+            return res.status(400).json({ error: 'filename and contentBase64 are required' });
+        }
+
+        const safeName = path.basename(filename);
+        if (!safeName.toLowerCase().endsWith('.pdf')) {
+            return res.status(400).json({ error: 'Only PDF uploads are allowed' });
+        }
+
+        const normalizedBase64 = String(contentBase64).replace(
+            /^data:application\/pdf;base64,/,
+            ''
+        );
+        const fileBuffer = Buffer.from(normalizedBase64, 'base64');
+        if (!fileBuffer.length) {
+            return res.status(400).json({ error: 'Uploaded file is empty' });
+        }
+
+        await fs.promises.mkdir(ATTACHMENTS_BASE_PATH, { recursive: true });
+        const fullPath = path.join(ATTACHMENTS_BASE_PATH, safeName);
+        await fs.promises.writeFile(fullPath, fileBuffer);
+
+        await logActivity(pool, req, {
+            action: 'CREATE',
+            tableName: 'newapplication_attachments',
+            recordId: safeName,
+            newValues: {
+                filename: safeName,
+                path: fullPath,
+            },
+        });
+
+        res.json({ success: true, filename: safeName });
+    } catch (err) {
+        console.error('Error uploading attachment:', err);
+        res.status(500).json({ error: 'Failed to upload attachment: ' + err.message });
+    }
+});
+
+// POST /api/newapplication/remove
+// Removes a PDF attachment file from the configured attachments directory
+app.post('/api/newapplication/remove', async (req, res) => {
+    try {
+        const { filename } = req.body || {};
+        if (!filename) {
+            return res.status(400).json({ error: 'filename is required' });
+        }
+
+        const safeName = path.basename(filename);
+        if (!safeName.toLowerCase().endsWith('.pdf')) {
+            return res.status(400).json({ error: 'Only PDF attachments can be removed' });
+        }
+
+        const fullPath = path.join(ATTACHMENTS_BASE_PATH, safeName);
+        await fs.promises.unlink(fullPath);
+
+        await logActivity(pool, req, {
+            action: 'DELETE',
+            tableName: 'newapplication_attachments',
+            recordId: safeName,
+            oldValues: {
+                filename: safeName,
+                path: fullPath,
+            },
+        });
+
+        res.json({ success: true, filename: safeName });
+    } catch (err) {
+        if (err.code === 'ENOENT') {
+            return res.status(404).json({ error: 'Attachment file not found' });
+        }
+        console.error('Error removing attachment:', err);
+        res.status(500).json({ error: 'Failed to remove attachment: ' + err.message });
+    }
 });
 
 // GET /api/newapplication/preview/:filename
 // Checks accessibility of attachment file
 app.get('/api/newapplication/preview/:filename', async (req, res) => {
-  try {
-    const { filename } = req.params;
-    if (!filename) {
-      return res.status(400).json({ error: 'Filename is required' });
+    try {
+        const { filename } = req.params;
+        if (!filename) {
+            return res.status(400).json({ error: 'Filename is required' });
+        }
+
+        const safeName = path.basename(filename);
+        const fullPath = path.join(ATTACHMENTS_BASE_PATH, safeName);
+
+        await fs.promises.access(fullPath, fs.constants.R_OK);
+        res.json({ accessible: true, path: fullPath });
+    } catch (err) {
+        console.error('Error checking preview file:', err);
+        res.status(404).json({ error: 'Attachment not accessible' });
     }
-
-    const safeName = path.basename(filename);
-    const fullPath = path.join(ATTACHMENTS_BASE_PATH, safeName);
-
-    await fs.promises.access(fullPath, fs.constants.R_OK);
-    res.json({ accessible: true, path: fullPath });
-  } catch (err) {
-    console.error('Error checking preview file:', err);
-    res.status(404).json({ error: 'Attachment not accessible' });
-  }
 });
 
 // GET /api/newapplication/previewfile/:filename
 // Streams the attachment file if accessible
 app.get('/api/newapplication/previewfile/:filename', async (req, res) => {
-  try {
-    const { filename } = req.params;
-    if (!filename) return res.status(400).json({ error: 'Filename is required' });
-    const safeName = path.basename(filename);
-    const fullPath = path.join(ATTACHMENTS_BASE_PATH, safeName);
+    try {
+        const { filename } = req.params;
+        if (!filename) return res.status(400).json({ error: 'Filename is required' });
+        const safeName = path.basename(filename);
+        const fullPath = path.join(ATTACHMENTS_BASE_PATH, safeName);
 
-    await fs.promises.access(fullPath, fs.constants.R_OK);
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
-    res.setHeader('Access-Control-Allow-Headers', '*');
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${safeName}"`);
-    res.sendFile(fullPath);
-  } catch (err) {
-    console.error('Error streaming preview file:', err);
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.status(404).json({ error: 'Attachment not accessible' });
-  }
+        await fs.promises.access(fullPath, fs.constants.R_OK);
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+        res.setHeader('Access-Control-Allow-Headers', '*');
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${safeName}"`);
+        res.sendFile(fullPath);
+    } catch (err) {
+        console.error('Error streaming preview file:', err);
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.status(404).json({ error: 'Attachment not accessible' });
+    }
 });
 
 // GET /api/newapplication/previewfile/base64/:filename
 // Returns base64-encoded PDF to avoid download interceptors
 app.get('/api/newapplication/previewfile/base64/:filename', async (req, res) => {
-  try {
-    const { filename } = req.params;
-    if (!filename) return res.status(400).json({ error: 'Filename is required' });
-    const safeName = path.basename(filename);
-    const fullPath = path.join(ATTACHMENTS_BASE_PATH, safeName);
+    try {
+        const { filename } = req.params;
+        if (!filename) return res.status(400).json({ error: 'Filename is required' });
+        const safeName = path.basename(filename);
+        const fullPath = path.join(ATTACHMENTS_BASE_PATH, safeName);
 
-    await fs.promises.access(fullPath, fs.constants.R_OK);
-    const buffer = await fs.promises.readFile(fullPath);
-    const base64 = buffer.toString('base64');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.json({
-      filename: safeName,
-      dataUrl: `data:application/pdf;base64,${base64}`
-    });
-  } catch (err) {
-    console.error('Error streaming preview file as base64:', err);
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.status(404).json({ error: 'Attachment not accessible' });
-  }
+        await fs.promises.access(fullPath, fs.constants.R_OK);
+        const buffer = await fs.promises.readFile(fullPath);
+        const base64 = buffer.toString('base64');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.json({
+            filename: safeName,
+            dataUrl: `data:application/pdf;base64,${base64}`,
+        });
+    } catch (err) {
+        console.error('Error streaming preview file as base64:', err);
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.status(404).json({ error: 'Attachment not accessible' });
+    }
 });
-
 
 // POST /api/newapplication/preview/batch
 // Check multiple files existence in a single request for better performance
 app.post('/api/newapplication/preview/batch', async (req, res) => {
-  try {
-    const { filenames } = req.body;
-    if (!filenames || !Array.isArray(filenames)) {
-      return res.status(400).json({ error: 'filenames array is required' });
-    }
-
-    const results = {};
-    await Promise.all(
-      filenames.map(async (filename) => {
-        const safeName = path.basename(filename);
-        const fullPath = path.join(ATTACHMENTS_BASE_PATH, safeName);
-        try {
-          await fs.promises.access(fullPath, fs.constants.R_OK);
-          results[filename] = true;
-        } catch {
-          results[filename] = false;
+    try {
+        const { filenames } = req.body;
+        if (!filenames || !Array.isArray(filenames)) {
+            return res.status(400).json({ error: 'filenames array is required' });
         }
-      })
-    );
 
-    res.json(results);
-  } catch (err) {
-    console.error('Error in batch preview check:', err);
-    res.status(500).json({ error: 'Failed to check files: ' + err.message });
-  }
+        const results = {};
+        await Promise.all(
+            filenames.map(async (filename) => {
+                const safeName = path.basename(filename);
+                const fullPath = path.join(ATTACHMENTS_BASE_PATH, safeName);
+                try {
+                    await fs.promises.access(fullPath, fs.constants.R_OK);
+                    results[filename] = true;
+                } catch {
+                    results[filename] = false;
+                }
+            })
+        );
+
+        res.json(results);
+    } catch (err) {
+        console.error('Error in batch preview check:', err);
+        res.status(500).json({ error: 'Failed to check files: ' + err.message });
+    }
 });
 
 // POST /api/newapplication/permitno/update
 // Update permit number in tbl_permitreqnewapp
 app.post('/api/newapplication/permitno/update', async (req, res) => {
-  try {
-    const { oldPermitNo, newPermitNo } = req.body || {};
+    try {
+        const { oldPermitNo, newPermitNo } = req.body || {};
 
-    if (!oldPermitNo || !newPermitNo) {
-      return res.status(400).json({ error: 'oldPermitNo and newPermitNo are required' });
-    }
+        if (!oldPermitNo || !newPermitNo) {
+            return res.status(400).json({ error: 'oldPermitNo and newPermitNo are required' });
+        }
 
-    const request = pool.request();
-    request.input('oldPermitNo', sql.VarChar(100), oldPermitNo);
-    request.input('newPermitNo', sql.VarChar(100), newPermitNo);
+        const request = pool.request();
+        request.input('oldPermitNo', sql.VarChar(100), oldPermitNo);
+        request.input('newPermitNo', sql.VarChar(100), newPermitNo);
 
-    const result = await request.query(`
+        const result = await request.query(`
       UPDATE tbl_permitreqnewapp
       SET pr_permitno = @newPermitNo
       WHERE pr_permitno = @oldPermitNo
     `);
 
-    res.json({ success: true, rowsAffected: result.rowsAffected?.[0] || 0 });
-  } catch (err) {
-    console.error('Error updating permit number in new application requirements:', err);
-    res.status(500).json({ error: 'Failed to update permit number: ' + err.message });
-  }
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_permitreqnewapp',
+            recordId: oldPermitNo,
+            oldValues: { pr_permitno: oldPermitNo },
+            newValues: { pr_permitno: newPermitNo, rowsAffected: result.rowsAffected?.[0] || 0 },
+        });
+
+        res.json({ success: true, rowsAffected: result.rowsAffected?.[0] || 0 });
+    } catch (err) {
+        console.error('Error updating permit number in new application requirements:', err);
+        res.status(500).json({ error: 'Failed to update permit number: ' + err.message });
+    }
 });
 
 // POST /api/newapplication/attachments/rename
 // Rename attachment files containing old permit number to new permit number
 app.post('/api/newapplication/attachments/rename', async (req, res) => {
-  try {
-    const { oldPermitNo, newPermitNo } = req.body || {};
+    try {
+        const { oldPermitNo, newPermitNo } = req.body || {};
 
-    if (!oldPermitNo || !newPermitNo) {
-      return res.status(400).json({ error: 'oldPermitNo and newPermitNo are required' });
+        if (!oldPermitNo || !newPermitNo) {
+            return res.status(400).json({ error: 'oldPermitNo and newPermitNo are required' });
+        }
+
+        if (/[\\/]/.test(oldPermitNo) || /[\\/]/.test(newPermitNo)) {
+            return res.status(400).json({ error: 'Invalid permit number' });
+        }
+
+        if (oldPermitNo === newPermitNo) {
+            return res.json({ renamedCount: 0, skippedCount: 0, renamed: [], skipped: [] });
+        }
+
+        const files = await fs.promises.readdir(ATTACHMENTS_BASE_PATH);
+        const renamed = [];
+        const skipped = [];
+
+        for (const file of files) {
+            if (!file.includes(oldPermitNo)) continue;
+            const newName = file.split(oldPermitNo).join(newPermitNo);
+            if (newName === file) continue;
+
+            const fromPath = path.join(ATTACHMENTS_BASE_PATH, file);
+            const toPath = path.join(ATTACHMENTS_BASE_PATH, newName);
+
+            try {
+                await fs.promises.access(toPath, fs.constants.F_OK);
+                skipped.push({ file, reason: 'target-exists', target: newName });
+                continue;
+            } catch {
+                // target does not exist
+            }
+
+            await fs.promises.rename(fromPath, toPath);
+            renamed.push({ from: file, to: newName });
+        }
+
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'newapplication_attachments',
+            recordId: oldPermitNo,
+            oldValues: { permitNo: oldPermitNo },
+            newValues: {
+                permitNo: newPermitNo,
+                renamedCount: renamed.length,
+                skippedCount: skipped.length,
+                renamed,
+                skipped,
+            },
+        });
+
+        res.json({
+            renamedCount: renamed.length,
+            skippedCount: skipped.length,
+            renamed,
+            skipped,
+        });
+    } catch (err) {
+        console.error('Error renaming attachments:', err);
+        res.status(500).json({ error: 'Failed to rename attachments: ' + err.message });
     }
-
-    if (/[\\/]/.test(oldPermitNo) || /[\\/]/.test(newPermitNo)) {
-      return res.status(400).json({ error: 'Invalid permit number' });
-    }
-
-    if (oldPermitNo === newPermitNo) {
-      return res.json({ renamedCount: 0, skippedCount: 0, renamed: [], skipped: [] });
-    }
-
-    const files = await fs.promises.readdir(ATTACHMENTS_BASE_PATH);
-    const renamed = [];
-    const skipped = [];
-
-    for (const file of files) {
-      if (!file.includes(oldPermitNo)) continue;
-      const newName = file.split(oldPermitNo).join(newPermitNo);
-      if (newName === file) continue;
-
-      const fromPath = path.join(ATTACHMENTS_BASE_PATH, file);
-      const toPath = path.join(ATTACHMENTS_BASE_PATH, newName);
-
-      try {
-        await fs.promises.access(toPath, fs.constants.F_OK);
-        skipped.push({ file, reason: 'target-exists', target: newName });
-        continue;
-      } catch {
-        // target does not exist
-      }
-
-      await fs.promises.rename(fromPath, toPath);
-      renamed.push({ from: file, to: newName });
-    }
-
-    res.json({
-      renamedCount: renamed.length,
-      skippedCount: skipped.length,
-      renamed,
-      skipped
-    });
-  } catch (err) {
-    console.error('Error renaming attachments:', err);
-    res.status(500).json({ error: 'Failed to rename attachments: ' + err.message });
-  }
 });
-
 
 // ==================== VEHICLE REGISTRATIONS ENDPOINTS ====================
 
 app.get('/api/vehicleregistrations', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT [vr_ctrlno]
             ,[vr_cname]
             ,[vr_trucktype]
@@ -2100,32 +3321,33 @@ app.get('/api/vehicleregistrations', async (req, res) => {
       FROM [tbl_vehiclereg]
       ORDER BY [vr_cname]
     `);
-    console.log(`✅ Fetched ${result.recordset.length} vehicle registrations`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Vehicle Registrations Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch vehicle registrations: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} vehicle registrations`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Vehicle Registrations Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch vehicle registrations: ' + err.message });
+    }
 });
 
 app.post('/api/vehicleregistrations', async (req, res) => {
-  try {
-    const { vr_cname, vr_trucktype, vr_plateno, vr_controlno, vr_code, vr_datereg, vr_expiry } = req.body;
+    try {
+        const { vr_cname, vr_trucktype, vr_plateno, vr_controlno, vr_code, vr_datereg, vr_expiry } =
+            req.body;
 
-    if (!vr_cname || !vr_plateno) {
-      return res.status(400).json({ error: 'Client name and plate number are required' });
-    }
+        if (!vr_cname || !vr_plateno) {
+            return res.status(400).json({ error: 'Client name and plate number are required' });
+        }
 
-    const request = pool.request();
-    request.input('vr_cname', sql.VarChar(150), vr_cname);
-    request.input('vr_trucktype', sql.VarChar(100), vr_trucktype || null);
-    request.input('vr_plateno', sql.VarChar(50), vr_plateno);
-    request.input('vr_controlno', sql.Int, vr_controlno ? parseInt(vr_controlno) : null);
-    request.input('vr_code', sql.VarChar(50), vr_code || null);
-    request.input('vr_datereg', sql.Date, vr_datereg || null);
-    request.input('vr_expiry', sql.Date, vr_expiry || null);
+        const request = pool.request();
+        request.input('vr_cname', sql.VarChar(150), vr_cname);
+        request.input('vr_trucktype', sql.VarChar(100), vr_trucktype || null);
+        request.input('vr_plateno', sql.VarChar(50), vr_plateno);
+        request.input('vr_controlno', sql.Int, vr_controlno ? parseInt(vr_controlno) : null);
+        request.input('vr_code', sql.VarChar(50), vr_code || null);
+        request.input('vr_datereg', sql.Date, vr_datereg || null);
+        request.input('vr_expiry', sql.Date, vr_expiry || null);
 
-    await request.query(`
+        await request.query(`
       INSERT INTO [tbl_vehiclereg]
            ([vr_cname]
            ,[vr_trucktype]
@@ -2144,43 +3366,51 @@ app.post('/api/vehicleregistrations', async (req, res) => {
            ,@vr_expiry)
     `);
 
-    console.log('✅ Vehicle registration added successfully');
+        console.log('✅ Vehicle registration added successfully');
 
-    // Log Activity
-    await logActivity(pool, req, {
-      action: 'CREATE',
-      tableName: 'tbl_vehiclereg',
-      recordId: vr_plateno,
-      newValues: req.body
-    });
+        // Log Activity
+        await logActivity(pool, req, {
+            action: 'CREATE',
+            tableName: 'tbl_vehiclereg',
+            recordId: vr_plateno,
+            newValues: req.body,
+        });
 
-    res.json({ message: 'Vehicle registration added successfully' });
-  } catch (err) {
-    console.error('❌ Add Vehicle Registration Error:', err.message);
-    res.status(500).json({ error: 'Failed to add vehicle registration: ' + err.message });
-  }
+        res.json({ message: 'Vehicle registration added successfully' });
+    } catch (err) {
+        console.error('❌ Add Vehicle Registration Error:', err.message);
+        res.status(500).json({ error: 'Failed to add vehicle registration: ' + err.message });
+    }
 });
 
 app.put('/api/vehicleregistrations/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { vr_cname, vr_trucktype, vr_plateno, vr_controlno, vr_code, vr_datereg, vr_expiry } = req.body;
+    try {
+        const { id } = req.params;
+        const { vr_cname, vr_trucktype, vr_plateno, vr_controlno, vr_code, vr_datereg, vr_expiry } =
+            req.body;
 
-    if (!vr_cname || !vr_plateno) {
-      return res.status(400).json({ error: 'Client name and plate number are required' });
-    }
+        if (!vr_cname || !vr_plateno) {
+            return res.status(400).json({ error: 'Client name and plate number are required' });
+        }
 
-    const request = pool.request();
-    request.input('vr_ctrlno', sql.Int, id);
-    request.input('vr_cname', sql.VarChar(150), vr_cname);
-    request.input('vr_trucktype', sql.VarChar(100), vr_trucktype || null);
-    request.input('vr_plateno', sql.VarChar(50), vr_plateno);
-    request.input('vr_controlno', sql.Int, vr_controlno ? parseInt(vr_controlno) : null);
-    request.input('vr_code', sql.VarChar(50), vr_code || null);
-    request.input('vr_datereg', sql.Date, vr_datereg || null);
-    request.input('vr_expiry', sql.Date, vr_expiry || null);
+        const getReq = pool.request();
+        getReq.input('vr_ctrlno', sql.Int, id);
+        const existing = await getReq.query(
+            'SELECT * FROM [tbl_vehiclereg] WHERE [vr_ctrlno] = @vr_ctrlno'
+        );
+        const oldValues = existing.recordset[0];
 
-    await request.query(`
+        const request = pool.request();
+        request.input('vr_ctrlno', sql.Int, id);
+        request.input('vr_cname', sql.VarChar(150), vr_cname);
+        request.input('vr_trucktype', sql.VarChar(100), vr_trucktype || null);
+        request.input('vr_plateno', sql.VarChar(50), vr_plateno);
+        request.input('vr_controlno', sql.Int, vr_controlno ? parseInt(vr_controlno) : null);
+        request.input('vr_code', sql.VarChar(50), vr_code || null);
+        request.input('vr_datereg', sql.Date, vr_datereg || null);
+        request.input('vr_expiry', sql.Date, vr_expiry || null);
+
+        await request.query(`
       UPDATE [tbl_vehiclereg]
       SET [vr_cname] = @vr_cname
          ,[vr_trucktype] = @vr_trucktype
@@ -2192,64 +3422,64 @@ app.put('/api/vehicleregistrations/:id', async (req, res) => {
       WHERE [vr_ctrlno] = @vr_ctrlno
     `);
 
-    console.log(`✅ Vehicle registration ${id} updated successfully`);
+        console.log(`✅ Vehicle registration ${id} updated successfully`);
 
-    // Log Activity to capture the update
-    // We need old values for a perfect log, but fetching them usually requires an extra query before update.
-    // For now, let's log the update with new values. To be consistent with other endpoints, let's try to fetch old values first.
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_vehiclereg',
+            recordId: id,
+            oldValues,
+            newValues: req.body,
+        });
 
-    // Fetch old values logic would go here if not already present. 
-    // Since we didn't fetch them in the implementation plan's detailed steps for this specific block, 
-    // I will add the fetch logic now to ensure quality.
-
-    res.json({ message: 'Vehicle registration updated successfully' });
-  } catch (err) {
-    console.error('❌ Update Vehicle Registration Error:', err.message);
-    res.status(500).json({ error: 'Failed to update vehicle registration: ' + err.message });
-  }
+        res.json({ message: 'Vehicle registration updated successfully' });
+    } catch (err) {
+        console.error('❌ Update Vehicle Registration Error:', err.message);
+        res.status(500).json({ error: 'Failed to update vehicle registration: ' + err.message });
+    }
 });
 
 app.delete('/api/vehicleregistrations/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
 
-    // 1. Fetch old values
-    const getReq = pool.request();
-    getReq.input('vr_ctrlno', sql.Int, id);
-    const existing = await getReq.query('SELECT * FROM [tbl_vehiclereg] WHERE [vr_ctrlno] = @vr_ctrlno');
-    const oldValues = existing.recordset[0];
+        // 1. Fetch old values
+        const getReq = pool.request();
+        getReq.input('vr_ctrlno', sql.Int, id);
+        const existing = await getReq.query(
+            'SELECT * FROM [tbl_vehiclereg] WHERE [vr_ctrlno] = @vr_ctrlno'
+        );
+        const oldValues = existing.recordset[0];
 
-    // 2. Perform Delete
-    const request = pool.request();
-    request.input('vr_ctrlno', sql.Int, id);
-    await request.query(
-      'DELETE FROM [tbl_vehiclereg] WHERE [vr_ctrlno] = @vr_ctrlno'
-    );
+        // 2. Perform Delete
+        const request = pool.request();
+        request.input('vr_ctrlno', sql.Int, id);
+        await request.query('DELETE FROM [tbl_vehiclereg] WHERE [vr_ctrlno] = @vr_ctrlno');
 
-    // 3. Log Activity
-    if (oldValues) {
-      await logActivity(pool, req, {
-        action: 'DELETE',
-        tableName: 'tbl_vehiclereg',
-        recordId: id,
-        oldValues: oldValues
-      });
+        // 3. Log Activity
+        if (oldValues) {
+            await logActivity(pool, req, {
+                action: 'DELETE',
+                tableName: 'tbl_vehiclereg',
+                recordId: id,
+                oldValues: oldValues,
+            });
+        }
+
+        console.log(`✅ Vehicle registration ${id} deleted successfully`);
+        res.json({ message: 'Vehicle registration deleted successfully' });
+    } catch (err) {
+        console.error('❌ Delete Vehicle Registration Error:', err.message);
+        res.status(500).json({ error: 'Failed to delete vehicle registration: ' + err.message });
     }
-
-    console.log(`✅ Vehicle registration ${id} deleted successfully`);
-    res.json({ message: 'Vehicle registration deleted successfully' });
-  } catch (err) {
-    console.error('❌ Delete Vehicle Registration Error:', err.message);
-    res.status(500).json({ error: 'Failed to delete vehicle registration: ' + err.message });
-  }
 });
 
 // ==================== CLIENTS ASSESSMENT ENDPOINT ====================
 
 app.get('/api/clients/assessment', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT
           c.[ph_ctrlno],
           c.[ph_cname],
@@ -2272,63 +3502,65 @@ app.get('/api/clients/assessment', async (req, res) => {
       ORDER BY c.[ph_cname]
     `);
 
-    console.log(`✅ Fetched ${result.recordset.length} clients for assessment`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Assessment Clients Error:', err.message);
-    res.status(500).json({
-      error: 'Failed to fetch clients: ' + err.message
-    });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} clients for assessment`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Assessment Clients Error:', err.message);
+        res.status(500).json({
+            error: 'Failed to fetch clients: ' + err.message,
+        });
+    }
 });
 
 // ==================== ASSESSMENT ENDPOINTS ====================
 
 app.post('/api/assessments', async (req, res) => {
-  try {
-    const {
-      aop_control,
-      aop_clientid,
-      aop_date,
-      aop_nature,
-      aop_mun = '',
-      aop_brgy = '',
-      aop_brgycombo = null,
-      aop_remarks = '',
-      aop_amount = 0,
-      aop_total = 0,
-      aop_apploc = null,
-      aop_req = null,
-      aop_pentry = null,
-      items = []
-    } = req.body;
-
-    if (!aop_control || !aop_clientid || !aop_date || !aop_nature) {
-      return res.status(400).json({ error: 'Control no., client, date, and nature of payment are required' });
-    }
-
-    const transaction = new sql.Transaction(pool);
-    await transaction.begin();
-
     try {
-      const request = new sql.Request(transaction);
-      request.input('aop_control', sql.VarChar(50), aop_control);
-      request.input('aop_clientid', sql.Int, aop_clientid);
-      request.input('aop_date', sql.Date, new Date(aop_date));
-      request.input('aop_nature', sql.VarChar(200), aop_nature);
-      request.input('aop_mun', sql.VarChar(200), aop_mun || '');
-      request.input('aop_brgy', sql.VarChar(200), aop_brgy || '');
-      request.input('aop_brgycombo', sql.VarChar(200), aop_brgycombo ?? null);
-      request.input('aop_remarks', sql.VarChar(sql.MAX), aop_remarks || '');
-      request.input('aop_orno', sql.VarChar(50), null);
-      request.input('aop_ordate', sql.Date, null);
-      request.input('aop_amount', sql.Decimal(18, 2), aop_amount || 0);
-      request.input('aop_total', sql.Decimal(18, 2), aop_total || 0);
-      request.input('aop_apploc', sql.VarChar(200), aop_apploc);
-      request.input('aop_req', sql.VarChar(200), aop_req);
-      request.input('aop_pentry', sql.VarChar(200), aop_pentry);
+        const {
+            aop_control,
+            aop_clientid,
+            aop_date,
+            aop_nature,
+            aop_mun = '',
+            aop_brgy = '',
+            aop_brgycombo = null,
+            aop_remarks = '',
+            aop_amount = 0,
+            aop_total = 0,
+            aop_apploc = null,
+            aop_req = null,
+            aop_pentry = null,
+            items = [],
+        } = req.body;
 
-      const hdrResult = await request.query(`
+        if (!aop_control || !aop_clientid || !aop_date || !aop_nature) {
+            return res
+                .status(400)
+                .json({ error: 'Control no., client, date, and nature of payment are required' });
+        }
+
+        const transaction = new sql.Transaction(pool);
+        await transaction.begin();
+
+        try {
+            const request = new sql.Request(transaction);
+            request.input('aop_control', sql.VarChar(50), aop_control);
+            request.input('aop_clientid', sql.Int, aop_clientid);
+            request.input('aop_date', sql.NVarChar(10), toSqlDateLiteral(aop_date));
+            request.input('aop_nature', sql.VarChar(200), aop_nature);
+            request.input('aop_mun', sql.VarChar(200), aop_mun || '');
+            request.input('aop_brgy', sql.VarChar(200), aop_brgy || '');
+            request.input('aop_brgycombo', sql.VarChar(200), aop_brgycombo ?? null);
+            request.input('aop_remarks', sql.VarChar(sql.MAX), aop_remarks || '');
+            request.input('aop_orno', sql.VarChar(50), null);
+            request.input('aop_ordate', sql.Date, null);
+            request.input('aop_amount', sql.Decimal(18, 2), aop_amount || 0);
+            request.input('aop_total', sql.Decimal(18, 2), aop_total || 0);
+            request.input('aop_apploc', sql.VarChar(200), aop_apploc);
+            request.input('aop_req', sql.VarChar(200), aop_req);
+            request.input('aop_pentry', sql.VarChar(200), aop_pentry);
+
+            const hdrResult = await request.query(`
         INSERT INTO [tbl_assessmenthdr] (
               [aop_control]
             , [aop_clientid]
@@ -2350,7 +3582,7 @@ app.post('/api/assessments', async (req, res) => {
         VALUES (
               @aop_control
             , @aop_clientid
-            , @aop_date
+            , CAST(@aop_date AS date)
             , @aop_nature
             , @aop_mun
             , @aop_brgy
@@ -2366,22 +3598,34 @@ app.post('/api/assessments', async (req, res) => {
         )
       `);
 
-      const insertedHdr = hdrResult.recordset?.[0];
+            const insertedHdr = hdrResult.recordset?.[0];
 
-      for (const item of items || []) {
-        const detailReq = new sql.Request(transaction);
-        detailReq.input('aop_control', sql.VarChar(50), aop_control);
-        detailReq.input('aop_item', sql.VarChar(200), item.aop_item || '');
-        detailReq.input('aop_offense', sql.VarChar(200), '');
-        detailReq.input('aop_volume', sql.Int, Number.isNaN(parseInt(item.aop_volume, 10)) ? 0 : parseInt(item.aop_volume, 10));
-        detailReq.input('aop_charge', sql.Decimal(18, 2), Number.isNaN(parseFloat(item.aop_charge)) ? 0 : parseFloat(item.aop_charge));
-        detailReq.input('aop_total', sql.Decimal(18, 2), Number.isNaN(parseFloat(item.aop_total)) ? 0 : parseFloat(item.aop_total));
-        detailReq.input('aop_measure', sql.VarChar(200), item.aop_measure || '');
-        detailReq.input('aop_share', sql.Decimal(18, 2), 0);
-        detailReq.input('aop_permitno', sql.VarChar(200), item.aop_permitno || '');
-        detailReq.input('aop_drvol', sql.Decimal(18, 2), 0);
+            for (const item of items || []) {
+                const detailReq = new sql.Request(transaction);
+                detailReq.input('aop_control', sql.VarChar(50), aop_control);
+                detailReq.input('aop_item', sql.VarChar(200), item.aop_item || '');
+                detailReq.input('aop_offense', sql.VarChar(200), '');
+                detailReq.input(
+                    'aop_volume',
+                    sql.Int,
+                    Number.isNaN(parseInt(item.aop_volume, 10)) ? 0 : parseInt(item.aop_volume, 10)
+                );
+                detailReq.input(
+                    'aop_charge',
+                    sql.Decimal(18, 2),
+                    Number.isNaN(parseFloat(item.aop_charge)) ? 0 : parseFloat(item.aop_charge)
+                );
+                detailReq.input(
+                    'aop_total',
+                    sql.Decimal(18, 2),
+                    Number.isNaN(parseFloat(item.aop_total)) ? 0 : parseFloat(item.aop_total)
+                );
+                detailReq.input('aop_measure', sql.VarChar(200), item.aop_measure || '');
+                detailReq.input('aop_share', sql.Decimal(18, 2), 0);
+                detailReq.input('aop_permitno', sql.VarChar(200), item.aop_permitno || '');
+                detailReq.input('aop_drvol', sql.Decimal(18, 2), 0);
 
-        await detailReq.query(`
+                await detailReq.query(`
           INSERT INTO [tbl_assessmentdtl] (
                 [aop_control]
               , [aop_item]
@@ -2406,75 +3650,75 @@ app.post('/api/assessments', async (req, res) => {
               , @aop_drvol
           )
         `);
-      }
+            }
 
-      await transaction.commit();
+            await transaction.commit();
 
-      // Log activity for audit
-      await logActivity(pool, req, {
-        action: 'CREATE',
-        tableName: 'tbl_assessmenthdr',
-        recordId: aop_control,
-        newValues: {
-          aop_control,
-          aop_clientid,
-          aop_date,
-          aop_nature,
-          aop_mun,
-          aop_brgy,
-          aop_brgycombo,
-          aop_remarks,
-          aop_amount,
-          aop_total,
-          aop_apploc,
-          aop_req,
-          aop_pentry,
-          items_count: items.length
+            // Log activity for audit
+            await logActivity(pool, req, {
+                action: 'CREATE',
+                tableName: 'tbl_assessmenthdr',
+                recordId: aop_control,
+                newValues: {
+                    aop_control,
+                    aop_clientid,
+                    aop_date,
+                    aop_nature,
+                    aop_mun,
+                    aop_brgy,
+                    aop_brgycombo,
+                    aop_remarks,
+                    aop_amount,
+                    aop_total,
+                    aop_apploc,
+                    aop_req,
+                    aop_pentry,
+                    items_count: items.length,
+                },
+            });
+
+            res.status(201).json({
+                message: 'Assessment saved successfully',
+                aop_ctrlno: insertedHdr ? insertedHdr.aop_ctrlno : null,
+            });
+        } catch (txErr) {
+            await transaction.rollback();
+            throw txErr;
         }
-      });
-
-      res.status(201).json({
-        message: 'Assessment saved successfully',
-        aop_ctrlno: insertedHdr ? insertedHdr.aop_ctrlno : null
-      });
-    } catch (txErr) {
-      await transaction.rollback();
-      throw txErr;
+    } catch (err) {
+        console.error('❌ Save Assessment Error:', err.message);
+        res.status(500).json({ error: 'Failed to save assessment: ' + err.message });
     }
-  } catch (err) {
-    console.error('❌ Save Assessment Error:', err.message);
-    res.status(500).json({ error: 'Failed to save assessment: ' + err.message });
-  }
 });
 
 // ==================== NATURE OF PAYMENT ENDPOINTS ====================
 
 app.get('/api/natureofpayment', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT [np_desc], [np_ctrlno]
       FROM [tbl_natureofpayment]
       ORDER BY [np_desc]
     `);
 
-    console.log(`✅ Fetched ${result.recordset.length} nature of payment types`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Nature of Payment Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch nature of payment: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} nature of payment types`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Nature of Payment Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch nature of payment: ' + err.message });
+    }
 });
 
 // ==================== NATURE OF PAYMENT DETAILS ENDPOINTS ====================
 
 app.get('/api/natureofpaymentdetails/:np_ctrlno', async (req, res) => {
-  try {
-    const { np_ctrlno } = req.params;
-    const request = pool.request();
-    request.input('np_lnkctrl', sql.Int, np_ctrlno);
+    try {
+        const { np_ctrlno } = req.params;
+        const request = pool.request();
+        request.input('np_lnkctrl', sql.Int, np_ctrlno);
 
-    const result = await request.query(`
+        const result = await request.query(`
       SELECT [np_lnkctrl]
           ,[np_desc]
           ,[np_unitcharge]
@@ -2486,74 +3730,78 @@ app.get('/api/natureofpaymentdetails/:np_ctrlno', async (req, res) => {
       ORDER BY [np_desc]
     `);
 
-    console.log(`✅ Fetched ${result.recordset.length} payment detail items for np_ctrlno ${np_ctrlno}`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Nature of Payment Details Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch payment details: ' + err.message });
-  }
+        console.log(
+            `✅ Fetched ${result.recordset.length} payment detail items for np_ctrlno ${np_ctrlno}`
+        );
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Nature of Payment Details Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch payment details: ' + err.message });
+    }
 });
 
 // ==================== MUNICIPALITIES ENDPOINTS ====================
 
 app.get('/api/municipalities', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT [aop_mun] as mun_name
       FROM [View_brgysharesmonth]
       GROUP BY [aop_mun]
       ORDER BY [aop_mun]
     `);
 
-    console.log(`✅ Fetched ${result.recordset.length} municipalities from View_brgysharesmonth`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Municipalities Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch municipalities: ' + err.message });
-  }
+        console.log(
+            `✅ Fetched ${result.recordset.length} municipalities from View_brgysharesmonth`
+        );
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Municipalities Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch municipalities: ' + err.message });
+    }
 });
 
 app.get('/api/municipalities/master', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT DISTINCT m.mun_name
       FROM dbo.tbl_municipalities AS m
       ORDER BY m.mun_name;
     `);
 
-    console.log(`✅ Fetched ${result.recordset.length} municipalities from tbl_municipalities`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Master Municipalities Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch master municipalities: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} municipalities from tbl_municipalities`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Master Municipalities Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch master municipalities: ' + err.message });
+    }
 });
 
 app.get('/api/barangays', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT DISTINCT [aop_brgy] as mun_brgy
       FROM [View_brgysharesmonth]
       ORDER BY [aop_brgy]
     `);
 
-    console.log(`✅ Fetched ${result.recordset.length} total barangays`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get All Barangays Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch barangays: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} total barangays`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get All Barangays Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch barangays: ' + err.message });
+    }
 });
 
 app.get('/api/municipalities/:mun_name/barangays', async (req, res) => {
-  try {
-    const { mun_name } = req.params;
-    const request = pool.request();
-    request.input('mun_name', sql.VarChar, mun_name);
-    const result = await request.query(`
+    try {
+        const { mun_name } = req.params;
+        const request = pool.request();
+        request.input('mun_name', sql.VarChar, mun_name);
+        const result = await request.query(`
       SELECT [aop_brgy] as mun_brgy
       FROM [View_brgysharesmonth]
       WHERE [aop_mun] = @mun_name
@@ -2561,20 +3809,20 @@ app.get('/api/municipalities/:mun_name/barangays', async (req, res) => {
       ORDER BY [aop_brgy]
     `);
 
-    console.log(`✅ Fetched ${result.recordset.length} barangays for municipality ${mun_name}`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Barangays Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch barangays: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} barangays for municipality ${mun_name}`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Barangays Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch barangays: ' + err.message });
+    }
 });
 
 app.get('/api/assessment/barangays/:mun_name', async (req, res) => {
-  try {
-    const { mun_name } = req.params;
-    const request = pool.request();
-    request.input('mun_name', sql.VarChar, mun_name);
-    const result = await request.query(`
+    try {
+        const { mun_name } = req.params;
+        const request = pool.request();
+        request.input('mun_name', sql.VarChar, mun_name);
+        const result = await request.query(`
       SELECT
           m.mun_name,
           m.mun_brgy
@@ -2583,20 +3831,22 @@ app.get('/api/assessment/barangays/:mun_name', async (req, res) => {
       ORDER BY m.mun_brgy ASC;
     `);
 
-    console.log(`✅ Fetched ${result.recordset.length} assessment barangays for municipality ${mun_name}`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Assessment Barangays Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch barangays: ' + err.message });
-  }
+        console.log(
+            `✅ Fetched ${result.recordset.length} assessment barangays for municipality ${mun_name}`
+        );
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Assessment Barangays Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch barangays: ' + err.message });
+    }
 });
 
 // ==================== VEHICLE REGISTRY (Assessment) ====================
 
 app.get('/api/vehiclereg', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT
           [vr_plateno],
           [vr_expiry]
@@ -2605,21 +3855,21 @@ app.get('/api/vehiclereg', async (req, res) => {
       ORDER BY [vr_plateno]
     `);
 
-    console.log(`✅ Fetched ${result.recordset.length} vehicle registrations`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Vehicle Registry Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch vehicle registry: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} vehicle registrations`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Vehicle Registry Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch vehicle registry: ' + err.message });
+    }
 });
 
 app.get('/api/vehiclereg/search/:plateNo', async (req, res) => {
-  try {
-    const { plateNo } = req.params;
-    const request = pool.request();
-    request.input('vr_plateno', sql.VarChar, `%${plateNo}%`);
+    try {
+        const { plateNo } = req.params;
+        const request = pool.request();
+        request.input('vr_plateno', sql.VarChar, `%${plateNo}%`);
 
-    const result = await request.query(`
+        const result = await request.query(`
       SELECT
           [vr_plateno],
           [vr_expiry]
@@ -2628,25 +3878,25 @@ app.get('/api/vehiclereg/search/:plateNo', async (req, res) => {
       ORDER BY [vr_plateno]
     `);
 
-    console.log(`✅ Fetched ${result.recordset.length} vehicle registrations matching ${plateNo}`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Search Vehicle Registry Error:', err.message);
-    res.status(500).json({ error: 'Failed to search vehicle registry: ' + err.message });
-  }
+        console.log(
+            `✅ Fetched ${result.recordset.length} vehicle registrations matching ${plateNo}`
+        );
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Search Vehicle Registry Error:', err.message);
+        res.status(500).json({ error: 'Failed to search vehicle registry: ' + err.message });
+    }
 });
-
-
 
 // ==================== DELIVERY RECEIPTS ENDPOINT ====================
 
 app.get('/api/deliveryreceipts/:clientId', async (req, res) => {
-  try {
-    const { clientId } = req.params;
-    const request = pool.request();
-    request.input('clientId', sql.Int, clientId);
+    try {
+        const { clientId } = req.params;
+        const request = pool.request();
+        request.input('clientId', sql.Int, clientId);
 
-    const result = await request.query(`
+        const result = await request.query(`
       SELECT dr_ctrlno
             ,dr_clientid
             ,dr_stubno
@@ -2658,130 +3908,137 @@ app.get('/api/deliveryreceipts/:clientId', async (req, res) => {
       ORDER BY dr_releasedate DESC
     `);
 
-    console.log(`✅ Fetched ${result.recordset.length} delivery receipts for client ${clientId}`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Delivery Receipts Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch delivery receipts: ' + err.message });
-  }
+        console.log(
+            `✅ Fetched ${result.recordset.length} delivery receipts for client ${clientId}`
+        );
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Delivery Receipts Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch delivery receipts: ' + err.message });
+    }
 });
 
 app.post('/api/deliveryreceipts', async (req, res) => {
-  try {
-    const { dr_clientid, dr_stubno, dr_stubfrom, dr_stubto, dr_releasedate } = req.body;
-    const request = pool.request();
-    request.input('dr_clientid', sql.Int, dr_clientid);
-    request.input('dr_stubno', sql.VarChar, dr_stubno);
-    request.input('dr_stubfrom', sql.VarChar, dr_stubfrom != null ? String(dr_stubfrom) : null);
-    request.input('dr_stubto', sql.VarChar, dr_stubto != null ? String(dr_stubto) : null);
-    request.input('dr_releasedate', sql.DateTime, new Date(dr_releasedate));
+    try {
+        const { dr_clientid, dr_stubno, dr_stubfrom, dr_stubto, dr_releasedate } = req.body;
+        const request = pool.request();
+        request.input('dr_clientid', sql.Int, dr_clientid);
+        request.input('dr_stubno', sql.VarChar, dr_stubno);
+        request.input('dr_stubfrom', sql.VarChar, dr_stubfrom != null ? String(dr_stubfrom) : null);
+        request.input('dr_stubto', sql.VarChar, dr_stubto != null ? String(dr_stubto) : null);
+        request.input('dr_releasedate', sql.NVarChar(32), toSqlDateTimeLiteral(dr_releasedate));
 
-    await request.query(`
+        await request.query(`
       INSERT INTO tbl_deliveryreceipt (dr_clientid, dr_stubno, dr_stubfrom, dr_stubto, dr_releasedate)
-      VALUES (@dr_clientid, @dr_stubno, @dr_stubfrom, @dr_stubto, @dr_releasedate)
+      VALUES (
+        @dr_clientid,
+        @dr_stubno,
+        @dr_stubfrom,
+        @dr_stubto,
+        CAST(@dr_releasedate AS datetime2)
+      )
     `);
 
-    // Log activity
-    await logActivity(pool, req, {
-      action: 'CREATE',
-      tableName: 'tbl_deliveryreceipt',
-      recordId: 'New Record', // We don't have the ID immediately without OUTPUT INSERTED, but this is fine for now
-      newValues: req.body
-    });
+        // Log activity
+        await logActivity(pool, req, {
+            action: 'CREATE',
+            tableName: 'tbl_deliveryreceipt',
+            recordId: 'New Record', // We don't have the ID immediately without OUTPUT INSERTED, but this is fine for now
+            newValues: req.body,
+        });
 
-    res.json({ success: true, message: 'Delivery receipt created successfully' });
-  } catch (err) {
-    console.error('❌ Create Delivery Receipt Error:', err.message);
-    res.status(500).json({ error: 'Failed to create delivery receipt: ' + err.message });
-  }
+        res.json({ success: true, message: 'Delivery receipt created successfully' });
+    } catch (err) {
+        console.error('❌ Create Delivery Receipt Error:', err.message);
+        res.status(500).json({ error: 'Failed to create delivery receipt: ' + err.message });
+    }
 });
 
 app.put('/api/deliveryreceipts/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { dr_stubno, dr_stubfrom, dr_stubto, dr_releasedate } = req.body;
+    try {
+        const { id } = req.params;
+        const { dr_stubno, dr_stubfrom, dr_stubto, dr_releasedate } = req.body;
 
-    // Fetch old values
-    const getOldReq = pool.request();
-    getOldReq.input('id', sql.Int, id);
-    const oldResult = await getOldReq.query('SELECT * FROM tbl_deliveryreceipt WHERE dr_ctrlno = @id');
-    const oldValues = oldResult.recordset[0];
+        // Fetch old values
+        const getOldReq = pool.request();
+        getOldReq.input('id', sql.Int, id);
+        const oldResult = await getOldReq.query(
+            'SELECT * FROM tbl_deliveryreceipt WHERE dr_ctrlno = @id'
+        );
+        const oldValues = oldResult.recordset[0];
 
-    const request = pool.request();
-    request.input('id', sql.Int, id);
-    request.input('dr_stubno', sql.VarChar, dr_stubno);
-    request.input('dr_stubfrom', sql.VarChar, dr_stubfrom != null ? String(dr_stubfrom) : null);
-    request.input('dr_stubto', sql.VarChar, dr_stubto != null ? String(dr_stubto) : null);
-    request.input('dr_releasedate', sql.DateTime, new Date(dr_releasedate));
+        const request = pool.request();
+        request.input('id', sql.Int, id);
+        request.input('dr_stubno', sql.VarChar, dr_stubno);
+        request.input('dr_stubfrom', sql.VarChar, dr_stubfrom != null ? String(dr_stubfrom) : null);
+        request.input('dr_stubto', sql.VarChar, dr_stubto != null ? String(dr_stubto) : null);
+        request.input('dr_releasedate', sql.NVarChar(32), toSqlDateTimeLiteral(dr_releasedate));
 
-    await request.query(`
+        await request.query(`
       UPDATE tbl_deliveryreceipt
       SET dr_stubno = @dr_stubno,
           dr_stubfrom = @dr_stubfrom,
           dr_stubto = @dr_stubto,
-          dr_releasedate = @dr_releasedate
+          dr_releasedate = CAST(@dr_releasedate AS datetime2)
       WHERE dr_ctrlno = @id
     `);
 
-    // Log activity
-    await logActivity(pool, req, {
-      action: 'UPDATE',
-      tableName: 'tbl_deliveryreceipt',
-      recordId: id,
-      oldValues: oldValues,
-      newValues: req.body
-    });
+        // Log activity
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_deliveryreceipt',
+            recordId: id,
+            oldValues: oldValues,
+            newValues: req.body,
+        });
 
-    res.json({ success: true, message: 'Delivery receipt updated successfully' });
-  } catch (err) {
-    console.error('❌ Update Delivery Receipt Error:', err.message);
-    res.status(500).json({ error: 'Failed to update delivery receipt: ' + err.message });
-  }
+        res.json({ success: true, message: 'Delivery receipt updated successfully' });
+    } catch (err) {
+        console.error('❌ Update Delivery Receipt Error:', err.message);
+        res.status(500).json({ error: 'Failed to update delivery receipt: ' + err.message });
+    }
 });
 
 app.delete('/api/deliveryreceipts/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
 
-    // Fetch old values
-    const getOldReq = pool.request();
-    getOldReq.input('id', sql.Int, id);
-    const oldResult = await getOldReq.query('SELECT * FROM tbl_deliveryreceipt WHERE dr_ctrlno = @id');
-    const oldValues = oldResult.recordset[0];
+        // Fetch old values
+        const getOldReq = pool.request();
+        getOldReq.input('id', sql.Int, id);
+        const oldResult = await getOldReq.query(
+            'SELECT * FROM tbl_deliveryreceipt WHERE dr_ctrlno = @id'
+        );
+        const oldValues = oldResult.recordset[0];
 
-    const request = pool.request();
-    request.input('id', sql.Int, id);
-    await request.query('DELETE FROM tbl_deliveryreceipt WHERE dr_ctrlno = @id');
+        const request = pool.request();
+        request.input('id', sql.Int, id);
+        await request.query('DELETE FROM tbl_deliveryreceipt WHERE dr_ctrlno = @id');
 
-    // Log activity
-    if (oldValues) {
-      await logActivity(pool, req, {
-        action: 'DELETE',
-        tableName: 'tbl_deliveryreceipt',
-        recordId: id,
-        oldValues: oldValues
-      });
+        // Log activity
+        if (oldValues) {
+            await logActivity(pool, req, {
+                action: 'DELETE',
+                tableName: 'tbl_deliveryreceipt',
+                recordId: id,
+                oldValues: oldValues,
+            });
+        }
+
+        res.json({ success: true, message: 'Delivery receipt deleted successfully' });
+    } catch (err) {
+        console.error('❌ Delete Delivery Receipt Error:', err.message);
+        res.status(500).json({ error: 'Failed to delete delivery receipt: ' + err.message });
     }
-
-    res.json({ success: true, message: 'Delivery receipt deleted successfully' });
-  } catch (err) {
-    console.error('❌ Delete Delivery Receipt Error:', err.message);
-    res.status(500).json({ error: 'Failed to delete delivery receipt: ' + err.message });
-  }
 });
 
 // ==================== DOCUMENT RECEIVING ENDPOINTS ====================
 
 app.get('/api/docreceiving', async (req, res) => {
-  try {
-    const request = pool.request();
+    try {
+        const request = pool.request();
 
-    // Get current date at midnight
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    request.input('currentDate', sql.DateTime, today);
-
-    const result = await request.query(`
+        const result = await request.query(`
       SELECT 
           r.dms_ctrlno,
           r.dms_date,
@@ -2794,181 +4051,189 @@ app.get('/api/docreceiving', async (req, res) => {
           r.dms_purpose
       FROM tbl_dmsreceiving r
       INNER JOIN tbl_enroemp e ON r.dms_empid = e.emp_ctrlno
-      WHERE r.dms_date >= @currentDate
+      WHERE CAST(r.dms_date AS date) = ${SQL_MANILA_TODAY_EXPR}
       ORDER BY r.dms_ctrlno DESC
     `);
 
-    console.log(`✅ Fetched ${result.recordset.length} document receiving records`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Document Receiving Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch document receiving records: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} document receiving records`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Document Receiving Error:', err.message);
+        res.status(500).json({
+            error: 'Failed to fetch document receiving records: ' + err.message,
+        });
+    }
 });
 
 // Get max control number for auto-generation
 app.get('/api/docreceiving/maxcontrol', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT MAX(dms_control) AS Maxcontrol FROM tbl_dmsreceiving
     `);
 
-    const maxControl = result.recordset[0]?.Maxcontrol || 'DMS00000';
-    // Extract number, increment, and format new control
-    const numPart = parseInt(maxControl.replace(/\D/g, ''), 10) || 0;
-    const nextNum = numPart + 1;
-    const nextControl = 'DMS' + String(nextNum).padStart(5, '0');
+        const maxControl = result.recordset[0]?.Maxcontrol || 'DMS00000';
+        // Extract number, increment, and format new control
+        const numPart = parseInt(maxControl.replace(/\D/g, ''), 10) || 0;
+        const nextNum = numPart + 1;
+        const nextControl = 'DMS' + String(nextNum).padStart(5, '0');
 
-    console.log(`✅ Generated next control number: ${nextControl}`);
-    res.json({ maxControl, nextControl });
-  } catch (err) {
-    console.error('❌ Get Max Control Error:', err.message);
-    res.status(500).json({ error: 'Failed to get max control: ' + err.message });
-  }
+        console.log(`✅ Generated next control number: ${nextControl}`);
+        res.json({ maxControl, nextControl });
+    } catch (err) {
+        console.error('❌ Get Max Control Error:', err.message);
+        res.status(500).json({ error: 'Failed to get max control: ' + err.message });
+    }
 });
 
 // Get employees list for recipient dropdown
 app.get('/api/docreceiving/employees', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT emp_ctrlno, emp_name FROM tbl_enroemp ORDER BY emp_name
     `);
 
-    console.log(`✅ Fetched ${result.recordset.length} employees`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Employees Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch employees: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} employees`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Employees Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch employees: ' + err.message });
+    }
 });
 
 // Create document receiving record
 app.post('/api/docreceiving', async (req, res) => {
-  try {
-    const { dms_control, dms_source, dms_empid, dms_type, dms_purpose, dms_desc } = req.body;
+    try {
+        const { dms_control, dms_source, dms_empid, dms_type, dms_purpose, dms_desc } = req.body;
 
-    const request = pool.request();
-    request.input('dms_control', sql.VarChar, dms_control);
-    request.input('dms_source', sql.VarChar, dms_source);
-    request.input('dms_empid', sql.Int, dms_empid);
-    request.input('dms_type', sql.VarChar, dms_type);
-    request.input('dms_purpose', sql.VarChar, dms_purpose);
-    request.input('dms_desc', sql.VarChar, dms_desc);
-    request.input('dms_date', sql.DateTime, new Date());
+        const request = pool.request();
+        request.input('dms_control', sql.VarChar, dms_control);
+        request.input('dms_source', sql.VarChar, dms_source);
+        request.input('dms_empid', sql.Int, dms_empid);
+        request.input('dms_type', sql.VarChar, dms_type);
+        request.input('dms_purpose', sql.VarChar, dms_purpose);
+        request.input('dms_desc', sql.VarChar, dms_desc);
 
-    await request.query(`
+        await request.query(`
       INSERT INTO tbl_dmsreceiving (dms_control, dms_source, dms_empid, dms_type, dms_purpose, dms_desc, dms_date)
-      VALUES (@dms_control, @dms_source, @dms_empid, @dms_type, @dms_purpose, @dms_desc, @dms_date)
+      VALUES (
+        @dms_control,
+        @dms_source,
+        @dms_empid,
+        @dms_type,
+        @dms_purpose,
+        @dms_desc,
+        ${SQL_MANILA_NOW_EXPR}
+      )
     `);
 
-    // Log activity
-    await logActivity(pool, req, {
-      action: 'CREATE',
-      tableName: 'tbl_dmsreceiving',
-      recordId: dms_control,
-      newValues: req.body
-    });
+        // Log activity
+        await logActivity(pool, req, {
+            action: 'CREATE',
+            tableName: 'tbl_dmsreceiving',
+            recordId: dms_control,
+            newValues: req.body,
+        });
 
-    console.log(`✅ Created document receiving record: ${dms_control}`);
-    res.json({ success: true, message: 'Record created successfully' });
-  } catch (err) {
-    console.error('❌ Create Document Receiving Error:', err.message);
-    res.status(500).json({ error: 'Failed to create record: ' + err.message });
-  }
+        console.log(`✅ Created document receiving record: ${dms_control}`);
+        res.json({ success: true, message: 'Record created successfully' });
+    } catch (err) {
+        console.error('❌ Create Document Receiving Error:', err.message);
+        res.status(500).json({ error: 'Failed to create record: ' + err.message });
+    }
 });
 
 // Update document receiving record
 app.put('/api/docreceiving/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { dms_source, dms_empid, dms_type, dms_purpose, dms_desc } = req.body;
+    try {
+        const { id } = req.params;
+        const { dms_source, dms_empid, dms_type, dms_purpose, dms_desc } = req.body;
 
-    // Fetch old values for audit logging
-    const getOldReq = pool.request();
-    getOldReq.input('dms_ctrlno', sql.Int, id);
-    const oldResult = await getOldReq.query('SELECT * FROM tbl_dmsreceiving WHERE dms_ctrlno = @dms_ctrlno');
-    const oldValues = oldResult.recordset[0];
+        // Fetch old values for audit logging
+        const getOldReq = pool.request();
+        getOldReq.input('dms_ctrlno', sql.Int, id);
+        const oldResult = await getOldReq.query(
+            'SELECT * FROM tbl_dmsreceiving WHERE dms_ctrlno = @dms_ctrlno'
+        );
+        const oldValues = oldResult.recordset[0];
 
-    const request = pool.request();
-    request.input('dms_ctrlno', sql.Int, id);
-    request.input('dms_source', sql.VarChar, dms_source);
-    request.input('dms_empid', sql.Int, dms_empid);
-    request.input('dms_type', sql.VarChar, dms_type);
-    request.input('dms_purpose', sql.VarChar, dms_purpose);
-    request.input('dms_desc', sql.VarChar, dms_desc);
+        const request = pool.request();
+        request.input('dms_ctrlno', sql.Int, id);
+        request.input('dms_source', sql.VarChar, dms_source);
+        request.input('dms_empid', sql.Int, dms_empid);
+        request.input('dms_type', sql.VarChar, dms_type);
+        request.input('dms_purpose', sql.VarChar, dms_purpose);
+        request.input('dms_desc', sql.VarChar, dms_desc);
 
-    await request.query(`
+        await request.query(`
       UPDATE tbl_dmsreceiving 
       SET dms_source = @dms_source, dms_empid = @dms_empid, dms_type = @dms_type, 
           dms_purpose = @dms_purpose, dms_desc = @dms_desc
       WHERE dms_ctrlno = @dms_ctrlno
     `);
 
-    // Log activity
-    await logActivity(pool, req, {
-      action: 'UPDATE',
-      tableName: 'tbl_dmsreceiving',
-      recordId: id,
-      oldValues: oldValues,
-      newValues: req.body
-    });
+        // Log activity
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_dmsreceiving',
+            recordId: id,
+            oldValues: oldValues,
+            newValues: req.body,
+        });
 
-    console.log(`✅ Updated document receiving record: ${id}`);
-    res.json({ success: true, message: 'Record updated successfully' });
-  } catch (err) {
-    console.error('❌ Update Document Receiving Error:', err.message);
-    res.status(500).json({ error: 'Failed to update record: ' + err.message });
-  }
+        console.log(`✅ Updated document receiving record: ${id}`);
+        res.json({ success: true, message: 'Record updated successfully' });
+    } catch (err) {
+        console.error('❌ Update Document Receiving Error:', err.message);
+        res.status(500).json({ error: 'Failed to update record: ' + err.message });
+    }
 });
 
 // Delete document receiving record
 app.delete('/api/docreceiving/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
 
-    // Fetch old values for audit logging before deletion
-    const getOldReq = pool.request();
-    getOldReq.input('dms_ctrlno', sql.Int, id);
-    const oldResult = await getOldReq.query('SELECT * FROM tbl_dmsreceiving WHERE dms_ctrlno = @dms_ctrlno');
-    const oldValues = oldResult.recordset[0];
+        // Fetch old values for audit logging before deletion
+        const getOldReq = pool.request();
+        getOldReq.input('dms_ctrlno', sql.Int, id);
+        const oldResult = await getOldReq.query(
+            'SELECT * FROM tbl_dmsreceiving WHERE dms_ctrlno = @dms_ctrlno'
+        );
+        const oldValues = oldResult.recordset[0];
 
-    const request = pool.request();
-    request.input('dms_ctrlno', sql.Int, id);
+        const request = pool.request();
+        request.input('dms_ctrlno', sql.Int, id);
 
-    await request.query(`DELETE FROM tbl_dmsreceiving WHERE dms_ctrlno = @dms_ctrlno`);
+        await request.query(`DELETE FROM tbl_dmsreceiving WHERE dms_ctrlno = @dms_ctrlno`);
 
-    // Log activity
-    if (oldValues) {
-      await logActivity(pool, req, {
-        action: 'DELETE',
-        tableName: 'tbl_dmsreceiving',
-        recordId: id,
-        oldValues: oldValues
-      });
+        // Log activity
+        if (oldValues) {
+            await logActivity(pool, req, {
+                action: 'DELETE',
+                tableName: 'tbl_dmsreceiving',
+                recordId: id,
+                oldValues: oldValues,
+            });
+        }
+
+        console.log(`✅ Deleted document receiving record: ${id}`);
+        res.json({ success: true, message: 'Record deleted successfully' });
+    } catch (err) {
+        console.error('❌ Delete Document Receiving Error:', err.message);
+        res.status(500).json({ error: 'Failed to delete record: ' + err.message });
     }
-
-    console.log(`✅ Deleted document receiving record: ${id}`);
-    res.json({ success: true, message: 'Record deleted successfully' });
-  } catch (err) {
-    console.error('❌ Delete Document Receiving Error:', err.message);
-    res.status(500).json({ error: 'Failed to delete record: ' + err.message });
-  }
 });
 
 // ==================== DOCUMENT OUTGOING ENDPOINTS ====================
 
 app.get('/api/docoutgoing', async (req, res) => {
-  try {
-    const request = pool.request();
+    try {
+        const request = pool.request();
 
-    // Get current date at midnight
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    request.input('currentDate', sql.DateTime, today);
-
-    const result = await request.query(`
+        const result = await request.query(`
       SELECT 
           r.dms_ctrlno,
           r.dms_date,
@@ -2981,239 +4246,253 @@ app.get('/api/docoutgoing', async (req, res) => {
           r.dms_purpose
       FROM tbl_dmsoutgoing r
       INNER JOIN tbl_enroemp e ON r.dms_empid = e.emp_ctrlno
-      WHERE r.dms_date >= @currentDate
+      WHERE CAST(r.dms_date AS date) = ${SQL_MANILA_TODAY_EXPR}
       ORDER BY r.dms_ctrlno DESC
     `);
 
-    console.log(`✅ Fetched ${result.recordset.length} document outgoing records`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Document Outgoing Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch document outgoing records: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} document outgoing records`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Document Outgoing Error:', err.message);
+        res.status(500).json({
+            error: 'Failed to fetch document outgoing records: ' + err.message,
+        });
+    }
 });
 
 // Get max control number for auto-generation (OUT prefix)
 app.get('/api/docoutgoing/maxcontrol', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT MAX(dms_control) AS Maxcontrol FROM tbl_dmsoutgoing
     `);
 
-    const maxControl = result.recordset[0]?.Maxcontrol || 'OUT00000';
-    // Extract number, increment, and format new control
-    const numPart = parseInt(maxControl.replace(/\D/g, ''), 10) || 0;
-    const nextNum = numPart + 1;
-    const nextControl = 'OUT' + String(nextNum).padStart(5, '0');
+        const maxControl = result.recordset[0]?.Maxcontrol || 'OUT00000';
+        // Extract number, increment, and format new control
+        const numPart = parseInt(maxControl.replace(/\D/g, ''), 10) || 0;
+        const nextNum = numPart + 1;
+        const nextControl = 'OUT' + String(nextNum).padStart(5, '0');
 
-    console.log(`✅ Generated next outgoing control number: ${nextControl}`);
-    res.json({ maxControl, nextControl });
-  } catch (err) {
-    console.error('❌ Get Max Outgoing Control Error:', err.message);
-    res.status(500).json({ error: 'Failed to get max control: ' + err.message });
-  }
+        console.log(`✅ Generated next outgoing control number: ${nextControl}`);
+        res.json({ maxControl, nextControl });
+    } catch (err) {
+        console.error('❌ Get Max Outgoing Control Error:', err.message);
+        res.status(500).json({ error: 'Failed to get max control: ' + err.message });
+    }
 });
 
 // Create document outgoing record
 app.post('/api/docoutgoing', async (req, res) => {
-  try {
-    const { dms_control, dms_destination, dms_empid, dms_type, dms_purpose, dms_desc } = req.body;
+    try {
+        const { dms_control, dms_destination, dms_empid, dms_type, dms_purpose, dms_desc } =
+            req.body;
 
-    const request = pool.request();
-    request.input('dms_control', sql.VarChar, dms_control);
-    request.input('dms_destination', sql.VarChar, dms_destination);
-    request.input('dms_empid', sql.Int, dms_empid);
-    request.input('dms_type', sql.VarChar, dms_type);
-    request.input('dms_purpose', sql.VarChar, dms_purpose);
-    request.input('dms_desc', sql.VarChar, dms_desc);
-    request.input('dms_date', sql.DateTime, new Date());
+        const request = pool.request();
+        request.input('dms_control', sql.VarChar, dms_control);
+        request.input('dms_destination', sql.VarChar, dms_destination);
+        request.input('dms_empid', sql.Int, dms_empid);
+        request.input('dms_type', sql.VarChar, dms_type);
+        request.input('dms_purpose', sql.VarChar, dms_purpose);
+        request.input('dms_desc', sql.VarChar, dms_desc);
 
-    await request.query(`
+        await request.query(`
       INSERT INTO tbl_dmsoutgoing (dms_control, dms_destination, dms_empid, dms_type, dms_purpose, dms_desc, dms_date)
-      VALUES (@dms_control, @dms_destination, @dms_empid, @dms_type, @dms_purpose, @dms_desc, @dms_date)
+      VALUES (
+        @dms_control,
+        @dms_destination,
+        @dms_empid,
+        @dms_type,
+        @dms_purpose,
+        @dms_desc,
+        ${SQL_MANILA_NOW_EXPR}
+      )
     `);
 
-    // Log activity
-    await logActivity(pool, req, {
-      action: 'CREATE',
-      tableName: 'tbl_dmsoutgoing',
-      recordId: dms_control,
-      newValues: req.body
-    });
+        // Log activity
+        await logActivity(pool, req, {
+            action: 'CREATE',
+            tableName: 'tbl_dmsoutgoing',
+            recordId: dms_control,
+            newValues: req.body,
+        });
 
-    console.log(`✅ Created document outgoing record: ${dms_control}`);
-    res.json({ success: true, message: 'Record created successfully' });
-  } catch (err) {
-    console.error('❌ Create Document Outgoing Error:', err.message);
-    res.status(500).json({ error: 'Failed to create record: ' + err.message });
-  }
+        console.log(`✅ Created document outgoing record: ${dms_control}`);
+        res.json({ success: true, message: 'Record created successfully' });
+    } catch (err) {
+        console.error('❌ Create Document Outgoing Error:', err.message);
+        res.status(500).json({ error: 'Failed to create record: ' + err.message });
+    }
 });
 
 // Update document outgoing record
 app.put('/api/docoutgoing/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { dms_destination, dms_empid, dms_type, dms_purpose, dms_desc } = req.body;
+    try {
+        const { id } = req.params;
+        const { dms_destination, dms_empid, dms_type, dms_purpose, dms_desc } = req.body;
 
-    // Fetch old values for audit logging
-    const getOldReq = pool.request();
-    getOldReq.input('dms_ctrlno', sql.Int, id);
-    const oldResult = await getOldReq.query('SELECT * FROM tbl_dmsoutgoing WHERE dms_ctrlno = @dms_ctrlno');
-    const oldValues = oldResult.recordset[0];
+        // Fetch old values for audit logging
+        const getOldReq = pool.request();
+        getOldReq.input('dms_ctrlno', sql.Int, id);
+        const oldResult = await getOldReq.query(
+            'SELECT * FROM tbl_dmsoutgoing WHERE dms_ctrlno = @dms_ctrlno'
+        );
+        const oldValues = oldResult.recordset[0];
 
-    const request = pool.request();
-    request.input('dms_ctrlno', sql.Int, id);
-    request.input('dms_destination', sql.VarChar, dms_destination);
-    request.input('dms_empid', sql.Int, dms_empid);
-    request.input('dms_type', sql.VarChar, dms_type);
-    request.input('dms_purpose', sql.VarChar, dms_purpose);
-    request.input('dms_desc', sql.VarChar, dms_desc);
+        const request = pool.request();
+        request.input('dms_ctrlno', sql.Int, id);
+        request.input('dms_destination', sql.VarChar, dms_destination);
+        request.input('dms_empid', sql.Int, dms_empid);
+        request.input('dms_type', sql.VarChar, dms_type);
+        request.input('dms_purpose', sql.VarChar, dms_purpose);
+        request.input('dms_desc', sql.VarChar, dms_desc);
 
-    await request.query(`
+        await request.query(`
       UPDATE tbl_dmsoutgoing 
       SET dms_destination = @dms_destination, dms_empid = @dms_empid, dms_type = @dms_type, 
           dms_purpose = @dms_purpose, dms_desc = @dms_desc
       WHERE dms_ctrlno = @dms_ctrlno
     `);
 
-    // Log activity
-    await logActivity(pool, req, {
-      action: 'UPDATE',
-      tableName: 'tbl_dmsoutgoing',
-      recordId: id,
-      oldValues: oldValues,
-      newValues: req.body
-    });
+        // Log activity
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_dmsoutgoing',
+            recordId: id,
+            oldValues: oldValues,
+            newValues: req.body,
+        });
 
-    console.log(`✅ Updated document outgoing record: ${id}`);
-    res.json({ success: true, message: 'Record updated successfully' });
-  } catch (err) {
-    console.error('❌ Update Document Outgoing Error:', err.message);
-    res.status(500).json({ error: 'Failed to update record: ' + err.message });
-  }
+        console.log(`✅ Updated document outgoing record: ${id}`);
+        res.json({ success: true, message: 'Record updated successfully' });
+    } catch (err) {
+        console.error('❌ Update Document Outgoing Error:', err.message);
+        res.status(500).json({ error: 'Failed to update record: ' + err.message });
+    }
 });
 
 // Delete document outgoing record
 app.delete('/api/docoutgoing/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
 
-    // Fetch old values for audit logging before deletion
-    const getOldReq = pool.request();
-    getOldReq.input('dms_ctrlno', sql.Int, id);
-    const oldResult = await getOldReq.query('SELECT * FROM tbl_dmsoutgoing WHERE dms_ctrlno = @dms_ctrlno');
-    const oldValues = oldResult.recordset[0];
+        // Fetch old values for audit logging before deletion
+        const getOldReq = pool.request();
+        getOldReq.input('dms_ctrlno', sql.Int, id);
+        const oldResult = await getOldReq.query(
+            'SELECT * FROM tbl_dmsoutgoing WHERE dms_ctrlno = @dms_ctrlno'
+        );
+        const oldValues = oldResult.recordset[0];
 
-    const request = pool.request();
-    request.input('dms_ctrlno', sql.Int, id);
+        const request = pool.request();
+        request.input('dms_ctrlno', sql.Int, id);
 
-    await request.query(`DELETE FROM tbl_dmsoutgoing WHERE dms_ctrlno = @dms_ctrlno`);
+        await request.query(`DELETE FROM tbl_dmsoutgoing WHERE dms_ctrlno = @dms_ctrlno`);
 
-    // Log activity
-    if (oldValues) {
-      await logActivity(pool, req, {
-        action: 'DELETE',
-        tableName: 'tbl_dmsoutgoing',
-        recordId: id,
-        oldValues: oldValues
-      });
+        // Log activity
+        if (oldValues) {
+            await logActivity(pool, req, {
+                action: 'DELETE',
+                tableName: 'tbl_dmsoutgoing',
+                recordId: id,
+                oldValues: oldValues,
+            });
+        }
+
+        console.log(`✅ Deleted document outgoing record: ${id}`);
+        res.json({ success: true, message: 'Record deleted successfully' });
+    } catch (err) {
+        console.error('❌ Delete Document Outgoing Error:', err.message);
+        res.status(500).json({ error: 'Failed to delete record: ' + err.message });
     }
-
-    console.log(`✅ Deleted document outgoing record: ${id}`);
-    res.json({ success: true, message: 'Record deleted successfully' });
-  } catch (err) {
-    console.error('❌ Delete Document Outgoing Error:', err.message);
-    res.status(500).json({ error: 'Failed to delete record: ' + err.message });
-  }
 });
 
 // ==================== DOCUMENT PROBING (SEARCH) ENDPOINTS ====================
 
 app.get('/api/docprobing/search', async (req, res) => {
-  try {
-    const {
-      control,
-      dateFrom,
-      dateTo,
-      docType = 'all',
-      empId,
-      type,
-      purpose,
-      sourceOrDest,
-      description
-    } = req.query;
+    try {
+        const {
+            control,
+            dateFrom,
+            dateTo,
+            docType = 'all',
+            empId,
+            type,
+            purpose,
+            sourceOrDest,
+            description,
+        } = req.query;
 
-    const request = pool.request();
-    let paramIndex = 0;
+        const request = pool.request();
+        let paramIndex = 0;
 
-    // Build dynamic WHERE clauses
-    const buildWhereClause = (tablePrefix, isOutgoing) => {
-      const conditions = [];
+        // Build dynamic WHERE clauses
+        const buildWhereClause = (tablePrefix, isOutgoing) => {
+            const conditions = [];
 
-      if (control) {
-        const pName = `control${paramIndex++}`;
-        request.input(pName, sql.VarChar, `%${control}%`);
-        conditions.push(`${tablePrefix}.dms_control LIKE @${pName}`);
-      }
+            if (control) {
+                const pName = `control${paramIndex++}`;
+                request.input(pName, sql.VarChar, `%${control}%`);
+                conditions.push(`${tablePrefix}.dms_control LIKE @${pName}`);
+            }
 
-      if (dateFrom) {
-        const pName = `dateFrom${paramIndex++}`;
-        request.input(pName, sql.DateTime, new Date(dateFrom));
-        conditions.push(`${tablePrefix}.dms_date >= @${pName}`);
-      }
+            if (dateFrom) {
+                const pName = `dateFrom${paramIndex++}`;
+                request.input(pName, sql.DateTime, new Date(dateFrom));
+                conditions.push(`${tablePrefix}.dms_date >= @${pName}`);
+            }
 
-      if (dateTo) {
-        const pName = `dateTo${paramIndex++}`;
-        const endDate = new Date(dateTo);
-        endDate.setHours(23, 59, 59, 999);
-        request.input(pName, sql.DateTime, endDate);
-        conditions.push(`${tablePrefix}.dms_date <= @${pName}`);
-      }
+            if (dateTo) {
+                const pName = `dateTo${paramIndex++}`;
+                const endDate = new Date(dateTo);
+                endDate.setHours(23, 59, 59, 999);
+                request.input(pName, sql.DateTime, endDate);
+                conditions.push(`${tablePrefix}.dms_date <= @${pName}`);
+            }
 
-      if (empId) {
-        const pName = `empId${paramIndex++}`;
-        request.input(pName, sql.Int, parseInt(empId));
-        conditions.push(`${tablePrefix}.dms_empid = @${pName}`);
-      }
+            if (empId) {
+                const pName = `empId${paramIndex++}`;
+                request.input(pName, sql.Int, parseInt(empId));
+                conditions.push(`${tablePrefix}.dms_empid = @${pName}`);
+            }
 
-      if (type) {
-        const pName = `type${paramIndex++}`;
-        request.input(pName, sql.VarChar, type);
-        conditions.push(`${tablePrefix}.dms_type = @${pName}`);
-      }
+            if (type) {
+                const pName = `type${paramIndex++}`;
+                request.input(pName, sql.VarChar, type);
+                conditions.push(`${tablePrefix}.dms_type = @${pName}`);
+            }
 
-      if (purpose) {
-        const pName = `purpose${paramIndex++}`;
-        request.input(pName, sql.VarChar, purpose);
-        conditions.push(`${tablePrefix}.dms_purpose = @${pName}`);
-      }
+            if (purpose) {
+                const pName = `purpose${paramIndex++}`;
+                request.input(pName, sql.VarChar, purpose);
+                conditions.push(`${tablePrefix}.dms_purpose = @${pName}`);
+            }
 
-      if (sourceOrDest) {
-        const pName = `sourceOrDest${paramIndex++}`;
-        request.input(pName, sql.VarChar, `%${sourceOrDest}%`);
-        if (isOutgoing) {
-          conditions.push(`${tablePrefix}.dms_destination LIKE @${pName}`);
-        } else {
-          conditions.push(`${tablePrefix}.dms_source LIKE @${pName}`);
-        }
-      }
+            if (sourceOrDest) {
+                const pName = `sourceOrDest${paramIndex++}`;
+                request.input(pName, sql.VarChar, `%${sourceOrDest}%`);
+                if (isOutgoing) {
+                    conditions.push(`${tablePrefix}.dms_destination LIKE @${pName}`);
+                } else {
+                    conditions.push(`${tablePrefix}.dms_source LIKE @${pName}`);
+                }
+            }
 
-      if (description) {
-        const pName = `desc${paramIndex++}`;
-        request.input(pName, sql.VarChar, `%${description}%`);
-        conditions.push(`${tablePrefix}.dms_desc LIKE @${pName}`);
-      }
+            if (description) {
+                const pName = `desc${paramIndex++}`;
+                request.input(pName, sql.VarChar, `%${description}%`);
+                conditions.push(`${tablePrefix}.dms_desc LIKE @${pName}`);
+            }
 
-      return conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
-    };
+            return conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+        };
 
-    let queries = [];
+        let queries = [];
 
-    // Build receiving query
-    if (docType === 'all' || docType === 'receiving') {
-      const whereClause = buildWhereClause('r', false);
-      queries.push(`
+        // Build receiving query
+        if (docType === 'all' || docType === 'receiving') {
+            const whereClause = buildWhereClause('r', false);
+            queries.push(`
         SELECT 
           'receiving' AS doc_type,
           r.dms_ctrlno,
@@ -3229,12 +4508,12 @@ app.get('/api/docprobing/search', async (req, res) => {
         INNER JOIN tbl_enroemp e ON r.dms_empid = e.emp_ctrlno
         ${whereClause}
       `);
-    }
+        }
 
-    // Build outgoing query
-    if (docType === 'all' || docType === 'outgoing') {
-      const whereClause = buildWhereClause('r', true);
-      queries.push(`
+        // Build outgoing query
+        if (docType === 'all' || docType === 'outgoing') {
+            const whereClause = buildWhereClause('r', true);
+            queries.push(`
         SELECT 
           'outgoing' AS doc_type,
           r.dms_ctrlno,
@@ -3250,39 +4529,44 @@ app.get('/api/docprobing/search', async (req, res) => {
         INNER JOIN tbl_enroemp e ON r.dms_empid = e.emp_ctrlno
         ${whereClause}
       `);
+        }
+
+        const fullQuery = queries.join(' UNION ALL ') + ' ORDER BY dms_date DESC';
+
+        const result = await request.query(fullQuery);
+
+        console.log(`✅ Document probing search returned ${result.recordset.length} records`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Document Probing Search Error:', err.message);
+        res.status(500).json({ error: 'Failed to search documents: ' + err.message });
     }
-
-    const fullQuery = queries.join(' UNION ALL ') + ' ORDER BY dms_date DESC';
-
-    const result = await request.query(fullQuery);
-
-    console.log(`✅ Document probing search returned ${result.recordset.length} records`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Document Probing Search Error:', err.message);
-    res.status(500).json({ error: 'Failed to search documents: ' + err.message });
-  }
 });
 
 // ==================== DASHBOARD STATS ENDPOINT ====================
 
 app.get('/api/dashboard/stats', async (req, res) => {
-  try {
-    const { year1, year2 } = req.query;
+    try {
+        const { year1, year2 } = req.query;
 
-    // Default to This Year vs Last Year if no params
-    const defaultCurrentYear = new Date().getFullYear();
-    const defaultLastYear = defaultCurrentYear - 1;
+        // Default to This Year vs Last Year if no params
+        const currentYearRequest = pool.request();
+        const currentYearResult = await currentYearRequest.query(`
+      SELECT ${SQL_MANILA_YEAR_EXPR} AS currentYear
+    `);
+        const defaultCurrentYear =
+            currentYearResult.recordset[0]?.currentYear || new Date().getFullYear();
+        const defaultLastYear = defaultCurrentYear - 1;
 
-    // Use params if provided, else defaults
-    const currentYear = year1 ? parseInt(year1, 10) : defaultCurrentYear;
-    const lastYear = year2 ? parseInt(year2, 10) : defaultLastYear;
+        // Use params if provided, else defaults
+        const currentYear = year1 ? parseInt(year1, 10) : defaultCurrentYear;
+        const lastYear = year2 ? parseInt(year2, 10) : defaultLastYear;
 
-    const collectionRequest = pool.request();
-    collectionRequest.input('year1', sql.Int, currentYear);
-    collectionRequest.input('year2', sql.Int, lastYear);
+        const collectionRequest = pool.request();
+        collectionRequest.input('year1', sql.Int, currentYear);
+        collectionRequest.input('year2', sql.Int, lastYear);
 
-    const collectionResult = await collectionRequest.query(`
+        const collectionResult = await collectionRequest.query(`
       WITH YearlyTotals AS (
         SELECT yr, SUM(total) AS yearTotal
         FROM View_gross
@@ -3296,36 +4580,98 @@ app.get('/api/dashboard/stats', async (req, res) => {
         @year2 AS previousYear
     `);
 
-    // Get pending applications count from View_applicants
-    const pendingRequest = pool.request();
-    const pendingResult = await pendingRequest.query(`
+        // Get pending applications count from View_applicants
+        const pendingRequest = pool.request();
+        const pendingResult = await pendingRequest.query(`
       SELECT COUNT(*) AS pendingCount
       FROM View_applicants
     `);
 
-    // Get active permits count from View_activepermit
-    const permitsRequest = pool.request();
-    const permitsResult = await permitsRequest.query(`
+        // Get active permits count from View_activepermit
+        const permitsRequest = pool.request();
+        const permitsResult = await permitsRequest.query(`
       SELECT COUNT(*) AS activePermits
       FROM View_activepermit
     `);
 
-    // Get active vehicles count
-    const vehiclesRequest = pool.request();
-    const vehiclesResult = await vehiclesRequest.query(`
+        // Get active vehicles count
+        const vehiclesRequest = pool.request();
+        const vehiclesResult = await vehiclesRequest.query(`
       SELECT COUNT(*) AS activeVehicles
       FROM tbl_vehiclereg
-      WHERE vr_expiry >= GETDATE()
+      WHERE vr_expiry >= ${SQL_MANILA_TODAY_EXPR}
     `);
 
-    // Get monthly collection for latest year and previous year from View_gross
-    const latestYear = collectionResult.recordset[0]?.latestYear || currentYear;
-    const previousYear = collectionResult.recordset[0]?.previousYear || lastYear;
+        const permitAlertsRequest = pool.request();
+        const permitAlertsResult = await permitAlertsRequest.query(`
+      DECLARE @today DATE = ${SQL_MANILA_TODAY_EXPR};
+      DECLARE @startOfThisMonth DATE = DATEFROMPARTS(YEAR(@today), MONTH(@today), 1);
+      DECLARE @startOfNextMonth DATE = DATEADD(MONTH, 1, @startOfThisMonth);
+      DECLARE @startOfMonthAfterNext DATE = DATEADD(MONTH, 2, @startOfThisMonth);
 
-    const monthlyRequest = pool.request();
-    monthlyRequest.input('latestYear', sql.Int, latestYear);
-    monthlyRequest.input('previousYear', sql.Int, previousYear);
-    const monthlyResult = await monthlyRequest.query(`
+      SELECT
+        cp.ph_ctrlno,
+        cp.ph_permitno,
+        cp.ph_dto,
+        cp.ph_mun,
+        c.ph_cname,
+        DATEDIFF(DAY, @today, CAST(cp.ph_dto AS DATE)) AS daysUntilExpiry
+      INTO #PermitBase
+      FROM tbl_clientpermit AS cp
+      LEFT JOIN tbl_client AS c
+        ON c.ph_ctrlno = cp.ph_lnkctrl
+      WHERE cp.ph_dto IS NOT NULL;
+
+      SELECT TOP 8
+        ph_ctrlno,
+        ph_permitno,
+        ph_cname,
+        ph_mun,
+        ph_dto,
+        daysUntilExpiry,
+        CASE
+          WHEN ph_dto >= @startOfThisMonth AND ph_dto < @startOfNextMonth THEN 'thisMonth'
+          WHEN ph_dto >= @startOfNextMonth AND ph_dto < @startOfMonthAfterNext THEN 'nextMonth'
+          ELSE 'other'
+        END AS expiryBucket
+      FROM #PermitBase
+      WHERE ph_dto >= @startOfThisMonth AND ph_dto < @startOfMonthAfterNext
+      ORDER BY ph_dto ASC, ph_permitno ASC;
+
+      SELECT
+        SUM(CASE WHEN ph_dto >= @startOfThisMonth AND ph_dto < @startOfNextMonth THEN 1 ELSE 0 END) AS expiringThisMonth,
+        SUM(CASE WHEN ph_dto >= @startOfNextMonth AND ph_dto < @startOfMonthAfterNext THEN 1 ELSE 0 END) AS expiringNextMonth,
+        SUM(CASE WHEN ph_dto < @today THEN 1 ELSE 0 END) AS expired
+      FROM #PermitBase;
+    `);
+
+        const taskForceSnapshotRequest = pool.request();
+        const taskForceSnapshotResult = await taskForceSnapshotRequest.query(`
+      DECLARE @today DATE = ${SQL_MANILA_TODAY_EXPR};
+      DECLARE @last30Start DATE = DATEADD(DAY, -29, @today);
+
+      SELECT *
+      INTO #Last30
+      FROM tbl_taskforce
+      WHERE tf_date BETWEEN @last30Start AND @today;
+
+      SELECT TOP 5
+        tf_area,
+        COUNT(*) AS totalRecords
+      FROM #Last30
+      WHERE NULLIF(LTRIM(RTRIM(tf_area)), '') IS NOT NULL
+      GROUP BY tf_area
+      ORDER BY totalRecords DESC, tf_area ASC;
+    `);
+
+        // Get monthly collection for latest year and previous year from View_gross
+        const latestYear = collectionResult.recordset[0]?.latestYear || currentYear;
+        const previousYear = collectionResult.recordset[0]?.previousYear || lastYear;
+
+        const monthlyRequest = pool.request();
+        monthlyRequest.input('latestYear', sql.Int, latestYear);
+        monthlyRequest.input('previousYear', sql.Int, previousYear);
+        const monthlyResult = await monthlyRequest.query(`
       SELECT yr, mo, ISNULL(SUM(total), 0) AS amount
       FROM View_gross
       WHERE yr IN (@latestYear, @previousYear)
@@ -3333,192 +4679,86 @@ app.get('/api/dashboard/stats', async (req, res) => {
       ORDER BY yr, mo
     `);
 
-    // Format monthly data for chart (fill in missing months with 0)
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const latestYearMap = {};
-    const previousYearMap = {};
+        // Format monthly data for chart (fill in missing months with 0)
+        const monthNames = [
+            'Jan',
+            'Feb',
+            'Mar',
+            'Apr',
+            'May',
+            'Jun',
+            'Jul',
+            'Aug',
+            'Sep',
+            'Oct',
+            'Nov',
+            'Dec',
+        ];
+        const latestYearMap = {};
+        const previousYearMap = {};
 
-    monthlyResult.recordset.forEach(row => {
-      if (row.yr === latestYear) {
-        latestYearMap[row.mo] = row.amount;
-      } else if (row.yr === previousYear) {
-        previousYearMap[row.mo] = row.amount;
-      }
-    });
+        monthlyResult.recordset.forEach((row) => {
+            if (row.yr === latestYear) {
+                latestYearMap[row.mo] = row.amount;
+            } else if (row.yr === previousYear) {
+                previousYearMap[row.mo] = row.amount;
+            }
+        });
 
-    const monthlyCollection = monthNames.map((name, index) => ({
-      month: name,
-      [String(latestYear)]: latestYearMap[index + 1] || 0,
-      [String(previousYear)]: previousYearMap[index + 1] || 0
-    }));
+        const monthlyCollection = monthNames.map((name, index) => ({
+            month: name,
+            [String(latestYear)]: latestYearMap[index + 1] || 0,
+            [String(previousYear)]: previousYearMap[index + 1] || 0,
+        }));
 
-    const stats = {
-      collectionThisYear: collectionResult.recordset[0]?.collectionThisYear || 0,
-      collectionLastYear: collectionResult.recordset[0]?.collectionLastYear || 0,
-      latestYear: collectionResult.recordset[0]?.latestYear || currentYear,
-      previousYear: collectionResult.recordset[0]?.previousYear || lastYear,
-      pendingApplications: pendingResult.recordset[0]?.pendingCount || 0,
-      activePermits: permitsResult.recordset[0]?.activePermits || 0,
-      activeVehicles: vehiclesResult.recordset[0]?.activeVehicles || 0,
-      monthlyCollection,
-      year: collectionResult.recordset[0]?.latestYear || currentYear
-    };
+        const permitAlertsSummary = permitAlertsResult.recordsets?.[1]?.[0] || {};
+        const stats = {
+            collectionThisYear: collectionResult.recordset[0]?.collectionThisYear || 0,
+            collectionLastYear: collectionResult.recordset[0]?.collectionLastYear || 0,
+            latestYear: collectionResult.recordset[0]?.latestYear || currentYear,
+            previousYear: collectionResult.recordset[0]?.previousYear || lastYear,
+            pendingApplications: pendingResult.recordset[0]?.pendingCount || 0,
+            activePermits: permitsResult.recordset[0]?.activePermits || 0,
+            activeVehicles: vehiclesResult.recordset[0]?.activeVehicles || 0,
+            permitExpiryAlerts: {
+                expiringThisMonth: permitAlertsSummary.expiringThisMonth || 0,
+                expiringNextMonth: permitAlertsSummary.expiringNextMonth || 0,
+                expired: permitAlertsSummary.expired || 0,
+                items: permitAlertsResult.recordsets?.[0] || [],
+            },
+            taskForceSnapshot: {
+                topAreas: taskForceSnapshotResult.recordset || [],
+            },
+            monthlyCollection,
+            year: collectionResult.recordset[0]?.latestYear || currentYear,
+        };
 
-    console.log('📊 Monthly collection data:', JSON.stringify(monthlyCollection.slice(0, 3)));
-    console.log('📊 Years:', { latestYear, previousYear });
-    console.log('✅ Dashboard stats fetched successfully');
-    res.json(stats);
-  } catch (err) {
-    console.error('❌ Dashboard Stats Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch dashboard stats: ' + err.message });
-  }
-});
-
-// ==================== DOCUMENT OUTGOING ENDPOINTS ====================
-
-// GET /api/docoutgoing - Get all outgoing documents for today
-app.get('/api/docoutgoing', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
-      SELECT d.dms_ctrlno,
-             d.dms_date,
-             d.dms_control,
-             d.dms_destination,
-             d.dms_recipient,
-             d.dms_desc,
-             d.dms_type,
-             d.dms_purpose,
-             e.emp_name
-      FROM tbl_dmsoutgoing d
-      LEFT JOIN tbl_employee e ON d.dms_recipient = e.emp_ctrlno
-      WHERE CONVERT(DATE, d.dms_date) = CONVERT(DATE, GETDATE())
-      ORDER BY d.dms_date DESC
-    `);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Document Outgoing Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch document outgoing records: ' + err.message });
-  }
-});
-
-// GET /api/docoutgoing/maxcontrol - Get max control number
-app.get('/api/docoutgoing/maxcontrol', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
-      SELECT ISNULL(MAX(CAST(dms_control AS INT)), 0) + 1 AS nextControl
-      FROM tbl_dmsoutgoing
-      WHERE ISNUMERIC(dms_control) = 1
-    `);
-    res.json({ nextControl: result.recordset?.[0]?.nextControl || 1 });
-  } catch (err) {
-    console.error('❌ Get Max Control Error:', err.message);
-    res.status(500).json({ error: 'Failed to get next control number: ' + err.message });
-  }
-});
-
-// POST /api/docoutgoing - Create new outgoing document
-app.post('/api/docoutgoing', async (req, res) => {
-  try {
-    const { dms_control, dms_destination, dms_recipient, dms_desc, dms_type, dms_purpose } = req.body;
-
-    if (!dms_control) {
-      return res.status(400).json({ error: 'Control number is required' });
+        console.log('📊 Monthly collection data:', JSON.stringify(monthlyCollection.slice(0, 3)));
+        console.log('📊 Years:', { latestYear, previousYear });
+        console.log('✅ Dashboard stats fetched successfully');
+        res.json(stats);
+    } catch (err) {
+        console.error('❌ Dashboard Stats Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch dashboard stats: ' + err.message });
     }
-
-    const request = pool.request();
-    request.input('dms_control', sql.VarChar(50), dms_control);
-    request.input('dms_destination', sql.VarChar(200), dms_destination || '');
-    request.input('dms_recipient', sql.Int, dms_recipient || null);
-    request.input('dms_desc', sql.VarChar(sql.MAX), dms_desc || '');
-    request.input('dms_type', sql.VarChar(100), dms_type || '');
-    request.input('dms_purpose', sql.VarChar(sql.MAX), dms_purpose || '');
-
-    await request.query(`
-      INSERT INTO tbl_dmsoutgoing (dms_date, dms_control, dms_destination, dms_recipient, dms_desc, dms_type, dms_purpose)
-      VALUES (GETDATE(), @dms_control, @dms_destination, @dms_recipient, @dms_desc, @dms_type, @dms_purpose)
-    `);
-
-    console.log('✅ Document outgoing added successfully');
-    res.json({ message: 'Record created successfully' });
-  } catch (err) {
-    console.error('❌ Create Document Outgoing Error:', err.message);
-    res.status(500).json({ error: 'Failed to create record: ' + err.message });
-  }
 });
 
-// PUT /api/docoutgoing/:id - Update outgoing document
-app.put('/api/docoutgoing/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { dms_control, dms_destination, dms_recipient, dms_desc, dms_type, dms_purpose } = req.body;
-
-    if (!dms_control) {
-      return res.status(400).json({ error: 'Control number is required' });
-    }
-
-    const request = pool.request();
-    request.input('id', sql.Int, parseInt(id, 10));
-    request.input('dms_control', sql.VarChar(50), dms_control);
-    request.input('dms_destination', sql.VarChar(200), dms_destination || '');
-    request.input('dms_recipient', sql.Int, dms_recipient || null);
-    request.input('dms_desc', sql.VarChar(sql.MAX), dms_desc || '');
-    request.input('dms_type', sql.VarChar(100), dms_type || '');
-    request.input('dms_purpose', sql.VarChar(sql.MAX), dms_purpose || '');
-
-    await request.query(`
-      UPDATE tbl_dmsoutgoing
-      SET dms_control = @dms_control,
-          dms_destination = @dms_destination,
-          dms_recipient = @dms_recipient,
-          dms_desc = @dms_desc,
-          dms_type = @dms_type,
-          dms_purpose = @dms_purpose
-      WHERE dms_ctrlno = @id
-    `);
-
-    console.log(`✅ Document outgoing ${id} updated successfully`);
-    res.json({ message: 'Record updated successfully' });
-  } catch (err) {
-    console.error('❌ Update Document Outgoing Error:', err.message);
-    res.status(500).json({ error: 'Failed to update record: ' + err.message });
-  }
-});
-
-// DELETE /api/docoutgoing/:id - Delete outgoing document
-app.delete('/api/docoutgoing/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const request = pool.request();
-    request.input('id', sql.Int, parseInt(id, 10));
-
-    await request.query('DELETE FROM tbl_dmsoutgoing WHERE dms_ctrlno = @id');
-
-    console.log(`✅ Document outgoing ${id} deleted successfully`);
-    res.json({ message: 'Record deleted successfully' });
-  } catch (err) {
-    console.error('❌ Delete Document Outgoing Error:', err.message);
-    res.status(500).json({ error: 'Failed to delete record: ' + err.message });
-  }
-});
 
 // ==================== REPORTS ENDPOINTS ====================
 
 // Reports
 // Daily Collection Report
 app.get('/api/reports/daily-collection', async (req, res) => {
-  try {
-    const { date } = req.query;
-    if (!date) {
-      return res.status(400).json({ error: 'Date parameter is required' });
-    }
+    try {
+        const { date } = req.query;
+        if (!date) {
+            return res.status(400).json({ error: 'Date parameter is required' });
+        }
 
-    const request = pool.request();
-    request.input('date', sql.Date, date);
+        const request = pool.request();
+        request.input('date', sql.Date, date);
 
-    const result = await request.query(`
+        const result = await request.query(`
                 SELECT 
                     ah.aop_control,
                     c.ph_cname,
@@ -3532,83 +4772,83 @@ app.get('/api/reports/daily-collection', async (req, res) => {
                 ORDER BY c.ph_cname
             `);
 
-    console.log(`✅ Fetched daily collection for ${date}: ${result.recordset.length} records`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Daily Collection Report Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch daily collection: ' + err.message });
-  }
+        console.log(`✅ Fetched daily collection for ${date}: ${result.recordset.length} records`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Daily Collection Report Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch daily collection: ' + err.message });
+    }
 });
 
 // GET /api/reports/available-years - Get available years from View_collectionreport
 app.get('/api/reports/available-years', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT DISTINCT [Year]
       FROM View_collectionreport
       ORDER BY [Year] DESC
     `);
-    const years = result.recordset.map(row => row.Year);
-    console.log(`✅ Fetched ${years.length} available years for reports`);
-    res.json(years);
-  } catch (err) {
-    console.error('❌ Get Available Years Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch available years: ' + err.message });
-  }
+        const years = result.recordset.map((row) => row.Year);
+        console.log(`✅ Fetched ${years.length} available years for reports`);
+        res.json(years);
+    } catch (err) {
+        console.error('❌ Get Available Years Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch available years: ' + err.message });
+    }
 });
 
 // ==================== HEALTH CHECK ====================
 
 app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'Server is running',
-    timestamp: new Date(),
-    database: pool ? 'Connected' : 'Disconnected'
-  });
+    res.json({
+        status: 'Server is running',
+        timestampSource: 'sql-server-manila',
+        database: pool ? 'Connected' : 'Disconnected',
+    });
 });
 
 // ==================== ERROR HANDLING ====================
 
 app.use((err, req, res, next) => {
-  console.error('❌ Unhandled Error:', err.message);
-  res.status(500).json({ error: 'Internal server error: ' + err.message });
+    console.error('❌ Unhandled Error:', err.message);
+    res.status(500).json({ error: 'Internal server error: ' + err.message });
 });
 
 // ==================== AUDIT LOGS ENDPOINTS ====================
 
 app.get('/api/activitylogs', async (req, res) => {
-  try {
-    const request = pool.request();
-    // Fetch top 1000 logs by default to avoid overwhelming the client
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        // Fetch top 1000 logs by default to avoid overwhelming the client
+        const result = await request.query(`
       SELECT TOP 1000 
              LogID, UserID, UserName, ActionType, TableName, RecordID, 
              OldValues, NewValues, IPAddress, UserAgent, CreatedAt
       FROM ActivityLogs
       ORDER BY CreatedAt DESC
     `);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Activity Logs Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch activity logs: ' + err.message });
-  }
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Activity Logs Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch activity logs: ' + err.message });
+    }
 });
 
 // ==================== COMPARATIVE INCOME REPORT ====================
 
 app.get('/api/reports/comparative-income', async (req, res) => {
-  try {
-    const { year } = req.query;
+    try {
+        const { year } = req.query;
 
-    if (!year) {
-      return res.status(400).json({ error: 'Year parameter is required' });
-    }
+        if (!year) {
+            return res.status(400).json({ error: 'Year parameter is required' });
+        }
 
-    const request = pool.request();
-    request.input('year', sql.Int, parseInt(year, 10));
+        const request = pool.request();
+        request.input('year', sql.Int, parseInt(year, 10));
 
-    const result = await request.query(`
+        const result = await request.query(`
       SELECT [Year]
             ,[Month_Name]
             ,[Month_No]
@@ -3634,29 +4874,31 @@ app.get('/api/reports/comparative-income', async (req, res) => {
       ORDER BY [Month_No] DESC
     `);
 
-    console.log(`✅ Fetched ${result.recordset.length} comparative income records for year ${year}`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Comparative Income Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch comparative income: ' + err.message });
-  }
+        console.log(
+            `✅ Fetched ${result.recordset.length} comparative income records for year ${year}`
+        );
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Comparative Income Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch comparative income: ' + err.message });
+    }
 });
 
 // ==================== REVENUE COLLECTION REPORT ====================
 
 app.get('/api/reports/revenue-collection', async (req, res) => {
-  try {
-    const { year, month } = req.query;
+    try {
+        const { year, month } = req.query;
 
-    if (!year || !month) {
-      return res.status(400).json({ error: 'Year and month parameters are required' });
-    }
+        if (!year || !month) {
+            return res.status(400).json({ error: 'Year and month parameters are required' });
+        }
 
-    const request = pool.request();
-    request.input('year', sql.Int, parseInt(year, 10));
-    request.input('month', sql.NVarChar, month);
+        const request = pool.request();
+        request.input('year', sql.Int, parseInt(year, 10));
+        request.input('month', sql.NVarChar, month);
 
-    const result = await request.query(`
+        const result = await request.query(`
       SELECT [Year]
             ,[Month_Name]
             ,[Month_No]
@@ -3681,37 +4923,37 @@ app.get('/api/reports/revenue-collection', async (req, res) => {
       WHERE [Year] = @year AND [Month_Name] = @month
     `);
 
-    if (result.recordset.length === 0) {
-      console.log(`[API] No data found for ${month} ${year}`);
-      return res.status(200).json(null); // Return null instead of 404 to handle "empty" gracefully on frontend
-    }
+        if (result.recordset.length === 0) {
+            console.log(`[API] No data found for ${month} ${year}`);
+            return res.status(200).json(null); // Return null instead of 404 to handle "empty" gracefully on frontend
+        }
 
-    console.log(`✅ [API] Data found:`, result.recordset[0]);
-    res.json(result.recordset[0]);
-  } catch (err) {
-    console.error('❌ Get Revenue Collection Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch revenue collection: ' + err.message });
-  }
+        console.log(`✅ [API] Data found:`, result.recordset[0]);
+        res.json(result.recordset[0]);
+    } catch (err) {
+        console.error('❌ Get Revenue Collection Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch revenue collection: ' + err.message });
+    }
 });
 
 // ==================== BARANGAY SHARE REPORT ENDPOINT ====================
 
 app.get('/api/reports/barangay-share', async (req, res) => {
-  try {
-    const { year, municipality, barangay } = req.query;
+    try {
+        const { year, municipality, barangay } = req.query;
 
-    if (!year || !municipality || !barangay) {
-      return res.status(400).json({ error: 'Year, municipality, and barangay are required' });
-    }
+        if (!year || !municipality || !barangay) {
+            return res.status(400).json({ error: 'Year, municipality, and barangay are required' });
+        }
 
-    console.log(`[API] Fetching barangay share for ${barangay}, ${municipality} - ${year}`);
+        console.log(`[API] Fetching barangay share for ${barangay}, ${municipality} - ${year}`);
 
-    const request = pool.request();
-    request.input('year', sql.Int, parseInt(year));
-    request.input('municipality', sql.VarChar, municipality);
-    request.input('barangay', sql.VarChar, barangay);
+        const request = pool.request();
+        request.input('year', sql.Int, parseInt(year));
+        request.input('municipality', sql.VarChar, municipality);
+        request.input('barangay', sql.VarChar, barangay);
 
-    const result = await request.query(`
+        const result = await request.query(`
       SELECT [RptYear]
             ,[MonthName]
             ,[aop_mun]
@@ -3737,34 +4979,34 @@ app.get('/api/reports/barangay-share', async (req, res) => {
       END
     `);
 
-    console.log(`✅ [API] Found ${result.recordset.length} months of barangay share data`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Barangay Share Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch barangay share: ' + err.message });
-  }
+        console.log(`✅ [API] Found ${result.recordset.length} months of barangay share data`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Barangay Share Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch barangay share: ' + err.message });
+    }
 });
 
 // ==================== BARANGAY SHARE BREAKDOWN REPORT ENDPOINT ====================
 
 app.get('/api/reports/barangay-share-breakdown', async (req, res) => {
-  try {
-    const { year, municipality, barangay } = req.query;
+    try {
+        const { year, municipality, barangay } = req.query;
 
-    if (!year || !municipality || !barangay) {
-      return res.status(400).json({ error: 'Year, municipality, and barangay are required' });
-    }
+        if (!year || !municipality || !barangay) {
+            return res.status(400).json({ error: 'Year, municipality, and barangay are required' });
+        }
 
-    console.log(
-      `[API] Fetching barangay share breakdown for ${barangay}, ${municipality} - ${year}`
-    );
+        console.log(
+            `[API] Fetching barangay share breakdown for ${barangay}, ${municipality} - ${year}`
+        );
 
-    const request = pool.request();
-    request.input('year', sql.Int, parseInt(year));
-    request.input('municipality', sql.VarChar, municipality);
-    request.input('barangay', sql.VarChar, barangay);
+        const request = pool.request();
+        request.input('year', sql.Int, parseInt(year));
+        request.input('municipality', sql.VarChar, municipality);
+        request.input('barangay', sql.VarChar, barangay);
 
-    const result = await request.query(`
+        const result = await request.query(`
       SELECT ControlNum AS [Control No.]
             ,ORDate AS [OR Date]
             ,ORNumber AS [OR No.]
@@ -3779,31 +5021,31 @@ app.get('/api/reports/barangay-share-breakdown', async (req, res) => {
       ORDER BY ORDate ASC
     `);
 
-    console.log(`✅ [API] Found ${result.recordset.length} barangay share breakdown rows`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Barangay Share Breakdown Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch barangay share breakdown: ' + err.message });
-  }
+        console.log(`✅ [API] Found ${result.recordset.length} barangay share breakdown rows`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Barangay Share Breakdown Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch barangay share breakdown: ' + err.message });
+    }
 });
 
 // ==================== MUNICIPAL SHARE REPORT ENDPOINT ====================
 
 app.get('/api/reports/municipal-share', async (req, res) => {
-  try {
-    const { year, municipality } = req.query;
+    try {
+        const { year, municipality } = req.query;
 
-    if (!year || !municipality) {
-      return res.status(400).json({ error: 'Year and municipality are required' });
-    }
+        if (!year || !municipality) {
+            return res.status(400).json({ error: 'Year and municipality are required' });
+        }
 
-    console.log(`[API] Fetching municipal share for ${municipality} - ${year}`);
+        console.log(`[API] Fetching municipal share for ${municipality} - ${year}`);
 
-    const request = pool.request();
-    request.input('year', sql.Int, parseInt(year));
-    request.input('municipality', sql.VarChar, municipality);
+        const request = pool.request();
+        request.input('year', sql.Int, parseInt(year));
+        request.input('municipality', sql.VarChar, municipality);
 
-    const result = await request.query(`
+        const result = await request.query(`
       SELECT [aop_mun]
             ,[yr]
             ,[mo]
@@ -3827,22 +5069,22 @@ app.get('/api/reports/municipal-share', async (req, res) => {
       END
     `);
 
-    console.log(`✅ [API] Found ${result.recordset.length} months of municipal share data`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Municipal Share Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch municipal share: ' + err.message });
-  }
+        console.log(`✅ [API] Found ${result.recordset.length} months of municipal share data`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Municipal Share Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch municipal share: ' + err.message });
+    }
 });
 
 // ==================== ACTIVE PERMITTEES REPORT ENDPOINT ====================
 
 app.get('/api/reports/active-permittees', async (req, res) => {
-  try {
-    console.log(`[API] Fetching active permittees`);
+    try {
+        console.log(`[API] Fetching active permittees`);
 
-    const request = pool.request();
-    const result = await request.query(`
+        const request = pool.request();
+        const result = await request.query(`
       SELECT [num_row]
             ,[ph_cname]
             ,[ph_mun]
@@ -3858,20 +5100,20 @@ app.get('/api/reports/active-permittees', async (req, res) => {
       ORDER BY [ph_mun], [ph_brgy], [ph_cname]
     `);
 
-    console.log(`✅ [API] Found ${result.recordset.length} active permittees`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Active Permittees Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch active permittees: ' + err.message });
-  }
+        console.log(`✅ [API] Found ${result.recordset.length} active permittees`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Active Permittees Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch active permittees: ' + err.message });
+    }
 });
 
 app.get('/api/reports/active-permittees-by-municipality', async (req, res) => {
-  try {
-    console.log('[API] Fetching active permittees by municipality');
+    try {
+        console.log('[API] Fetching active permittees by municipality');
 
-    const request = pool.request();
-    const result = await request.query(`
+        const request = pool.request();
+        const result = await request.query(`
       SELECT
         ph_mun AS [Municipality],
         LEFT(ph_permitno, CHARINDEX('-', ph_permitno + '-') - 1) AS [Permit Type],
@@ -3885,22 +5127,22 @@ app.get('/api/reports/active-permittees-by-municipality', async (req, res) => {
         [Permit Type];
     `);
 
-    console.log(`✅ [API] Found ${result.recordset.length} grouped active permittee records`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Active Permittees By Municipality Error:', err.message);
-    res
-      .status(500)
-      .json({ error: 'Failed to fetch active permittees by municipality: ' + err.message });
-  }
+        console.log(`✅ [API] Found ${result.recordset.length} grouped active permittee records`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Active Permittees By Municipality Error:', err.message);
+        res.status(500).json({
+            error: 'Failed to fetch active permittees by municipality: ' + err.message,
+        });
+    }
 });
 
 app.get('/api/reports/active-registered-vehicle-records/export', async (req, res) => {
-  try {
-    console.log('[API] Exporting active registered vehicle records');
+    try {
+        console.log('[API] Exporting active registered vehicle records');
 
-    const request = pool.request();
-    const result = await request.query(`
+        const request = pool.request();
+        const result = await request.query(`
       SELECT
         vr_cname as NAME,
         vr_trucktype as [TRUCK TYPE],
@@ -3910,80 +5152,80 @@ app.get('/api/reports/active-registered-vehicle-records/export', async (req, res
         vr_datereg as [DATE REGISTERED],
         vr_expiry as [EXPIRY DATE]
       FROM tbl_vehiclereg
-      WHERE vr_expiry >= CAST(GETDATE() AS DATE)
+      WHERE vr_expiry >= ${SQL_MANILA_TODAY_EXPR}
       ORDER BY vr_cname, vr_expiry DESC;
     `);
 
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Active Vehicles');
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Active Vehicles');
 
-    worksheet.columns = [
-      { header: 'NAME', key: 'NAME', width: 32 },
-      { header: 'TRUCK TYPE', key: 'TRUCK TYPE', width: 20 },
-      { header: 'PLATE NO.', key: 'PLATE NO.', width: 16 },
-      { header: 'CONTROL NO.', key: 'CONTROL NO.', width: 18 },
-      { header: 'CODE', key: 'CODE', width: 12 },
-      { header: 'DATE REGISTERED', key: 'DATE REGISTERED', width: 18 },
-      { header: 'EXPIRY DATE', key: 'EXPIRY DATE', width: 16 }
-    ];
+        worksheet.columns = [
+            { header: 'NAME', key: 'NAME', width: 32 },
+            { header: 'TRUCK TYPE', key: 'TRUCK TYPE', width: 20 },
+            { header: 'PLATE NO.', key: 'PLATE NO.', width: 16 },
+            { header: 'CONTROL NO.', key: 'CONTROL NO.', width: 18 },
+            { header: 'CODE', key: 'CODE', width: 12 },
+            { header: 'DATE REGISTERED', key: 'DATE REGISTERED', width: 18 },
+            { header: 'EXPIRY DATE', key: 'EXPIRY DATE', width: 16 },
+        ];
 
-    worksheet.getRow(1).font = { bold: true };
-    worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
-    worksheet.getRow(1).eachCell((cell) => {
-      cell.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FF1F4E78' }
-      };
-      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      cell.border = {
-        top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-        left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-        bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-        right: { style: 'thin', color: { argb: 'FFCCCCCC' } }
-      };
-    });
+        worksheet.getRow(1).font = { bold: true };
+        worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+        worksheet.getRow(1).eachCell((cell) => {
+            cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FF1F4E78' },
+            };
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            cell.border = {
+                top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+                left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+                bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+                right: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+            };
+        });
 
-    (result.recordset || []).forEach((row) => {
-      worksheet.addRow(row);
-    });
+        (result.recordset || []).forEach((row) => {
+            worksheet.addRow(row);
+        });
 
-    worksheet.getColumn(6).numFmt = 'yyyy-mm-dd';
-    worksheet.getColumn(7).numFmt = 'yyyy-mm-dd';
+        worksheet.getColumn(6).numFmt = 'yyyy-mm-dd';
+        worksheet.getColumn(7).numFmt = 'yyyy-mm-dd';
 
-    const filename = 'active_registered_vehicles.xlsx';
-    const buffer = await workbook.xlsx.writeBuffer();
+        const filename = 'active_registered_vehicles.xlsx';
+        const buffer = await workbook.xlsx.writeBuffer();
 
-    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
-    res.setHeader(
-      'Content-Type',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    );
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(Buffer.from(buffer));
-  } catch (err) {
-    console.error('❌ Export Active Registered Vehicle Records Error:', err.message);
-    res
-      .status(500)
-      .json({ error: 'Failed to export active registered vehicle records: ' + err.message });
-  }
+        res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+        res.setHeader(
+            'Content-Type',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        );
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(Buffer.from(buffer));
+    } catch (err) {
+        console.error('❌ Export Active Registered Vehicle Records Error:', err.message);
+        res.status(500).json({
+            error: 'Failed to export active registered vehicle records: ' + err.message,
+        });
+    }
 });
 
 // ==================== MONTHLY ENVIRONMENTAL LOAD MONITORING REPORT ====================
 
 app.get('/api/reports/monthly-environmental-load-monitoring', async (req, res) => {
-  try {
-    const { year, month } = req.query;
+    try {
+        const { year, month } = req.query;
 
-    if (!year || !month) {
-      return res.status(400).json({ error: 'Year and month parameters are required' });
-    }
+        if (!year || !month) {
+            return res.status(400).json({ error: 'Year and month parameters are required' });
+        }
 
-    const request = pool.request();
-    request.input('year', sql.Int, parseInt(year, 10));
-    request.input('month', sql.NVarChar, month);
+        const request = pool.request();
+        request.input('year', sql.Int, parseInt(year, 10));
+        request.input('month', sql.NVarChar, month);
 
-    const result = await request.query(`
+        const result = await request.query(`
       SELECT
         tf_name AS [NAME],
         SumOftf_volume AS [VOLUME]
@@ -3993,16 +5235,16 @@ app.get('/api/reports/monthly-environmental-load-monitoring', async (req, res) =
       ORDER BY tf_name
     `);
 
-    console.log(
-      `✅ [API] Found ${result.recordset.length} monthly environmental load monitoring rows for ${month} ${year}`
-    );
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Monthly Environmental Load Monitoring Error:', err.message);
-    res
-      .status(500)
-      .json({ error: 'Failed to fetch monthly environmental load monitoring: ' + err.message });
-  }
+        console.log(
+            `✅ [API] Found ${result.recordset.length} monthly environmental load monitoring rows for ${month} ${year}`
+        );
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Monthly Environmental Load Monitoring Error:', err.message);
+        res.status(500).json({
+            error: 'Failed to fetch monthly environmental load monitoring: ' + err.message,
+        });
+    }
 });
 
 // ==================== ORDINANCE BOT ENDPOINTS ====================
@@ -4014,46 +5256,46 @@ const { getOrdinanceContent, ordinanceExists } = require('./utils/ordinanceParse
 let mistralClient = null;
 
 function getMistralClient() {
-  if (!mistralClient && process.env.MISTRAL_API_KEY) {
-    mistralClient = new Mistral({ apiKey: process.env.MISTRAL_API_KEY });
-  }
-  return mistralClient;
+    if (!mistralClient && process.env.MISTRAL_API_KEY) {
+        mistralClient = new Mistral({ apiKey: process.env.MISTRAL_API_KEY });
+    }
+    return mistralClient;
 }
 
 // POST /api/ordinance-bot/chat - Chat with the Ordinance Bot
 app.post('/api/ordinance-bot/chat', async (req, res) => {
-  try {
-    const { message } = req.body;
+    try {
+        const { message } = req.body;
 
-    if (!message || typeof message !== 'string' || message.trim().length === 0) {
-      return res.status(400).json({ error: 'Message is required' });
-    }
+        if (!message || typeof message !== 'string' || message.trim().length === 0) {
+            return res.status(400).json({ error: 'Message is required' });
+        }
 
-    // Check if Mistral API key is configured
-    if (!process.env.MISTRAL_API_KEY) {
-      return res.status(500).json({
-        error: 'Mistral API key not configured. Please add MISTRAL_API_KEY to your .env file.'
-      });
-    }
+        // Check if Mistral API key is configured
+        if (!process.env.MISTRAL_API_KEY) {
+            return res.status(500).json({
+                error: 'Mistral API key not configured. Please add MISTRAL_API_KEY to your .env file.',
+            });
+        }
 
-    // Check if ordinance document exists
-    if (!ordinanceExists()) {
-      return res.status(500).json({
-        error: 'Ordinance document not found. Please ensure PLENRO_ORDINANCE.docx is in the reference folder.'
-      });
-    }
+        // Check if ordinance document exists
+        if (!ordinanceExists()) {
+            return res.status(500).json({
+                error: 'Ordinance document not found. Please ensure PLENRO_ORDINANCE.docx is in the reference folder.',
+            });
+        }
 
-    // Get ordinance content
-    const ordinanceContent = await getOrdinanceContent();
+        // Get ordinance content
+        const ordinanceContent = await getOrdinanceContent();
 
-    // Get or create Mistral client
-    const client = getMistralClient();
-    if (!client) {
-      return res.status(500).json({ error: 'Failed to initialize Mistral client' });
-    }
+        // Get or create Mistral client
+        const client = getMistralClient();
+        if (!client) {
+            return res.status(500).json({ error: 'Failed to initialize Mistral client' });
+        }
 
-    // System prompt that strictly limits responses to ordinance content
-    const systemPrompt = `You are a knowledgeable legal assistant specializing in the PLENRO Ordinance document provided below.
+        // System prompt that strictly limits responses to ordinance content
+        const systemPrompt = `You are a knowledgeable legal assistant specializing in the PLENRO Ordinance document provided below.
 
 RULES YOU MUST FOLLOW:
 1. ONLY answer questions that are directly related to the ordinance content provided
@@ -4077,149 +5319,150 @@ ${ordinanceContent}
 
 Remember: Stay focused on ordinance-related topics. You may provide context for undefined acronyms/terms, but reject completely off-topic questions.`;
 
-    console.log('🤖 Ordinance Bot: Processing question...');
+        console.log('🤖 Ordinance Bot: Processing question...');
 
-    // Call Mistral AI
-    const chatResponse = await client.chat.complete({
-      model: 'mistral-small-latest',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: message.trim() }
-      ],
-      temperature: 0.3, // Lower temperature for more focused responses
-      maxTokens: 1024
-    });
+        // Call Mistral AI
+        const chatResponse = await client.chat.complete({
+            model: 'mistral-small-latest',
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: message.trim() },
+            ],
+            temperature: 0.3, // Lower temperature for more focused responses
+            maxTokens: 1024,
+        });
 
-    const botResponse = chatResponse.choices?.[0]?.message?.content;
+        const botResponse = chatResponse.choices?.[0]?.message?.content;
 
-    if (!botResponse) {
-      throw new Error('No response received from Mistral AI');
+        if (!botResponse) {
+            throw new Error('No response received from Mistral AI');
+        }
+
+        console.log('✅ Ordinance Bot: Response generated successfully');
+        res.json({ response: botResponse });
+    } catch (err) {
+        console.error('❌ Ordinance Bot Error:', err.message);
+
+        // Handle specific Mistral API errors
+        if (err.message?.includes('401') || err.message?.includes('Unauthorized')) {
+            return res
+                .status(401)
+                .json({ error: 'Invalid Mistral API key. Please check your MISTRAL_API_KEY.' });
+        }
+        if (err.message?.includes('429') || err.message?.includes('rate limit')) {
+            return res.status(429).json({ error: 'Rate limit exceeded. Please try again later.' });
+        }
+
+        res.status(500).json({ error: 'Failed to process your question: ' + err.message });
     }
-
-    console.log('✅ Ordinance Bot: Response generated successfully');
-    res.json({ response: botResponse });
-
-  } catch (err) {
-    console.error('❌ Ordinance Bot Error:', err.message);
-
-    // Handle specific Mistral API errors
-    if (err.message?.includes('401') || err.message?.includes('Unauthorized')) {
-      return res.status(401).json({ error: 'Invalid Mistral API key. Please check your MISTRAL_API_KEY.' });
-    }
-    if (err.message?.includes('429') || err.message?.includes('rate limit')) {
-      return res.status(429).json({ error: 'Rate limit exceeded. Please try again later.' });
-    }
-
-    res.status(500).json({ error: 'Failed to process your question: ' + err.message });
-  }
 });
 
 // GET /api/ordinance-bot/status - Check bot status
 app.get('/api/ordinance-bot/status', async (req, res) => {
-  try {
-    const hasApiKey = !!process.env.MISTRAL_API_KEY;
-    const hasDocument = ordinanceExists();
+    try {
+        const hasApiKey = !!process.env.MISTRAL_API_KEY;
+        const hasDocument = ordinanceExists();
 
-    res.json({
-      ready: hasApiKey && hasDocument,
-      hasApiKey,
-      hasDocument,
-      message: !hasApiKey
-        ? 'Mistral API key not configured'
-        : !hasDocument
-          ? 'Ordinance document not found'
-          : 'Bot is ready'
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+        res.json({
+            ready: hasApiKey && hasDocument,
+            hasApiKey,
+            hasDocument,
+            message: !hasApiKey
+                ? 'Mistral API key not configured'
+                : !hasDocument
+                  ? 'Ordinance document not found'
+                  : 'Bot is ready',
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // ==================== TASK FORCE ENDPOINTS ====================
 
 // GET /api/taskforce/municipalities - Get municipalities for autocomplete
 app.get('/api/taskforce/municipalities', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT mun_name
       FROM tbl_municipalities
       GROUP BY mun_name
       ORDER BY mun_name
     `);
-    console.log(`✅ Fetched ${result.recordset.length} municipalities for taskforce`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Taskforce Municipalities Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch municipalities: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} municipalities for taskforce`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Taskforce Municipalities Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch municipalities: ' + err.message });
+    }
 });
 
 // GET /api/taskforce/commodities - Get commodities for combobox
 app.get('/api/taskforce/commodities', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT cm_ctrlno, cm_desc
       FROM tbl_commodity
       ORDER BY cm_desc
     `);
-    console.log(`✅ Fetched ${result.recordset.length} commodities for taskforce`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Taskforce Commodities Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch commodities: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} commodities for taskforce`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Taskforce Commodities Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch commodities: ' + err.message });
+    }
 });
 
 // GET /api/taskforce/clients - Get client names for autocomplete
 app.get('/api/taskforce/clients', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT ph_cname
       FROM tbl_client
       ORDER BY ph_cname
     `);
-    console.log(`✅ Fetched ${result.recordset.length} clients for taskforce`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Taskforce Clients Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch clients: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} clients for taskforce`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Taskforce Clients Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch clients: ' + err.message });
+    }
 });
 
 // GET /api/taskforce/checkers - Get distinct checker names for autocomplete
 app.get('/api/taskforce/checkers', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT DISTINCT tf_checker
       FROM tbl_taskforce
       WHERE tf_checker IS NOT NULL AND tf_checker != ''
       ORDER BY tf_checker ASC
     `);
-    console.log(`✅ Fetched ${result.recordset.length} checkers for taskforce`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Taskforce Checkers Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch checkers: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} checkers for taskforce`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Taskforce Checkers Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch checkers: ' + err.message });
+    }
 });
 
 // GET /api/taskforce/validate-dr - Validate DR number against delivery receipt stubs
 app.get('/api/taskforce/validate-dr', async (req, res) => {
-  try {
-    const { drNumber } = req.query;
+    try {
+        const { drNumber } = req.query;
 
-    if (!drNumber) {
-      return res.json({ valid: false, clientName: null });
-    }
+        if (!drNumber) {
+            return res.json({ valid: false, clientName: null });
+        }
 
-    const request = pool.request();
-    request.input('drNumber', sql.Int, parseInt(drNumber, 10));
+        const request = pool.request();
+        request.input('drNumber', sql.Int, parseInt(drNumber, 10));
 
-    const result = await request.query(`
+        const result = await request.query(`
       SELECT 
         dr.dr_stubfrom, 
         dr.dr_stubto, 
@@ -4230,33 +5473,33 @@ app.get('/api/taskforce/validate-dr', async (req, res) => {
       WHERE @drNumber BETWEEN dr.dr_stubfrom AND dr.dr_stubto
     `);
 
-    if (result.recordset.length > 0) {
-      res.json({ valid: true, clientName: result.recordset[0].ph_cname });
-    } else {
-      res.json({ valid: false, clientName: null });
+        if (result.recordset.length > 0) {
+            res.json({ valid: true, clientName: result.recordset[0].ph_cname });
+        } else {
+            res.json({ valid: false, clientName: null });
+        }
+    } catch (err) {
+        console.error('❌ Validate DR Error:', err.message);
+        res.status(500).json({ error: 'Failed to validate DR: ' + err.message });
     }
-  } catch (err) {
-    console.error('❌ Validate DR Error:', err.message);
-    res.status(500).json({ error: 'Failed to validate DR: ' + err.message });
-  }
 });
 
 // GET /api/taskforce/check-duplicate - Check if DR number already exists in tbl_taskforce
 app.get('/api/taskforce/check-duplicate', async (req, res) => {
-  try {
-    const { drNumber, excludeId } = req.query;
+    try {
+        const { drNumber, excludeId } = req.query;
 
-    if (!drNumber) {
-      return res.json({ duplicate: false });
-    }
+        if (!drNumber) {
+            return res.json({ duplicate: false });
+        }
 
-    const request = pool.request();
-    request.input('tf_dr', sql.Int, parseInt(drNumber, 10));
-    if (excludeId) {
-      request.input('excludeId', sql.Int, parseInt(excludeId, 10));
-    }
+        const request = pool.request();
+        request.input('tf_dr', sql.Int, parseInt(drNumber, 10));
+        if (excludeId) {
+            request.input('excludeId', sql.Int, parseInt(excludeId, 10));
+        }
 
-    let query = `
+        let query = `
       SELECT TOP 1 
         tf_ctrlno, 
         tf_area, 
@@ -4269,37 +5512,37 @@ app.get('/api/taskforce/check-duplicate', async (req, res) => {
       WHERE tf_dr = @tf_dr
     `;
 
-    if (excludeId) {
-      query += ` AND tf_ctrlno != @excludeId`;
-    }
+        if (excludeId) {
+            query += ` AND tf_ctrlno != @excludeId`;
+        }
 
-    const result = await request.query(query);
+        const result = await request.query(query);
 
-    if (result.recordset.length > 0) {
-      res.json({ duplicate: true, record: result.recordset[0] });
-    } else {
-      res.json({ duplicate: false });
+        if (result.recordset.length > 0) {
+            res.json({ duplicate: true, record: result.recordset[0] });
+        } else {
+            res.json({ duplicate: false });
+        }
+    } catch (err) {
+        console.error('❌ Check Duplicate DR Error:', err.message);
+        res.status(500).json({ error: 'Failed to check duplicate DR: ' + err.message });
     }
-  } catch (err) {
-    console.error('❌ Check Duplicate DR Error:', err.message);
-    res.status(500).json({ error: 'Failed to check duplicate DR: ' + err.message });
-  }
 });
 
 // GET /api/taskforce - Get task force records by area and date
 app.get('/api/taskforce', async (req, res) => {
-  try {
-    const { area, date } = req.query;
+    try {
+        const { area, date } = req.query;
 
-    if (!area || !date) {
-      return res.json([]);
-    }
+        if (!area || !date) {
+            return res.json([]);
+        }
 
-    const request = pool.request();
-    request.input('tf_area', sql.VarChar(200), area);
-    request.input('tf_date', sql.Date, date);
+        const request = pool.request();
+        request.input('tf_area', sql.VarChar(200), area);
+        request.input('tf_date', sql.Date, date);
 
-    const result = await request.query(`
+        const result = await request.query(`
       SELECT [tf_ctrlno]
             ,[tf_area]
             ,[tf_date]
@@ -4321,37 +5564,51 @@ app.get('/api/taskforce', async (req, res) => {
       ORDER BY tf_ctrlno ASC
     `);
 
-    console.log(`✅ Fetched ${result.recordset.length} task force records for ${area} on ${date}`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Task Force Records Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch task force records: ' + err.message });
-  }
+        console.log(
+            `✅ Fetched ${result.recordset.length} task force records for ${area} on ${date}`
+        );
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Task Force Records Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch task force records: ' + err.message });
+    }
 });
 
 // POST /api/taskforce - Create new task force record
 app.post('/api/taskforce', async (req, res) => {
-  try {
-    const { tf_area, tf_date, tf_checker, tf_dr, tf_destination, tf_plateno, tf_commodity, tf_volume, tf_name, tf_remarks, tf_apprehended } = req.body;
+    try {
+        const {
+            tf_area,
+            tf_date,
+            tf_checker,
+            tf_dr,
+            tf_destination,
+            tf_plateno,
+            tf_commodity,
+            tf_volume,
+            tf_name,
+            tf_remarks,
+            tf_apprehended,
+        } = req.body;
 
-    if (!tf_area || !tf_date) {
-      return res.status(400).json({ error: 'Area and date are required' });
-    }
+        if (!tf_area || !tf_date) {
+            return res.status(400).json({ error: 'Area and date are required' });
+        }
 
-    const request = pool.request();
-    request.input('tf_area', sql.VarChar(100), tf_area);
-    request.input('tf_date', sql.Date, tf_date);
-    request.input('tf_checker', sql.VarChar(150), tf_checker || null);
-    request.input('tf_dr', sql.Int, tf_dr ? parseInt(tf_dr) : null);
-    request.input('tf_destination', sql.VarChar(100), tf_destination || null);
-    request.input('tf_plateno', sql.VarChar(50), tf_plateno || null);
-    request.input('tf_commodity', sql.Int, tf_commodity ? parseInt(tf_commodity) : null);
-    request.input('tf_volume', sql.Int, tf_volume ? parseInt(tf_volume) : null);
-    request.input('tf_name', sql.VarChar(200), tf_name || null);
-    request.input('tf_remarks', sql.NVarChar(255), tf_remarks || null);
-    request.input('tf_apprehended', sql.Bit, tf_apprehended ? 1 : 0);
+        const request = pool.request();
+        request.input('tf_area', sql.VarChar(100), tf_area);
+        request.input('tf_date', sql.Date, tf_date);
+        request.input('tf_checker', sql.VarChar(150), tf_checker || null);
+        request.input('tf_dr', sql.Int, tf_dr ? parseInt(tf_dr) : null);
+        request.input('tf_destination', sql.VarChar(100), tf_destination || null);
+        request.input('tf_plateno', sql.VarChar(50), tf_plateno || null);
+        request.input('tf_commodity', sql.Int, tf_commodity ? parseInt(tf_commodity) : null);
+        request.input('tf_volume', sql.Int, tf_volume ? parseInt(tf_volume) : null);
+        request.input('tf_name', sql.VarChar(200), tf_name || null);
+        request.input('tf_remarks', sql.NVarChar(255), tf_remarks || null);
+        request.input('tf_apprehended', sql.Bit, tf_apprehended ? 1 : 0);
 
-    const insertResult = await request.query(`
+        const insertResult = await request.query(`
       INSERT INTO [tbl_taskforce]
            ([tf_area]
            ,[tf_date]
@@ -4379,60 +5636,74 @@ app.post('/api/taskforce', async (req, res) => {
            ,@tf_apprehended)
     `);
 
-    const newId = insertResult.recordset[0]?.tf_ctrlno;
+        const newId = insertResult.recordset[0]?.tf_ctrlno;
 
-    await logActivity(pool, req, {
-      action: 'CREATE',
-      tableName: 'tbl_taskforce',
-      recordId: newId || tf_area,
-      newValues: req.body
-    });
+        await logActivity(pool, req, {
+            action: 'CREATE',
+            tableName: 'tbl_taskforce',
+            recordId: newId || tf_area,
+            newValues: req.body,
+        });
 
-    console.log('✅ Task force record added successfully');
-    res.json({ message: 'Task force record added successfully', tf_ctrlno: newId });
-  } catch (err) {
-    console.error('❌ Add Task Force Record Error:', err.message);
-    res.status(500).json({ error: 'Failed to add task force record: ' + err.message });
-  }
+        console.log('✅ Task force record added successfully');
+        res.json({ message: 'Task force record added successfully', tf_ctrlno: newId });
+    } catch (err) {
+        console.error('❌ Add Task Force Record Error:', err.message);
+        res.status(500).json({ error: 'Failed to add task force record: ' + err.message });
+    }
 });
 
 // PUT /api/taskforce/:id - Update task force record
 app.put('/api/taskforce/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { tf_area, tf_date, tf_checker, tf_dr, tf_destination, tf_plateno, tf_commodity, tf_volume, tf_name, tf_remarks, tf_apprehended } = req.body;
+    try {
+        const { id } = req.params;
+        const {
+            tf_area,
+            tf_date,
+            tf_checker,
+            tf_dr,
+            tf_destination,
+            tf_plateno,
+            tf_commodity,
+            tf_volume,
+            tf_name,
+            tf_remarks,
+            tf_apprehended,
+        } = req.body;
 
-    // Validate required fields
-    if (!tf_area || !tf_date) {
-      return res.status(400).json({ error: 'Area and date are required' });
-    }
+        // Validate required fields
+        if (!tf_area || !tf_date) {
+            return res.status(400).json({ error: 'Area and date are required' });
+        }
 
-    // Fetch old values for audit
-    const getReq = pool.request();
-    getReq.input('tf_ctrlno', sql.Int, id);
-    const existing = await getReq.query('SELECT * FROM [tbl_taskforce] WHERE [tf_ctrlno] = @tf_ctrlno');
+        // Fetch old values for audit
+        const getReq = pool.request();
+        getReq.input('tf_ctrlno', sql.Int, id);
+        const existing = await getReq.query(
+            'SELECT * FROM [tbl_taskforce] WHERE [tf_ctrlno] = @tf_ctrlno'
+        );
 
-    if (existing.recordset.length === 0) {
-      return res.status(404).json({ error: 'Record not found' });
-    }
+        if (existing.recordset.length === 0) {
+            return res.status(404).json({ error: 'Record not found' });
+        }
 
-    const oldValues = existing.recordset[0];
+        const oldValues = existing.recordset[0];
 
-    const request = pool.request();
-    request.input('tf_ctrlno', sql.Int, id);
-    request.input('tf_area', sql.VarChar(100), tf_area);
-    request.input('tf_date', sql.Date, tf_date);
-    request.input('tf_checker', sql.VarChar(150), tf_checker || null);
-    request.input('tf_dr', sql.Int, tf_dr ? parseInt(tf_dr) : null);
-    request.input('tf_destination', sql.VarChar(100), tf_destination || null);
-    request.input('tf_plateno', sql.VarChar(50), tf_plateno || null);
-    request.input('tf_commodity', sql.Int, tf_commodity ? parseInt(tf_commodity) : null);
-    request.input('tf_volume', sql.Int, tf_volume ? parseInt(tf_volume) : null);
-    request.input('tf_name', sql.VarChar(200), tf_name || null);
-    request.input('tf_remarks', sql.NVarChar(255), tf_remarks || null);
-    request.input('tf_apprehended', sql.Bit, tf_apprehended ? 1 : 0);
+        const request = pool.request();
+        request.input('tf_ctrlno', sql.Int, id);
+        request.input('tf_area', sql.VarChar(100), tf_area);
+        request.input('tf_date', sql.Date, tf_date);
+        request.input('tf_checker', sql.VarChar(150), tf_checker || null);
+        request.input('tf_dr', sql.Int, tf_dr ? parseInt(tf_dr) : null);
+        request.input('tf_destination', sql.VarChar(100), tf_destination || null);
+        request.input('tf_plateno', sql.VarChar(50), tf_plateno || null);
+        request.input('tf_commodity', sql.Int, tf_commodity ? parseInt(tf_commodity) : null);
+        request.input('tf_volume', sql.Int, tf_volume ? parseInt(tf_volume) : null);
+        request.input('tf_name', sql.VarChar(200), tf_name || null);
+        request.input('tf_remarks', sql.NVarChar(255), tf_remarks || null);
+        request.input('tf_apprehended', sql.Bit, tf_apprehended ? 1 : 0);
 
-    await request.query(`
+        await request.query(`
       UPDATE [tbl_taskforce]
       SET [tf_area] = @tf_area
          ,[tf_date] = @tf_date
@@ -4448,64 +5719,64 @@ app.put('/api/taskforce/:id', async (req, res) => {
       WHERE [tf_ctrlno] = @tf_ctrlno
     `);
 
-    await logActivity(pool, req, {
-      action: 'UPDATE',
-      tableName: 'tbl_taskforce',
-      recordId: id,
-      oldValues: oldValues,
-      newValues: req.body
-    });
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_taskforce',
+            recordId: id,
+            oldValues: oldValues,
+            newValues: req.body,
+        });
 
-    console.log(`✅ Task force record ${id} updated successfully`);
-    res.json({ message: 'Task force record updated successfully' });
-  } catch (err) {
-    console.error('❌ Update Task Force Record Error:', err.message);
-    res.status(500).json({ error: 'Failed to update task force record: ' + err.message });
-  }
+        console.log(`✅ Task force record ${id} updated successfully`);
+        res.json({ message: 'Task force record updated successfully' });
+    } catch (err) {
+        console.error('❌ Update Task Force Record Error:', err.message);
+        res.status(500).json({ error: 'Failed to update task force record: ' + err.message });
+    }
 });
 
 // DELETE /api/taskforce/:id - Delete task force record
 app.delete('/api/taskforce/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
 
-    // Fetch old values for audit
-    const getReq = pool.request();
-    getReq.input('tf_ctrlno', sql.Int, id);
-    const existing = await getReq.query('SELECT * FROM [tbl_taskforce] WHERE [tf_ctrlno] = @tf_ctrlno');
-    const oldValues = existing.recordset[0];
+        // Fetch old values for audit
+        const getReq = pool.request();
+        getReq.input('tf_ctrlno', sql.Int, id);
+        const existing = await getReq.query(
+            'SELECT * FROM [tbl_taskforce] WHERE [tf_ctrlno] = @tf_ctrlno'
+        );
+        const oldValues = existing.recordset[0];
 
-    const request = pool.request();
-    request.input('tf_ctrlno', sql.Int, id);
+        const request = pool.request();
+        request.input('tf_ctrlno', sql.Int, id);
 
-    await request.query('DELETE FROM [tbl_taskforce] WHERE [tf_ctrlno] = @tf_ctrlno');
+        await request.query('DELETE FROM [tbl_taskforce] WHERE [tf_ctrlno] = @tf_ctrlno');
 
-    if (oldValues) {
-      await logActivity(pool, req, {
-        action: 'DELETE',
-        tableName: 'tbl_taskforce',
-        recordId: id,
-        oldValues: oldValues
-      });
+        if (oldValues) {
+            await logActivity(pool, req, {
+                action: 'DELETE',
+                tableName: 'tbl_taskforce',
+                recordId: id,
+                oldValues: oldValues,
+            });
+        }
+
+        console.log(`✅ Task force record ${id} deleted successfully`);
+        res.json({ message: 'Task force record deleted successfully' });
+    } catch (err) {
+        console.error('❌ Delete Task Force Record Error:', err.message);
+        res.status(500).json({ error: 'Failed to delete task force record: ' + err.message });
     }
-
-    console.log(`✅ Task force record ${id} deleted successfully`);
-    res.json({ message: 'Task force record deleted successfully' });
-  } catch (err) {
-    console.error('❌ Delete Task Force Record Error:', err.message);
-    res.status(500).json({ error: 'Failed to delete task force record: ' + err.message });
-  }
 });
-
-
 
 // ==================== TRAVEL AUTHORIZATION ENDPOINTS ====================
 
 // Get all travel orders
 app.get('/api/travelorders', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT to_ctrlno
             ,to_number
             ,to_dateprepared
@@ -4520,192 +5791,237 @@ app.get('/api/travelorders', async (req, res) => {
       ORDER BY to_dateprepared DESC
     `);
 
-    console.log(`✅ Fetched ${result.recordset.length} travel orders`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Travel Orders Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch travel orders: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} travel orders`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Travel Orders Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch travel orders: ' + err.message });
+    }
 });
 
 // Create travel order
 app.post('/api/travelorders', async (req, res) => {
-  try {
-    const { to_number, to_dateprepared, to_destination, to_startdate, to_enddate, to_purpose, to_duration, to_control } = req.body;
+    try {
+        const {
+            to_number,
+            to_dateprepared,
+            to_destination,
+            to_startdate,
+            to_enddate,
+            to_purpose,
+            to_duration,
+            to_control,
+        } = req.body;
 
-    const request = pool.request();
-    request.input('to_number', sql.VarChar, to_number || null);
-    request.input('to_dateprepared', sql.DateTime, to_dateprepared ? new Date(to_dateprepared) : new Date());
-    request.input('to_destination', sql.VarChar, to_destination || null);
-    request.input('to_startdate', sql.DateTime, to_startdate ? new Date(to_startdate) : null);
-    request.input('to_enddate', sql.DateTime, to_enddate ? new Date(to_enddate) : null);
-    request.input('to_purpose', sql.VarChar, to_purpose || null);
-    request.input('to_duration', sql.VarChar, to_duration || null);
-    request.input('to_control', sql.VarChar, to_control || null);
+        const request = pool.request();
+        request.input('to_number', sql.VarChar, to_number || null);
+        request.input(
+            'to_dateprepared',
+            sql.NVarChar(32),
+            toSqlDateTimeLiteral(to_dateprepared, { fallbackToNow: true })
+        );
+        request.input('to_destination', sql.VarChar, to_destination || null);
+        request.input('to_startdate', sql.NVarChar(32), toSqlDateTimeLiteral(to_startdate));
+        request.input('to_enddate', sql.NVarChar(32), toSqlDateTimeLiteral(to_enddate));
+        request.input('to_purpose', sql.VarChar, to_purpose || null);
+        request.input('to_duration', sql.VarChar, to_duration || null);
+        request.input('to_control', sql.VarChar, to_control || null);
 
-    const result = await request.query(`
+        const result = await request.query(`
       INSERT INTO tbl_travelorder (to_number, to_dateprepared, to_destination, to_startdate, to_enddate, to_purpose, to_duration, to_control)
       OUTPUT INSERTED.to_ctrlno
-      VALUES (@to_number, @to_dateprepared, @to_destination, @to_startdate, @to_enddate, @to_purpose, @to_duration, @to_control)
+      VALUES (
+        @to_number,
+        CAST(@to_dateprepared AS datetime2),
+        @to_destination,
+        CAST(@to_startdate AS datetime2),
+        CAST(@to_enddate AS datetime2),
+        @to_purpose,
+        @to_duration,
+        @to_control
+      )
     `);
 
-    const insertedId = result.recordset[0]?.to_ctrlno;
+        const insertedId = result.recordset[0]?.to_ctrlno;
 
-    // Log activity
-    await logActivity(pool, req, {
-      action: 'CREATE',
-      tableName: 'tbl_travelorder',
-      recordId: insertedId || 'New Record',
-      newValues: req.body
-    });
+        // Log activity
+        await logActivity(pool, req, {
+            action: 'CREATE',
+            tableName: 'tbl_travelorder',
+            recordId: insertedId || 'New Record',
+            newValues: req.body,
+        });
 
-    console.log(`✅ Created travel order: ${insertedId}`);
-    res.json({ success: true, message: 'Travel order created successfully', to_ctrlno: insertedId });
-  } catch (err) {
-    console.error('❌ Create Travel Order Error:', err.message);
-    res.status(500).json({ error: 'Failed to create travel order: ' + err.message });
-  }
+        console.log(`✅ Created travel order: ${insertedId}`);
+        res.json({
+            success: true,
+            message: 'Travel order created successfully',
+            to_ctrlno: insertedId,
+        });
+    } catch (err) {
+        console.error('❌ Create Travel Order Error:', err.message);
+        res.status(500).json({ error: 'Failed to create travel order: ' + err.message });
+    }
 });
 
 // Update travel order
 app.put('/api/travelorders/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { to_number, to_dateprepared, to_destination, to_startdate, to_enddate, to_purpose, to_duration, to_control } = req.body;
+    try {
+        const { id } = req.params;
+        const {
+            to_number,
+            to_dateprepared,
+            to_destination,
+            to_startdate,
+            to_enddate,
+            to_purpose,
+            to_duration,
+            to_control,
+        } = req.body;
 
-    // Fetch old values for audit logging
-    const getOldReq = pool.request();
-    getOldReq.input('id', sql.Int, id);
-    const oldResult = await getOldReq.query('SELECT * FROM tbl_travelorder WHERE to_ctrlno = @id');
-    const oldValues = oldResult.recordset[0];
+        // Fetch old values for audit logging
+        const getOldReq = pool.request();
+        getOldReq.input('id', sql.Int, id);
+        const oldResult = await getOldReq.query(
+            'SELECT * FROM tbl_travelorder WHERE to_ctrlno = @id'
+        );
+        const oldValues = oldResult.recordset[0];
 
-    const request = pool.request();
-    request.input('id', sql.Int, id);
-    request.input('to_number', sql.VarChar, to_number || null);
-    request.input('to_dateprepared', sql.DateTime, to_dateprepared ? new Date(to_dateprepared) : new Date());
-    request.input('to_destination', sql.VarChar, to_destination || null);
-    request.input('to_startdate', sql.DateTime, to_startdate ? new Date(to_startdate) : null);
-    request.input('to_enddate', sql.DateTime, to_enddate ? new Date(to_enddate) : null);
-    request.input('to_purpose', sql.VarChar, to_purpose || null);
-    request.input('to_duration', sql.VarChar, to_duration || null);
-    request.input('to_control', sql.VarChar, to_control || null);
+        const request = pool.request();
+        request.input('id', sql.Int, id);
+        request.input('to_number', sql.VarChar, to_number || null);
+        request.input(
+            'to_dateprepared',
+            sql.NVarChar(32),
+            toSqlDateTimeLiteral(to_dateprepared, { fallbackToNow: true })
+        );
+        request.input('to_destination', sql.VarChar, to_destination || null);
+        request.input('to_startdate', sql.NVarChar(32), toSqlDateTimeLiteral(to_startdate));
+        request.input('to_enddate', sql.NVarChar(32), toSqlDateTimeLiteral(to_enddate));
+        request.input('to_purpose', sql.VarChar, to_purpose || null);
+        request.input('to_duration', sql.VarChar, to_duration || null);
+        request.input('to_control', sql.VarChar, to_control || null);
 
-    await request.query(`
+        await request.query(`
       UPDATE tbl_travelorder
       SET to_number = @to_number,
-          to_dateprepared = @to_dateprepared,
+          to_dateprepared = CAST(@to_dateprepared AS datetime2),
           to_destination = @to_destination,
-          to_startdate = @to_startdate,
-          to_enddate = @to_enddate,
+          to_startdate = CAST(@to_startdate AS datetime2),
+          to_enddate = CAST(@to_enddate AS datetime2),
           to_purpose = @to_purpose,
           to_duration = @to_duration,
           to_control = @to_control
       WHERE to_ctrlno = @id
     `);
 
-    // Log activity
-    await logActivity(pool, req, {
-      action: 'UPDATE',
-      tableName: 'tbl_travelorder',
-      recordId: id,
-      oldValues: oldValues,
-      newValues: req.body
-    });
+        // Log activity
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_travelorder',
+            recordId: id,
+            oldValues: oldValues,
+            newValues: req.body,
+        });
 
-    console.log(`✅ Updated travel order: ${id}`);
-    res.json({ success: true, message: 'Travel order updated successfully' });
-  } catch (err) {
-    console.error('❌ Update Travel Order Error:', err.message);
-    res.status(500).json({ error: 'Failed to update travel order: ' + err.message });
-  }
+        console.log(`✅ Updated travel order: ${id}`);
+        res.json({ success: true, message: 'Travel order updated successfully' });
+    } catch (err) {
+        console.error('❌ Update Travel Order Error:', err.message);
+        res.status(500).json({ error: 'Failed to update travel order: ' + err.message });
+    }
 });
 
 // Cancel travel order
 app.put('/api/travelorders/:id/cancel', async (req, res) => {
-  const { id } = req.params;
-  const logUser = req.headers['x-log-user'] || 'Unknown User';
+    const { id } = req.params;
+    const logUser = req.headers['x-log-user'] || 'Unknown User';
 
-  try {
-    // Audit log specific for cancel
-    const oldReq = pool.request();
-    const oldResult = await oldReq.query(`SELECT * FROM tbl_travelorder WHERE to_ctrlno = ${id}`);
-    if (oldResult.recordset.length === 0) {
-      return res.status(404).json({ error: 'Travel order not found' });
-    }
+    try {
+        // Audit log specific for cancel
+        const oldReq = pool.request();
+        const oldResult = await oldReq.query(
+            `SELECT * FROM tbl_travelorder WHERE to_ctrlno = ${id}`
+        );
+        if (oldResult.recordset.length === 0) {
+            return res.status(404).json({ error: 'Travel order not found' });
+        }
 
-    const request = pool.request();
-    request.input('id', sql.Int, id);
+        const request = pool.request();
+        request.input('id', sql.Int, id);
 
-    await request.query(`
+        await request.query(`
       UPDATE tbl_travelorder
       SET to_status = 'CANCELLED'
       WHERE to_ctrlno = @id
     `);
 
-    // Add activity log
-    await logActivity(pool, req, {
-      action: 'UPDATE',
-      tableName: 'tbl_travelorder',
-      recordId: id,
-      oldValues: oldResult.recordset[0],
-      newValues: { ...oldResult.recordset[0], to_status: 'CANCELLED' }
-    });
+        // Add activity log
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_travelorder',
+            recordId: id,
+            oldValues: oldResult.recordset[0],
+            newValues: { ...oldResult.recordset[0], to_status: 'CANCELLED' },
+        });
 
-    console.log(`✅ Cancelled travel order: ${id}`);
-    res.json({ success: true, message: 'Travel order cancelled successfully' });
-  } catch (err) {
-    console.error('❌ Cancel Travel Order Error:', err.message);
-    res.status(500).json({ error: 'Failed to cancel travel order: ' + err.message });
-  }
+        console.log(`✅ Cancelled travel order: ${id}`);
+        res.json({ success: true, message: 'Travel order cancelled successfully' });
+    } catch (err) {
+        console.error('❌ Cancel Travel Order Error:', err.message);
+        res.status(500).json({ error: 'Failed to cancel travel order: ' + err.message });
+    }
 });
 
 // Delete travel order (cascade deletes employees)
 app.delete('/api/travelorders/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
 
-    // Fetch old values for audit logging
-    const getOldReq = pool.request();
-    getOldReq.input('id', sql.Int, id);
-    const oldResult = await getOldReq.query('SELECT * FROM tbl_travelorder WHERE to_ctrlno = @id');
-    const oldValues = oldResult.recordset[0];
+        // Fetch old values for audit logging
+        const getOldReq = pool.request();
+        getOldReq.input('id', sql.Int, id);
+        const oldResult = await getOldReq.query(
+            'SELECT * FROM tbl_travelorder WHERE to_ctrlno = @id'
+        );
+        const oldValues = oldResult.recordset[0];
 
-    // Delete associated employees first
-    const delEmpReq = pool.request();
-    delEmpReq.input('toId', sql.Int, id);
-    await delEmpReq.query('DELETE FROM tbl_travelorderemp WHERE toe_toid = @toId');
+        // Delete associated employees first
+        const delEmpReq = pool.request();
+        delEmpReq.input('toId', sql.Int, id);
+        await delEmpReq.query('DELETE FROM tbl_travelorderemp WHERE toe_toid = @toId');
 
-    // Delete the travel order
-    const request = pool.request();
-    request.input('id', sql.Int, id);
-    await request.query('DELETE FROM tbl_travelorder WHERE to_ctrlno = @id');
+        // Delete the travel order
+        const request = pool.request();
+        request.input('id', sql.Int, id);
+        await request.query('DELETE FROM tbl_travelorder WHERE to_ctrlno = @id');
 
-    // Log activity
-    if (oldValues) {
-      await logActivity(pool, req, {
-        action: 'DELETE',
-        tableName: 'tbl_travelorder',
-        recordId: id,
-        oldValues: oldValues
-      });
+        // Log activity
+        if (oldValues) {
+            await logActivity(pool, req, {
+                action: 'DELETE',
+                tableName: 'tbl_travelorder',
+                recordId: id,
+                oldValues: oldValues,
+            });
+        }
+
+        console.log(`✅ Deleted travel order: ${id}`);
+        res.json({ success: true, message: 'Travel order deleted successfully' });
+    } catch (err) {
+        console.error('❌ Delete Travel Order Error:', err.message);
+        res.status(500).json({ error: 'Failed to delete travel order: ' + err.message });
     }
-
-    console.log(`✅ Deleted travel order: ${id}`);
-    res.json({ success: true, message: 'Travel order deleted successfully' });
-  } catch (err) {
-    console.error('❌ Delete Travel Order Error:', err.message);
-    res.status(500).json({ error: 'Failed to delete travel order: ' + err.message });
-  }
 });
 
 // Get employees for a travel order
 app.get('/api/travelorders/:id/employees', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const request = pool.request();
-    request.input('toId', sql.Int, id);
+    try {
+        const { id } = req.params;
+        const request = pool.request();
+        request.input('toId', sql.Int, id);
 
-    const result = await request.query(`
+        const result = await request.query(`
       SELECT toe.toe_ctrlno,
              toe.toe_toid,
              toe.toe_empid,
@@ -4716,109 +6032,117 @@ app.get('/api/travelorders/:id/employees', async (req, res) => {
       ORDER BY e.emp_name
     `);
 
-    console.log(`✅ Fetched ${result.recordset.length} employees for travel order ${id}`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Travel Order Employees Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch travel order employees: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} employees for travel order ${id}`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Travel Order Employees Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch travel order employees: ' + err.message });
+    }
 });
 
 // Add employee to travel order
 app.post('/api/travelorders/:id/employees', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { toe_empid } = req.body;
+    try {
+        const { id } = req.params;
+        const { toe_empid } = req.body;
 
-    const request = pool.request();
-    request.input('toe_toid', sql.Int, id);
-    request.input('toe_empid', sql.Int, toe_empid);
+        const request = pool.request();
+        request.input('toe_toid', sql.Int, id);
+        request.input('toe_empid', sql.Int, toe_empid);
 
-    const result = await request.query(`
+        const result = await request.query(`
       INSERT INTO tbl_travelorderemp (toe_toid, toe_empid)
       OUTPUT INSERTED.toe_ctrlno
       VALUES (@toe_toid, @toe_empid)
     `);
 
-    const insertedId = result.recordset[0]?.toe_ctrlno;
+        const insertedId = result.recordset[0]?.toe_ctrlno;
 
-    // Log activity
-    await logActivity(pool, req, {
-      action: 'CREATE',
-      tableName: 'tbl_travelorderemp',
-      recordId: insertedId || 'New Record',
-      newValues: { toe_toid: id, toe_empid }
-    });
+        // Log activity
+        await logActivity(pool, req, {
+            action: 'CREATE',
+            tableName: 'tbl_travelorderemp',
+            recordId: insertedId || 'New Record',
+            newValues: { toe_toid: id, toe_empid },
+        });
 
-    console.log(`✅ Added employee ${toe_empid} to travel order ${id}`);
-    res.json({ success: true, message: 'Employee added to travel order', toe_ctrlno: insertedId });
-  } catch (err) {
-    console.error('❌ Add Travel Order Employee Error:', err.message);
-    res.status(500).json({ error: 'Failed to add employee: ' + err.message });
-  }
+        console.log(`✅ Added employee ${toe_empid} to travel order ${id}`);
+        res.json({
+            success: true,
+            message: 'Employee added to travel order',
+            toe_ctrlno: insertedId,
+        });
+    } catch (err) {
+        console.error('❌ Add Travel Order Employee Error:', err.message);
+        res.status(500).json({ error: 'Failed to add employee: ' + err.message });
+    }
 });
 
 // Remove employee from travel order
 app.delete('/api/travelorderemployees/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
 
-    // Fetch old values for audit logging
-    const getOldReq = pool.request();
-    getOldReq.input('id', sql.Int, id);
-    const oldResult = await getOldReq.query('SELECT * FROM tbl_travelorderemp WHERE toe_ctrlno = @id');
-    const oldValues = oldResult.recordset[0];
+        // Fetch old values for audit logging
+        const getOldReq = pool.request();
+        getOldReq.input('id', sql.Int, id);
+        const oldResult = await getOldReq.query(
+            'SELECT * FROM tbl_travelorderemp WHERE toe_ctrlno = @id'
+        );
+        const oldValues = oldResult.recordset[0];
 
-    const request = pool.request();
-    request.input('id', sql.Int, id);
-    await request.query('DELETE FROM tbl_travelorderemp WHERE toe_ctrlno = @id');
+        const request = pool.request();
+        request.input('id', sql.Int, id);
+        await request.query('DELETE FROM tbl_travelorderemp WHERE toe_ctrlno = @id');
 
-    // Log activity
-    if (oldValues) {
-      await logActivity(pool, req, {
-        action: 'DELETE',
-        tableName: 'tbl_travelorderemp',
-        recordId: id,
-        oldValues: oldValues
-      });
+        // Log activity
+        if (oldValues) {
+            await logActivity(pool, req, {
+                action: 'DELETE',
+                tableName: 'tbl_travelorderemp',
+                recordId: id,
+                oldValues: oldValues,
+            });
+        }
+
+        console.log(`✅ Removed employee from travel order: ${id}`);
+        res.json({ success: true, message: 'Employee removed from travel order' });
+    } catch (err) {
+        console.error('❌ Remove Travel Order Employee Error:', err.message);
+        res.status(500).json({ error: 'Failed to remove employee: ' + err.message });
     }
-
-    console.log(`✅ Removed employee from travel order: ${id}`);
-    res.json({ success: true, message: 'Employee removed from travel order' });
-  } catch (err) {
-    console.error('❌ Remove Travel Order Employee Error:', err.message);
-    res.status(500).json({ error: 'Failed to remove employee: ' + err.message });
-  }
 });
 
 // ==================== TASK FORCE ACTIVITY LOG ENDPOINTS ====================
 
 // GET /api/taskforce-activity-log/names - Get distinct client names from tbl_taskforce
 app.get('/api/taskforce-activity-log/names', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT DISTINCT tf_name
       FROM tbl_taskforce
       WHERE tf_name IS NOT NULL AND tf_name != ''
       ORDER BY tf_name
     `);
-    console.log(`✅ Fetched ${result.recordset.length} distinct taskforce activity log names`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Taskforce Activity Log Names Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch taskforce activity log names: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} distinct taskforce activity log names`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Taskforce Activity Log Names Error:', err.message);
+        res.status(500).json({
+            error: 'Failed to fetch taskforce activity log names: ' + err.message,
+        });
+    }
 });
 
 // GET /api/taskforce-activity-log/details/:name - Get activity details for a client name
 app.get('/api/taskforce-activity-log/details/:name', async (req, res) => {
-  try {
-    const { name } = req.params;
-    const request = pool.request();
-    request.input('tf_name', sql.VarChar(200), name);
+    try {
+        const { name } = req.params;
+        const request = pool.request();
+        request.input('tf_name', sql.VarChar(200), name);
 
-    const result = await request.query(`
+        const result = await request.query(`
       SELECT 
           t.tf_date AS [DATE], 
           t.tf_area AS [AREA], 
@@ -4835,58 +6159,60 @@ app.get('/api/taskforce-activity-log/details/:name', async (req, res) => {
       ORDER BY t.tf_date
     `);
 
-    console.log(`✅ Fetched ${result.recordset.length} activity log details for "${name}"`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Taskforce Activity Log Details Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch taskforce activity log details: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} activity log details for "${name}"`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Taskforce Activity Log Details Error:', err.message);
+        res.status(500).json({
+            error: 'Failed to fetch taskforce activity log details: ' + err.message,
+        });
+    }
 });
 
 // ==================== LEAVE MANAGEMENT ENDPOINTS ====================
 
 // GET /api/leave/types - Get all active leave types
 app.get('/api/leave/types', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT lt_leavetypeid, lt_typename
       FROM tbl_leavetypes
       WHERE lt_isactive = 1
       ORDER BY lt_typename
     `);
-    console.log(`✅ Fetched ${result.recordset.length} leave types`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Leave Types Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch leave types: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} leave types`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Leave Types Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch leave types: ' + err.message });
+    }
 });
 
 // GET /api/leave/employees - Get all employees for leave application dropdown
 app.get('/api/leave/employees', async (req, res) => {
-  try {
-    const request = pool.request();
-    // Assuming tbl_enroemp has emp_ctrlno and emp_name
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        // Assuming tbl_enroemp has emp_ctrlno and emp_name
+        const result = await request.query(`
       SELECT emp_ctrlno, emp_name
       FROM tbl_enroemp
       ORDER BY emp_name
     `);
-    console.log(`✅ Fetched ${result.recordset.length} employees for leave`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Leave Employees Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch employees: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} employees for leave`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Leave Employees Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch employees: ' + err.message });
+    }
 });
 
 // GET /api/leave/applications - Get all leave applications with join
 app.get('/api/leave/applications', async (req, res) => {
-  try {
-    const request = pool.request();
-    // Use FOR JSON PATH to securely bundle the dates as a JSON array literal inside SQL Server natively
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        // Use FOR JSON PATH to securely bundle the dates as a JSON array literal inside SQL Server natively
+        const result = await request.query(`
       SELECT 
         la.la_ctrlno,
         la.la_controlno,
@@ -4908,231 +6234,277 @@ app.get('/api/leave/applications', async (req, res) => {
       ORDER BY la.la_dateoffiling DESC
     `);
 
-    // Parse the nested JSON string safely
-    const applications = result.recordset.map(row => {
-      let dates = [];
-      if (row.datesJSON) {
-        try {
-          dates = JSON.parse(row.datesJSON);
-        } catch (e) {
-          console.error("Failed to parse datesJSON for application ID", row.la_ctrlno, e);
-        }
-      }
-      delete row.datesJSON;
-      return {
-        ...row,
-        dates
-      };
-    });
+        // Parse the nested JSON string safely
+        const applications = result.recordset.map((row) => {
+            let dates = [];
+            if (row.datesJSON) {
+                try {
+                    dates = JSON.parse(row.datesJSON);
+                } catch (e) {
+                    console.error('Failed to parse datesJSON for application ID', row.la_ctrlno, e);
+                }
+            }
+            delete row.datesJSON;
+            return {
+                ...row,
+                dates,
+            };
+        });
 
-    console.log(`✅ Fetched ${applications.length} leave applications`);
-    res.json(applications);
-  } catch (err) {
-    console.error('❌ Get Leave Applications Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch leave applications: ' + err.message });
-  }
+        console.log(`✅ Fetched ${applications.length} leave applications`);
+        res.json(applications);
+    } catch (err) {
+        console.error('❌ Get Leave Applications Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch leave applications: ' + err.message });
+    }
 });
 
 // POST /api/leave/applications - Create new leave application with specific dates
 app.post('/api/leave/applications', async (req, res) => {
-  const transaction = new sql.Transaction(pool);
-  try {
-    const { la_employeeid, la_leavetypeid, la_dateoffiling, la_totaldaysapplied, la_controlno, dates } = req.body;
+    const transaction = new sql.Transaction(pool);
+    try {
+        const {
+            la_employeeid,
+            la_leavetypeid,
+            la_dateoffiling,
+            la_totaldaysapplied,
+            la_controlno,
+            dates,
+        } = req.body;
 
-    if (!la_employeeid || !la_leavetypeid || la_totaldaysapplied === undefined) {
-      return res.status(400).json({ error: 'Employee ID, Leave Type ID, and Total Days are required' });
-    }
+        if (!la_employeeid || !la_leavetypeid || la_totaldaysapplied === undefined) {
+            return res
+                .status(400)
+                .json({ error: 'Employee ID, Leave Type ID, and Total Days are required' });
+        }
 
-    if (!Array.isArray(dates) || dates.length === 0) {
-      return res.status(400).json({ error: 'At least one specific date is required' });
-    }
+        if (!Array.isArray(dates) || dates.length === 0) {
+            return res.status(400).json({ error: 'At least one specific date is required' });
+        }
 
-    await transaction.begin();
+        await transaction.begin();
 
-    // Insert Application
-    const request = new sql.Request(transaction);
-    request.input('la_employeeid', sql.Int, la_employeeid);
-    request.input('la_leavetypeid', sql.Int, la_leavetypeid);
-    request.input('la_dateoffiling', sql.DateTime, la_dateoffiling ? new Date(la_dateoffiling) : new Date());
-    request.input('la_totaldaysapplied', sql.Decimal(4, 2), la_totaldaysapplied);
-    request.input('la_controlno', sql.VarChar(50), la_controlno || null);
+        // Insert Application
+        const request = new sql.Request(transaction);
+        request.input('la_employeeid', sql.Int, la_employeeid);
+        request.input('la_leavetypeid', sql.Int, la_leavetypeid);
+        request.input(
+            'la_dateoffiling',
+            sql.NVarChar(32),
+            toSqlDateTimeLiteral(la_dateoffiling, { fallbackToNow: true })
+        );
+        request.input('la_totaldaysapplied', sql.Decimal(4, 2), la_totaldaysapplied);
+        request.input('la_controlno', sql.VarChar(50), la_controlno || null);
 
-    const appResult = await request.query(`
+        const appResult = await request.query(`
       INSERT INTO tbl_leaveapplications 
         (la_employeeid, la_leavetypeid, la_dateoffiling, la_totaldaysapplied, la_controlno)
       OUTPUT INSERTED.la_ctrlno
       VALUES 
-        (@la_employeeid, @la_leavetypeid, @la_dateoffiling, @la_totaldaysapplied, @la_controlno)
+        (
+          @la_employeeid,
+          @la_leavetypeid,
+          CAST(@la_dateoffiling AS datetime2),
+          @la_totaldaysapplied,
+          @la_controlno
+        )
     `);
 
-    const application_id = appResult.recordset[0].la_ctrlno;
+        const application_id = appResult.recordset[0].la_ctrlno;
 
-    // Insert Application Dates
-    for (const dateObj of dates) {
-      const dateRequest = new sql.Request(transaction);
-      dateRequest.input('lad_applicationid', sql.Int, application_id);
-      dateRequest.input('lad_specificdate', sql.Date, new Date(dateObj.lad_specificdate));
-      dateRequest.input('lad_ishalfday', sql.Bit, dateObj.lad_ishalfday ? 1 : 0);
+        // Insert Application Dates
+        for (const dateObj of dates) {
+            const dateRequest = new sql.Request(transaction);
+            dateRequest.input('lad_applicationid', sql.Int, application_id);
+            dateRequest.input(
+                'lad_specificdate',
+                sql.NVarChar(10),
+                toSqlDateLiteral(dateObj.lad_specificdate)
+            );
+            dateRequest.input('lad_ishalfday', sql.Bit, dateObj.lad_ishalfday ? 1 : 0);
 
-      await dateRequest.query(`
+            await dateRequest.query(`
         INSERT INTO tbl_leaveapplicationdates 
           (lad_applicationid, lad_specificdate, lad_ishalfday)
         VALUES 
-          (@lad_applicationid, @lad_specificdate, @lad_ishalfday)
+          (@lad_applicationid, CAST(@lad_specificdate AS date), @lad_ishalfday)
       `);
+        }
+
+        await transaction.commit();
+
+        // Log activity
+        await logActivity(pool, req, {
+            action: 'CREATE',
+            tableName: 'tbl_leaveapplications',
+            recordId: application_id,
+            newValues: { ...req.body, created_id: application_id },
+        });
+
+        console.log(`✅ Created leave application: ${application_id}`);
+        res.json({
+            success: true,
+            message: 'Leave application created successfully',
+            la_ctrlno: application_id,
+        });
+    } catch (err) {
+        console.error('❌ Create Leave Application Error:', err.message);
+        if (transaction) await transaction.rollback();
+        res.status(500).json({ error: 'Failed to create leave application: ' + err.message });
     }
-
-    await transaction.commit();
-
-    // Log activity
-    await logActivity(pool, req, {
-      action: 'CREATE',
-      tableName: 'tbl_leaveapplications',
-      recordId: application_id,
-      newValues: { ...req.body, created_id: application_id }
-    });
-
-    console.log(`✅ Created leave application: ${application_id}`);
-    res.json({ success: true, message: 'Leave application created successfully', la_ctrlno: application_id });
-
-  } catch (err) {
-    console.error('❌ Create Leave Application Error:', err.message);
-    if (transaction) await transaction.rollback();
-    res.status(500).json({ error: 'Failed to create leave application: ' + err.message });
-  }
 });
 
 // PUT /api/leave/applications/:id - Update leave application
 app.put('/api/leave/applications/:id', async (req, res) => {
-  const transaction = new sql.Transaction(pool);
-  try {
-    const { id } = req.params;
-    const { la_employeeid, la_leavetypeid, la_dateoffiling, la_totaldaysapplied, la_controlno, dates } = req.body;
+    const transaction = new sql.Transaction(pool);
+    try {
+        const { id } = req.params;
+        const {
+            la_employeeid,
+            la_leavetypeid,
+            la_dateoffiling,
+            la_totaldaysapplied,
+            la_controlno,
+            dates,
+        } = req.body;
 
-    if (!la_employeeid || !la_leavetypeid || la_totaldaysapplied === undefined) {
-      return res.status(400).json({ error: 'Employee ID, Leave Type ID, and Total Days are required' });
-    }
+        if (!la_employeeid || !la_leavetypeid || la_totaldaysapplied === undefined) {
+            return res
+                .status(400)
+                .json({ error: 'Employee ID, Leave Type ID, and Total Days are required' });
+        }
 
-    if (!Array.isArray(dates) || dates.length === 0) {
-      return res.status(400).json({ error: 'At least one specific date is required' });
-    }
+        if (!Array.isArray(dates) || dates.length === 0) {
+            return res.status(400).json({ error: 'At least one specific date is required' });
+        }
 
-    // Fetch old values for audit logging
-    const getOldReq = pool.request();
-    getOldReq.input('id', sql.Int, id);
-    const oldResult = await getOldReq.query('SELECT * FROM tbl_leaveapplications WHERE la_ctrlno = @id');
-    
-    if (oldResult.recordset.length === 0) {
-      return res.status(404).json({ error: 'Leave application not found' });
-    }
-    const oldValues = oldResult.recordset[0];
+        // Fetch old values for audit logging
+        const getOldReq = pool.request();
+        getOldReq.input('id', sql.Int, id);
+        const oldResult = await getOldReq.query(
+            'SELECT * FROM tbl_leaveapplications WHERE la_ctrlno = @id'
+        );
 
-    await transaction.begin();
+        if (oldResult.recordset.length === 0) {
+            return res.status(404).json({ error: 'Leave application not found' });
+        }
+        const oldValues = oldResult.recordset[0];
 
-    // 1. Update Application
-    const request = new sql.Request(transaction);
-    request.input('id', sql.Int, id);
-    request.input('la_employeeid', sql.Int, la_employeeid);
-    request.input('la_leavetypeid', sql.Int, la_leavetypeid);
-    request.input('la_dateoffiling', sql.DateTime, la_dateoffiling ? new Date(la_dateoffiling) : new Date());
-    request.input('la_totaldaysapplied', sql.Decimal(4, 2), la_totaldaysapplied);
-    request.input('la_controlno', sql.VarChar(50), la_controlno || null);
+        await transaction.begin();
 
-    await request.query(`
+        // 1. Update Application
+        const request = new sql.Request(transaction);
+        request.input('id', sql.Int, id);
+        request.input('la_employeeid', sql.Int, la_employeeid);
+        request.input('la_leavetypeid', sql.Int, la_leavetypeid);
+        request.input(
+            'la_dateoffiling',
+            sql.NVarChar(32),
+            toSqlDateTimeLiteral(la_dateoffiling, { fallbackToNow: true })
+        );
+        request.input('la_totaldaysapplied', sql.Decimal(4, 2), la_totaldaysapplied);
+        request.input('la_controlno', sql.VarChar(50), la_controlno || null);
+
+        await request.query(`
       UPDATE tbl_leaveapplications
       SET 
         la_employeeid = @la_employeeid,
         la_leavetypeid = @la_leavetypeid,
-        la_dateoffiling = @la_dateoffiling,
+        la_dateoffiling = CAST(@la_dateoffiling AS datetime2),
         la_totaldaysapplied = @la_totaldaysapplied,
         la_controlno = @la_controlno
       WHERE la_ctrlno = @id
     `);
 
-    // 2. Delete existing application dates
-    const deleteDatesReq = new sql.Request(transaction);
-    deleteDatesReq.input('id', sql.Int, id);
-    await deleteDatesReq.query(`
+        // 2. Delete existing application dates
+        const deleteDatesReq = new sql.Request(transaction);
+        deleteDatesReq.input('id', sql.Int, id);
+        await deleteDatesReq.query(`
       DELETE FROM tbl_leaveapplicationdates WHERE lad_applicationid = @id
     `);
 
-    // 3. Insert new application dates
-    for (const dateObj of dates) {
-      const dateRequest = new sql.Request(transaction);
-      dateRequest.input('lad_applicationid', sql.Int, id);
-      dateRequest.input('lad_specificdate', sql.Date, new Date(dateObj.lad_specificdate));
-      dateRequest.input('lad_ishalfday', sql.Bit, dateObj.lad_ishalfday ? 1 : 0);
+        // 3. Insert new application dates
+        for (const dateObj of dates) {
+            const dateRequest = new sql.Request(transaction);
+            dateRequest.input('lad_applicationid', sql.Int, id);
+            dateRequest.input(
+                'lad_specificdate',
+                sql.NVarChar(10),
+                toSqlDateLiteral(dateObj.lad_specificdate)
+            );
+            dateRequest.input('lad_ishalfday', sql.Bit, dateObj.lad_ishalfday ? 1 : 0);
 
-      await dateRequest.query(`
+            await dateRequest.query(`
         INSERT INTO tbl_leaveapplicationdates 
           (lad_applicationid, lad_specificdate, lad_ishalfday)
         VALUES 
-          (@lad_applicationid, @lad_specificdate, @lad_ishalfday)
+          (@lad_applicationid, CAST(@lad_specificdate AS date), @lad_ishalfday)
       `);
+        }
+
+        await transaction.commit();
+
+        // Log activity
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_leaveapplications',
+            recordId: id,
+            oldValues: oldValues,
+            newValues: req.body,
+        });
+
+        console.log(`✅ Updated leave application: ${id}`);
+        res.json({ success: true, message: 'Leave application updated successfully' });
+    } catch (err) {
+        console.error('❌ Update Leave Application Error:', err.message);
+        if (transaction) await transaction.rollback();
+        res.status(500).json({ error: 'Failed to update leave application: ' + err.message });
     }
-
-    await transaction.commit();
-
-    // Log activity
-    await logActivity(pool, req, {
-      action: 'UPDATE',
-      tableName: 'tbl_leaveapplications',
-      recordId: id,
-      oldValues: oldValues,
-      newValues: req.body
-    });
-
-    console.log(`✅ Updated leave application: ${id}`);
-    res.json({ success: true, message: 'Leave application updated successfully' });
-
-  } catch (err) {
-    console.error('❌ Update Leave Application Error:', err.message);
-    if (transaction) await transaction.rollback();
-    res.status(500).json({ error: 'Failed to update leave application: ' + err.message });
-  }
 });
 
 // DELETE /api/leave/applications/:id - Delete leave application
 app.delete('/api/leave/applications/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
 
-    // Fetch old values for audit logging
-    const getOldReq = pool.request();
-    getOldReq.input('id', sql.Int, id);
-    const oldResult = await getOldReq.query('SELECT * FROM tbl_leaveapplications WHERE la_ctrlno = @id');
-    const oldValues = oldResult.recordset[0];
+        // Fetch old values for audit logging
+        const getOldReq = pool.request();
+        getOldReq.input('id', sql.Int, id);
+        const oldResult = await getOldReq.query(
+            'SELECT * FROM tbl_leaveapplications WHERE la_ctrlno = @id'
+        );
+        const oldValues = oldResult.recordset[0];
 
-    // Delete the application (Database constraint ON DELETE CASCADE will handle lad specific dates)
-    const request = pool.request();
-    request.input('id', sql.Int, id);
-    await request.query('DELETE FROM tbl_leaveapplications WHERE la_ctrlno = @id');
+        // Delete the application (Database constraint ON DELETE CASCADE will handle lad specific dates)
+        const request = pool.request();
+        request.input('id', sql.Int, id);
+        await request.query('DELETE FROM tbl_leaveapplications WHERE la_ctrlno = @id');
 
-    // Log activity
-    if (oldValues) {
-      await logActivity(pool, req, {
-        action: 'DELETE',
-        tableName: 'tbl_leaveapplications',
-        recordId: id,
-        oldValues: oldValues
-      });
+        // Log activity
+        if (oldValues) {
+            await logActivity(pool, req, {
+                action: 'DELETE',
+                tableName: 'tbl_leaveapplications',
+                recordId: id,
+                oldValues: oldValues,
+            });
+        }
+
+        console.log(`✅ Deleted leave application: ${id}`);
+        res.json({ success: true, message: 'Leave application deleted successfully' });
+    } catch (err) {
+        console.error('❌ Delete Leave Application Error:', err.message);
+        res.status(500).json({ error: 'Failed to delete leave application: ' + err.message });
     }
-
-    console.log(`✅ Deleted leave application: ${id}`);
-    res.json({ success: true, message: 'Leave application deleted successfully' });
-  } catch (err) {
-    console.error('❌ Delete Leave Application Error:', err.message);
-    res.status(500).json({ error: 'Failed to delete leave application: ' + err.message });
-  }
 });
 
 // ==================== PERSONNEL TRAVEL LOGS ENDPOINTS ====================
 
 // GET /api/personnel-travel-logs/names - Get distinct employee names with travel orders
 app.get('/api/personnel-travel-logs/names', async (req, res) => {
-  try {
-    const request = pool.request();
-    const result = await request.query(`
+    try {
+        const request = pool.request();
+        const result = await request.query(`
       SELECT DISTINCT
           [e].[emp_name]
       FROM [dbo].[tbl_enroemp] AS [e]
@@ -5140,22 +6512,22 @@ app.get('/api/personnel-travel-logs/names', async (req, res) => {
           ON [e].[emp_ctrlno] = [te].[toe_empid]
       ORDER BY [e].[emp_name]
     `);
-    console.log(`✅ Fetched ${result.recordset.length} personnel names for travel logs`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Personnel Travel Log Names Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch personnel names: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} personnel names for travel logs`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Personnel Travel Log Names Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch personnel names: ' + err.message });
+    }
 });
 
 // GET /api/personnel-travel-logs/details/:name - Get travel order details for a personnel
 app.get('/api/personnel-travel-logs/details/:name', async (req, res) => {
-  try {
-    const { name } = req.params;
-    const request = pool.request();
-    request.input('emp_name', sql.VarChar(200), name);
+    try {
+        const { name } = req.params;
+        const request = pool.request();
+        request.input('emp_name', sql.VarChar(200), name);
 
-    const result = await request.query(`
+        const result = await request.query(`
       SELECT
           t.[to_number]       AS [T.O. NUMBER],
           t.[to_dateprepared] AS [DATE PREPARED],
@@ -5175,26 +6547,26 @@ app.get('/api/personnel-travel-logs/details/:name', async (req, res) => {
       ORDER BY t.[to_dateprepared] DESC
     `);
 
-    console.log(`✅ Fetched ${result.recordset.length} travel log details for "${name}"`);
-    res.json(result.recordset || []);
-  } catch (err) {
-    console.error('❌ Get Personnel Travel Log Details Error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch personnel travel log details: ' + err.message });
-  }
+        console.log(`✅ Fetched ${result.recordset.length} travel log details for "${name}"`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Personnel Travel Log Details Error:', err.message);
+        res.status(500).json({
+            error: 'Failed to fetch personnel travel log details: ' + err.message,
+        });
+    }
 });
 
 app.use((req, res) => {
-  res.status(404).json({ error: 'Endpoint not found' });
+    res.status(404).json({ error: 'Endpoint not found' });
 });
 
 // ==================== START SERVER ====================
 
-
-
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`
+    console.log(`
 Server: http://localhost:${PORT}
 DB Server: ${config.server}
 Database: ${config.database}
@@ -5204,10 +6576,9 @@ Status: ✅ Ready
 
 // Graceful Shutdown
 process.on('SIGINT', async () => {
-  console.log('\n🛑 Shutting down server...');
-  if (pool) {
-    await pool.close();
-  }
-  process.exit(0);
+    console.log('\n🛑 Shutting down server...');
+    if (pool) {
+        await pool.close();
+    }
+    process.exit(0);
 });
-

@@ -1,9 +1,28 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
-import { FiX, FiEye, FiEdit2, FiTrash2, FiUserPlus, FiUserMinus, FiChevronDown, FiChevronRight, FiChevronLeft } from 'react-icons/fi';
+import {
+    flexRender,
+    getCoreRowModel,
+    getPaginationRowModel,
+    useReactTable,
+} from '@tanstack/react-table';
+import {
+    FiX,
+    FiEye,
+    FiEdit2,
+    FiTrash2,
+    FiUpload,
+    FiUserPlus,
+    FiUserMinus,
+    FiChevronDown,
+    FiChevronRight,
+    FiChevronLeft,
+} from 'react-icons/fi';
 import { api } from '../services/api';
 import DeleteModal from '../components/modals/DeleteModal';
+import { getUserPermissions } from '../utils/permissions';
+import { formatDateInputPHT, getTodayPHT } from '../utils/dateUtils';
 
 import '../styles/global.css';
 import '../components/modals/Modal.css';
@@ -31,34 +50,18 @@ const formatDate = (value) => {
 };
 
 const formatDateInput = (value) => {
-    if (!value) return '';
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return '';
-    // Format in Manila timezone to avoid UTC date shifting
-    const parts = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Manila',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-    }).format(d); // returns YYYY-MM-DD in en-CA locale
-    return parts;
+    return formatDateInputPHT(value);
 };
 
 const todayInput = () => {
-    return formatDateInput(new Date());
+    return getTodayPHT();
 };
 
 const TravelAuthorization = () => {
     const navigate = useNavigate();
     const { currentUser } = useOutletContext();
 
-    const isAdmin = useMemo(() => {
-        if (!currentUser) return false;
-        const role = currentUser.role?.toLowerCase() || '';
-        const username = currentUser.log_user?.toLowerCase()?.trim() || '';
-        const access = currentUser.log_access;
-        return role === 'admin' || username === 'admin' || access == 1;
-    }, [currentUser]);
+    const permissions = useMemo(() => getUserPermissions(currentUser), [currentUser]);
 
     // Master state
     const [orders, setOrders] = useState([]);
@@ -72,6 +75,7 @@ const TravelAuthorization = () => {
     const [pageSize, setPageSize] = useState(10);
     const [currentPage, setCurrentPage] = useState(0);
     const tableContainerRef = useRef(null);
+    const [tableWidth, setTableWidth] = useState(0);
 
     // Selected order for detail
     const [selectedOrderId, setSelectedOrderId] = useState(null);
@@ -88,7 +92,12 @@ const TravelAuthorization = () => {
         to_purpose: '',
         to_duration: '',
         to_control: '',
+        to_attachment: '',
     });
+    const uploadInputRef = useRef(null);
+    const [attachmentExists, setAttachmentExists] = useState(false);
+    const [attachmentBusy, setAttachmentBusy] = useState(false);
+    const [attachmentMessage, setAttachmentMessage] = useState('');
 
     // Delete modal state
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -127,40 +136,49 @@ const TravelAuthorization = () => {
         return () => clearTimeout(timer);
     }, [error]);
 
-    // Calculate how many rows fit in the available viewport space.
-    // Uses a fixed row height for consistency across pages.
-    const ROW_HEIGHT = 42;
-
     useEffect(() => {
         const calculatePageSize = () => {
             const wrapper = tableContainerRef.current;
             if (!wrapper) return;
 
-            // Use viewport-based calculation so pagination is never clipped
+            const nextWidth = Math.floor(wrapper.clientWidth || 0);
+            setTableWidth((prev) => (prev !== nextWidth ? nextWidth : prev));
+
             const tableTop = wrapper.getBoundingClientRect().top;
-            const theadH = 37;
-            const paginationH = 45;
+            const headerEl = wrapper.querySelector('thead');
+            const firstBodyRow = wrapper.querySelector('tbody tr');
+            const measuredHeaderHeight = headerEl?.getBoundingClientRect().height || 48;
+            const measuredRowHeight = firstBodyRow?.getBoundingClientRect().height || 56;
+            const rowHeight = Math.max(44, Math.ceil(measuredRowHeight));
+            const paginationH = 56;
             const bottomPad = 24;
 
             const totalAvailable = window.innerHeight - tableTop - bottomPad;
-            const availableForRows = totalAvailable - theadH - paginationH;
-            // Subtract 1 row as safety buffer to guarantee pagination visibility
-            const fittingRows = Math.floor(availableForRows / ROW_HEIGHT) - 1;
+            const availableForRows = totalAvailable - measuredHeaderHeight - paginationH;
+            const fittingRows = Math.floor(availableForRows / rowHeight);
             const newSize = Math.max(3, Math.min(10, fittingRows));
 
             setPageSize((prev) => (prev !== newSize ? newSize : prev));
         };
 
         const timer = setTimeout(calculatePageSize, 150);
+        const resizeObserver = new ResizeObserver(() => {
+            requestAnimationFrame(calculatePageSize);
+        });
+
+        if (tableContainerRef.current) {
+            resizeObserver.observe(tableContainerRef.current);
+        }
 
         const handleResize = () => setTimeout(calculatePageSize, 50);
         window.addEventListener('resize', handleResize);
 
         return () => {
             clearTimeout(timer);
+            resizeObserver.disconnect();
             window.removeEventListener('resize', handleResize);
         };
-    }, [orders]);
+    }, [orders, error, info, searchQuery, selectedOrderId]);
 
     // Dynamic row calculation for the detail employee table
     useEffect(() => {
@@ -169,13 +187,17 @@ const TravelAuthorization = () => {
             if (!container) return;
 
             const containerTop = container.getBoundingClientRect().top;
-            const theadH = 37;
-            const paginationH = 45;
+            const headerEl = container.querySelector('thead');
+            const firstBodyRow = container.querySelector('tbody tr');
+            const measuredHeaderHeight = headerEl?.getBoundingClientRect().height || 48;
+            const measuredRowHeight = firstBodyRow?.getBoundingClientRect().height || 56;
+            const rowHeight = Math.max(44, Math.ceil(measuredRowHeight));
+            const paginationH = 56;
             const bottomPad = 24;
 
             const totalAvailable = window.innerHeight - containerTop - bottomPad;
-            const availableForRows = totalAvailable - theadH - paginationH;
-            const fittingRows = Math.floor(availableForRows / ROW_HEIGHT) - 1;
+            const availableForRows = totalAvailable - measuredHeaderHeight - paginationH;
+            const fittingRows = Math.floor(availableForRows / rowHeight);
             const newSize = Math.max(3, fittingRows);
 
             setDetailPageSize((prev) => (prev !== newSize ? newSize : prev));
@@ -201,6 +223,64 @@ const TravelAuthorization = () => {
     useEffect(() => {
         setDetailPage(0);
     }, [selectedOrderId, detailEmployees.length]);
+
+    const handleRemoveEmployeeClick = useCallback((emp) => {
+        setEmpToDelete(emp);
+        setIsEmpDeleteModalOpen(true);
+    }, []);
+
+    const detailColumns = useMemo(
+        () => [
+            {
+                accessorKey: 'emp_name',
+                header: 'Employee Name',
+                size: 560,
+                cell: ({ getValue }) => <span className="cell-text">{getValue() || ''}</span>,
+            },
+            {
+                id: 'actions',
+                header: '',
+                size: 140,
+                enableSorting: false,
+                cell: ({ row }) => (
+                    <div className="actions-container">
+                        {permissions.canDelete && (
+                            <button
+                                className="btn-delete"
+                                onClick={() => handleRemoveEmployeeClick(row.original)}
+                                title="Remove employee"
+                            >
+                                <FiUserMinus className="icon-sm" />
+                            </button>
+                        )}
+                    </div>
+                ),
+            },
+        ],
+        [handleRemoveEmployeeClick]
+    );
+
+    const detailTable = useReactTable({
+        data: detailEmployees,
+        columns: detailColumns,
+        state: {
+            pagination: {
+                pageIndex: detailPage,
+                pageSize: detailPageSize,
+            },
+        },
+        onPaginationChange: (updater) => {
+            const nextPagination =
+                typeof updater === 'function'
+                    ? updater({ pageIndex: detailPage, pageSize: detailPageSize })
+                    : updater;
+
+            setDetailPage(nextPagination.pageIndex);
+            setDetailPageSize(nextPagination.pageSize);
+        },
+        getCoreRowModel: getCoreRowModel(),
+        getPaginationRowModel: getPaginationRowModel(),
+    });
 
     // Fetch travel orders
     const fetchOrders = useCallback(async () => {
@@ -267,9 +347,38 @@ const TravelAuthorization = () => {
                     updated.to_enddate = value;
                 }
             }
+            if (field === 'to_number') {
+                const trimmedValue = value.trim();
+                updated.to_attachment = trimmedValue ? `TO${trimmedValue}.pdf` : '';
+            }
             return updated;
         });
     };
+
+    const getTravelOrderAttachmentFilename = useCallback((value) => {
+        const toNumber = (value?.to_number || '').trim();
+        if (!toNumber) return '';
+
+        return `TO${toNumber}.pdf`;
+    }, []);
+
+    const checkAttachment = useCallback(
+        async (value) => {
+            const filename = getTravelOrderAttachmentFilename(value);
+            if (!filename) {
+                setAttachmentExists(false);
+                return;
+            }
+
+            try {
+                await api.checkNewApplicationAttachment(filename);
+                setAttachmentExists(true);
+            } catch {
+                setAttachmentExists(false);
+            }
+        },
+        [getTravelOrderAttachmentFilename]
+    );
 
     const handleAddClick = () => {
         setEditingId(null);
@@ -282,7 +391,11 @@ const TravelAuthorization = () => {
             to_purpose: '',
             to_duration: '',
             to_control: '',
+            to_attachment: '',
         });
+        setAttachmentExists(false);
+        setAttachmentBusy(false);
+        setAttachmentMessage('');
         setIsModalOpen(true);
     };
 
@@ -297,6 +410,13 @@ const TravelAuthorization = () => {
             to_purpose: row.to_purpose || '',
             to_duration: row.to_duration || '',
             to_control: row.to_control || '',
+            to_attachment: row.to_number ? `TO${String(row.to_number).trim()}.pdf` : '',
+        });
+        setAttachmentMessage('');
+        setAttachmentBusy(false);
+        checkAttachment({
+            to_number: row.to_number || '',
+            to_attachment: row.to_number ? `TO${String(row.to_number).trim()}.pdf` : '',
         });
         setIsModalOpen(true);
     };
@@ -312,8 +432,77 @@ const TravelAuthorization = () => {
             to_purpose: '',
             to_duration: '',
             to_control: '',
+            to_attachment: '',
         });
+        setAttachmentExists(false);
+        setAttachmentBusy(false);
+        setAttachmentMessage('');
         setIsModalOpen(false);
+    };
+
+    const handleUploadButtonClick = () => {
+        if (!form.to_number?.trim() || attachmentBusy) return;
+        uploadInputRef.current?.click();
+    };
+
+    const handleUploadChange = async (event) => {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+
+        if (!file) return;
+        if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+            setAttachmentMessage('Only PDF files are allowed.');
+            return;
+        }
+
+        const filename = getTravelOrderAttachmentFilename(form);
+        if (!filename) {
+            setAttachmentMessage('T.O. Number is required before uploading.');
+            return;
+        }
+
+        try {
+            setAttachmentBusy(true);
+            setAttachmentMessage('');
+
+            const contentBase64 = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(new Error('Failed to read PDF file'));
+                reader.readAsDataURL(file);
+            });
+
+            await api.uploadNewApplicationAttachment({
+                filename,
+                contentBase64,
+            });
+
+            setForm((prev) => ({ ...prev, to_attachment: filename }));
+            setAttachmentExists(true);
+            setAttachmentMessage('PDF uploaded successfully.');
+        } catch (err) {
+            setAttachmentMessage(err.message || 'Failed to upload PDF.');
+        } finally {
+            setAttachmentBusy(false);
+        }
+    };
+
+    const handleRemoveAttachment = async () => {
+        const filename = getTravelOrderAttachmentFilename(form);
+        if (!filename || attachmentBusy) return;
+
+        try {
+            setAttachmentBusy(true);
+            setAttachmentMessage('');
+            await api.removeNewApplicationAttachment({ filename });
+            setForm((prev) => ({ ...prev, to_attachment: '' }));
+            setAttachmentExists(false);
+            setAttachmentMessage('PDF removed successfully.');
+        } catch (err) {
+            setAttachmentMessage(err.message || 'Failed to remove PDF.');
+        } finally {
+            setAttachmentBusy(false);
+        }
     };
 
     const handleSubmit = async (e) => {
@@ -401,7 +590,7 @@ const TravelAuthorization = () => {
             return;
         }
 
-        const fileName = `TO${toNumber}.pdf`;
+        const fileName = getTravelOrderAttachmentFilename(row);
         const fullPath = `${ATTACHMENTS_BASE_PATH}${fileName}`;
         const webPath = api.getNewApplicationAttachmentUrl(fileName);
 
@@ -437,11 +626,6 @@ const TravelAuthorization = () => {
         }
     };
 
-    const handleRemoveEmployeeClick = (emp) => {
-        setEmpToDelete(emp);
-        setIsEmpDeleteModalOpen(true);
-    };
-
     const handleRemoveEmployeeConfirm = async () => {
         if (!empToDelete) return;
         try {
@@ -464,15 +648,270 @@ const TravelAuthorization = () => {
         setSelectedOrderId((prev) => (prev === orderId ? null : orderId));
     };
 
+    const filteredOrders = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
+        if (!q) return orders;
+
+        return orders.filter(
+            (row) =>
+                (row.to_number || '').toLowerCase().includes(q) ||
+                formatDate(row.to_dateprepared).toLowerCase().includes(q) ||
+                (row.to_destination || '').toLowerCase().includes(q) ||
+                formatDate(row.to_startdate).toLowerCase().includes(q) ||
+                formatDate(row.to_enddate).toLowerCase().includes(q) ||
+                (row.to_purpose || '').toLowerCase().includes(q) ||
+                (row.to_duration || '').toLowerCase().includes(q) ||
+                (row.to_control || '').toLowerCase().includes(q)
+        );
+    }, [orders, searchQuery]);
+
+    useEffect(() => {
+        const totalPages = Math.ceil(filteredOrders.length / pageSize);
+        const maxPage = Math.max(0, totalPages - 1);
+        if (currentPage > maxPage) {
+            setCurrentPage(maxPage);
+        }
+    }, [filteredOrders.length, currentPage, pageSize]);
+
+    const showDateRangeColumns = tableWidth >= 1180;
+    const showDurationColumn = tableWidth >= 1340;
+    const showControlColumn = tableWidth >= 1500;
+    const compactActionColumn = tableWidth > 0 && tableWidth < 1180;
+
+    const masterColumns = useMemo(() => {
+        const columns = [
+            {
+                id: 'expander',
+                header: '',
+                size: 44,
+                cell: ({ row }) => {
+                    const original = row.original;
+                    const isSelected = selectedOrderId === original.to_ctrlno;
+
+                    return isSelected ? <FiChevronDown size={14} /> : <FiChevronRight size={14} />;
+                },
+            },
+            {
+                accessorKey: 'to_number',
+                header: 'T.O. Number',
+                size: compactActionColumn ? 118 : 130,
+                cell: ({ getValue }) => (
+                    <span className="cell-text" title={getValue()}>
+                        {getValue() || ''}
+                    </span>
+                ),
+            },
+            {
+                accessorKey: 'to_dateprepared',
+                header: 'Date Prepared',
+                size: compactActionColumn ? 118 : 140,
+                cell: ({ getValue }) => <span className="cell-text">{formatDate(getValue())}</span>,
+            },
+            {
+                accessorKey: 'to_destination',
+                header: 'Destination',
+                size: showControlColumn ? 210 : compactActionColumn ? 180 : 195,
+                cell: ({ getValue }) => (
+                    <span className="cell-text" title={getValue()}>
+                        {getValue() || ''}
+                    </span>
+                ),
+            },
+        ];
+
+        if (showDateRangeColumns) {
+            columns.push(
+                {
+                    accessorKey: 'to_startdate',
+                    header: 'Start Date',
+                    size: 120,
+                    cell: ({ getValue }) => (
+                        <span className="cell-text">{formatDate(getValue())}</span>
+                    ),
+                },
+                {
+                    accessorKey: 'to_enddate',
+                    header: 'End Date',
+                    size: 120,
+                    cell: ({ getValue }) => (
+                        <span className="cell-text">{formatDate(getValue())}</span>
+                    ),
+                }
+            );
+        }
+
+        columns.push({
+            accessorKey: 'to_purpose',
+            header: 'Purpose',
+            size: showControlColumn ? 260 : showDurationColumn ? 240 : 220,
+            cell: ({ getValue }) => (
+                <span
+                    style={{
+                        display: '-webkit-box',
+                        WebkitLineClamp: compactActionColumn ? 2 : 3,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                        whiteSpace: 'normal',
+                        wordBreak: 'break-word',
+                        lineHeight: '1.4',
+                    }}
+                    title={getValue()}
+                >
+                    {getValue() || ''}
+                </span>
+            ),
+        });
+
+        if (showDurationColumn) {
+            columns.push({
+                accessorKey: 'to_duration',
+                header: 'Duration',
+                size: 120,
+                cell: ({ getValue }) => (
+                    <span className="cell-text" title={getValue()}>
+                        {getValue() || ''}
+                    </span>
+                ),
+            });
+        }
+
+        if (showControlColumn) {
+            columns.push({
+                accessorKey: 'to_control',
+                header: 'Control',
+                size: 120,
+                cell: ({ getValue, row }) => {
+                    const isCancelled = row.original.to_status === 'CANCELLED';
+                    return (
+                        <>
+                            <span className="cell-text" title={getValue()}>
+                                {getValue() || ''}
+                            </span>
+                            {isCancelled && (
+                                <span
+                                    style={{
+                                        display: 'inline-block',
+                                        marginTop: '4px',
+                                        padding: '2px 6px',
+                                        backgroundColor: 'var(--destructive)',
+                                        color: 'white',
+                                        fontSize: '10px',
+                                        fontWeight: 'bold',
+                                        borderRadius: '4px',
+                                    }}
+                                >
+                                    CANCELLED
+                                </span>
+                            )}
+                        </>
+                    );
+                },
+            });
+        }
+
+        columns.push({
+            id: 'actions',
+            header: '',
+            size: permissions.canDelete ? 144 : 84,
+            cell: ({ row }) => {
+                const original = row.original;
+                const isCancelled = original.to_status === 'CANCELLED';
+
+                return (
+                    <div
+                        className="action-buttons"
+                        style={{ gap: '0.125rem', flexWrap: 'nowrap' }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <button
+                            className="btn-icon btn-icon-sm"
+                            onClick={() => handlePreviewClick(original)}
+                            title="Preview"
+                        >
+                            <FiEye size={14} />
+                        </button>
+                        {permissions.canUpdate && (
+                            <button
+                                className="btn-icon btn-icon-sm"
+                                onClick={() => handleEditClick(original)}
+                                title="Edit"
+                            >
+                                <FiEdit2 size={14} />
+                            </button>
+                        )}
+                        {permissions.canDelete && !isCancelled && (
+                            <button
+                                className="btn-icon btn-icon-sm btn-icon-warning"
+                                style={{ color: 'var(--warning, #f59e0b)' }}
+                                onClick={() => handleCancelClick(original)}
+                                title="Cancel"
+                            >
+                                <FiX size={14} />
+                            </button>
+                        )}
+                        {permissions.canDelete && (
+                            <button
+                                className="btn-icon btn-icon-sm btn-icon-danger"
+                                onClick={() => handleDeleteClick(original)}
+                                title="Delete"
+                            >
+                                <FiTrash2 size={14} />
+                            </button>
+                        )}
+                    </div>
+                );
+            },
+        });
+
+        return columns;
+    }, [
+        compactActionColumn,
+        handleCancelClick,
+        handleDeleteClick,
+        handleEditClick,
+        handlePreviewClick,
+        permissions.canDelete,
+        permissions.canUpdate,
+        selectedOrderId,
+        showControlColumn,
+        showDateRangeColumns,
+        showDurationColumn,
+    ]);
+
+    const masterTable = useReactTable({
+        data: filteredOrders,
+        columns: masterColumns,
+        state: {
+            pagination: {
+                pageIndex: currentPage,
+                pageSize,
+            },
+        },
+        onPaginationChange: (updater) => {
+            const nextPagination =
+                typeof updater === 'function'
+                    ? updater({ pageIndex: currentPage, pageSize })
+                    : updater;
+
+            setCurrentPage(nextPagination.pageIndex);
+            setPageSize(nextPagination.pageSize);
+        },
+        autoResetPageIndex: false,
+        getCoreRowModel: getCoreRowModel(),
+        getPaginationRowModel: getPaginationRowModel(),
+    });
+
     return (
         <div className="page-container">
             <div className="page-header">
                 <div className="hstack hstack-3">
                     <h1 className="page-title">Travel Authorization</h1>
                 </div>
-                <button className="btn btn-primary btn-sm" onClick={handleAddClick}>
-                    + Add Travel Order
-                </button>
+                {permissions.canCreate && (
+                    <button className="btn btn-primary btn-sm" onClick={handleAddClick}>
+                        + Add Travel Order
+                    </button>
+                )}
             </div>
 
             {error && (
@@ -499,227 +938,155 @@ const TravelAuthorization = () => {
             </div>
 
             {/* Master Table */}
-            <div className="table-wrapper" ref={tableContainerRef} style={{ marginBottom: selectedOrderId ? '0' : undefined }}>
+            <div
+                className="table-wrapper"
+                ref={tableContainerRef}
+                style={{ marginBottom: selectedOrderId ? '0' : undefined }}
+            >
                 {loading ? (
                     <div className="loading-container">
                         <div className="spinner"></div>
                         <span className="loading-text">Loading travel orders...</span>
                     </div>
-                ) : (() => {
-                    const q = searchQuery.trim().toLowerCase();
-                    const filteredOrders = q
-                        ? orders.filter((row) =>
-                            (row.to_number || '').toLowerCase().includes(q) ||
-                            formatDate(row.to_dateprepared).toLowerCase().includes(q) ||
-                            (row.to_destination || '').toLowerCase().includes(q) ||
-                            formatDate(row.to_startdate).toLowerCase().includes(q) ||
-                            formatDate(row.to_enddate).toLowerCase().includes(q) ||
-                            (row.to_purpose || '').toLowerCase().includes(q) ||
-                            (row.to_duration || '').toLowerCase().includes(q) ||
-                            (row.to_control || '').toLowerCase().includes(q)
-                        )
-                        : orders;
-
-                    // Pagination calculations
-                    const totalRows = filteredOrders.length;
-                    const totalPages = Math.ceil(totalRows / pageSize);
-                    const safePage = Math.min(currentPage, Math.max(0, totalPages - 1));
-                    const startIndex = safePage * pageSize;
-                    const endIndex = Math.min(startIndex + pageSize, totalRows);
-                    const paginatedOrders = filteredOrders.slice(startIndex, endIndex);
-                    const canPrevious = safePage > 0;
-                    const canNext = safePage < totalPages - 1;
-
-                    return filteredOrders.length > 0 ? (
-                        <>
-                            <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-                            <table className="data-table">
-                                <thead style={{ position: 'sticky', top: 0, zIndex: 1, backgroundColor: 'var(--secondary)' }}>
-                                    <tr>
-                                        <th style={{ width: '3%' }}></th>
-                                        <th style={{ width: '10%' }}>T.O. Number</th>
-                                        <th style={{ width: '11%' }}>Date Prepared</th>
-                                        <th style={{ width: '16%' }}>Destination</th>
-                                        <th style={{ width: '10%' }}>Start Date</th>
-                                        <th style={{ width: '10%' }}>End Date</th>
-                                        <th style={{ width: '18%' }}>Purpose</th>
-                                        <th style={{ width: '7%' }}>Duration</th>
-                                        <th style={{ width: '8%' }}>Control</th>
-                                        <th style={{ width: '7%' }}></th>
-                                    </tr>
+                ) : filteredOrders.length > 0 ? (
+                    <>
+                        <div
+                            style={{
+                                flex: 1,
+                                minHeight: 0,
+                                overflowX: 'auto',
+                                overflowY: 'hidden',
+                            }}
+                        >
+                            <table
+                                className="table"
+                                style={{
+                                    width: 'max(100%, var(--travel-table-min-width, 100%))',
+                                    minWidth: `${masterTable.getTotalSize()}px`,
+                                }}
+                            >
+                                <thead className="table-header">
+                                    {masterTable.getHeaderGroups().map((headerGroup) => (
+                                        <tr key={headerGroup.id} className="table-row">
+                                            {headerGroup.headers.map((header) => (
+                                                <th
+                                                    key={header.id}
+                                                    className="table-head"
+                                                    style={{
+                                                        width: header.column.getSize(),
+                                                        textAlign:
+                                                            header.id === 'actions' ||
+                                                            header.id === 'expander'
+                                                                ? 'center'
+                                                                : 'left',
+                                                    }}
+                                                >
+                                                    <div
+                                                        className="sort-header"
+                                                        style={{
+                                                            justifyContent:
+                                                                header.id === 'actions' ||
+                                                                header.id === 'expander'
+                                                                    ? 'center'
+                                                                    : 'flex-start',
+                                                        }}
+                                                    >
+                                                        {flexRender(
+                                                            header.column.columnDef.header,
+                                                            header.getContext()
+                                                        )}
+                                                    </div>
+                                                </th>
+                                            ))}
+                                        </tr>
+                                    ))}
                                 </thead>
                                 <tbody>
-                                    {paginatedOrders.map((row) => {
-                                        const isSelected = selectedOrderId === row.to_ctrlno;
-                                        const isCancelled = row.to_status === 'CANCELLED';
+                                    {masterTable.getRowModel().rows.map((row) => {
+                                        const original = row.original;
+                                        const isSelected = selectedOrderId === original.to_ctrlno;
+                                        const isCancelled = original.to_status === 'CANCELLED';
+
                                         return (
-                                            <React.Fragment key={row.to_ctrlno}>
-                                                <tr
-                                                    style={{
-                                                        cursor: 'pointer',
-                                                        backgroundColor: isSelected
-                                                            ? 'var(--accent)'
-                                                            : isCancelled 
-                                                                ? 'rgba(239, 68, 68, 0.05)'
-                                                                : undefined,
-                                                        opacity: isCancelled ? 0.7 : 1,
-                                                    }}
-                                                    onClick={() => toggleRowSelect(row.to_ctrlno)}
-                                                >
-                                                    <td style={{ textAlign: 'center' }}>
-                                                        {isSelected ? (
-                                                            <FiChevronDown size={14} />
-                                                        ) : (
-                                                            <FiChevronRight size={14} />
+                                            <tr
+                                                key={row.id}
+                                                className="table-row"
+                                                style={{
+                                                    cursor: 'pointer',
+                                                    backgroundColor: isSelected
+                                                        ? 'var(--accent)'
+                                                        : isCancelled
+                                                          ? 'rgba(239, 68, 68, 0.05)'
+                                                          : undefined,
+                                                    opacity: isCancelled ? 0.7 : 1,
+                                                }}
+                                                onClick={() => toggleRowSelect(original.to_ctrlno)}
+                                            >
+                                                {row.getVisibleCells().map((cell) => (
+                                                    <td
+                                                        key={cell.id}
+                                                        className="table-cell"
+                                                        style={{
+                                                            textAlign:
+                                                                cell.column.id === 'actions' ||
+                                                                cell.column.id === 'expander'
+                                                                    ? 'center'
+                                                                    : 'left',
+                                                        }}
+                                                    >
+                                                        {flexRender(
+                                                            cell.column.columnDef.cell,
+                                                            cell.getContext()
                                                         )}
                                                     </td>
-                                                    <td>
-                                                        <span className="cell-text" title={row.to_number}>
-                                                            {row.to_number || ''}
-                                                        </span>
-                                                    </td>
-                                                    <td>{formatDate(row.to_dateprepared)}</td>
-                                                    <td>
-                                                        <span
-                                                            className="cell-text"
-                                                            title={row.to_destination}
-                                                        >
-                                                            {row.to_destination || ''}
-                                                        </span>
-                                                    </td>
-                                                    <td>{formatDate(row.to_startdate)}</td>
-                                                    <td>{formatDate(row.to_enddate)}</td>
-                                                    <td>
-                                                        <span
-                                                            style={{
-                                                                display: '-webkit-box',
-                                                                WebkitLineClamp: 3,
-                                                                WebkitBoxOrient: 'vertical',
-                                                                overflow: 'hidden',
-                                                                whiteSpace: 'normal',
-                                                                wordBreak: 'break-word',
-                                                                lineHeight: '1.4',
-                                                            }}
-                                                            title={row.to_purpose}
-                                                        >
-                                                            {row.to_purpose || ''}
-                                                        </span>
-                                                    </td>
-                                                    <td>
-                                                        <span
-                                                            className="cell-text"
-                                                            title={row.to_duration}
-                                                        >
-                                                            {row.to_duration || ''}
-                                                        </span>
-                                                    </td>
-                                                    <td>
-                                                        <span className="cell-text" title={row.to_control}>
-                                                            {row.to_control || ''}
-                                                        </span>
-                                                        {isCancelled && (
-                                                            <span style={{
-                                                                display: 'inline-block',
-                                                                marginTop: '4px',
-                                                                padding: '2px 6px',
-                                                                backgroundColor: 'var(--destructive)',
-                                                                color: 'white',
-                                                                fontSize: '10px',
-                                                                fontWeight: 'bold',
-                                                                borderRadius: '4px'
-                                                            }}>
-                                                                CANCELLED
-                                                            </span>
-                                                        )}
-                                                    </td>
-                                                    <td>
-                                                        <div
-                                                            className="action-buttons"
-                                                            style={{ gap: '0.125rem' }}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                        >
-                                                            <button
-                                                                className="btn-icon btn-icon-sm"
-                                                                onClick={() => handlePreviewClick(row)}
-                                                                title="Preview"
-                                                            >
-                                                                <FiEye size={14} />
-                                                            </button>
-                                                            <button
-                                                                className="btn-icon btn-icon-sm"
-                                                                onClick={() => handleEditClick(row)}
-                                                                title="Edit"
-                                                            >
-                                                                <FiEdit2 size={14} />
-                                                            </button>
-                                                            {isAdmin && !isCancelled && (
-                                                                <button
-                                                                    className="btn-icon btn-icon-sm btn-icon-warning"
-                                                                    style={{ color: 'var(--warning, #f59e0b)' }}
-                                                                    onClick={() => handleCancelClick(row)}
-                                                                    title="Cancel"
-                                                                >
-                                                                    <FiX size={14} />
-                                                                </button>
-                                                            )}
-                                                            {isAdmin && (
-                                                                <button
-                                                                    className="btn-icon btn-icon-sm btn-icon-danger"
-                                                                    onClick={() =>
-                                                                        handleDeleteClick(row)
-                                                                    }
-                                                                    title="Delete"
-                                                                >
-                                                                    <FiTrash2 size={14} />
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            </React.Fragment>
+                                                ))}
+                                            </tr>
                                         );
                                     })}
                                 </tbody>
                             </table>
-                            </div>
-
-                            {/* Pagination */}
-                            <div className="pagination" style={{ flexShrink: 0 }}>
-                                <span className="pagination-info">
-                                    {totalRows > 0
-                                        ? `Showing ${startIndex + 1} to ${endIndex} of ${totalRows} entries`
-                                        : 'No entries found'}
-                                </span>
-                                <div className="pagination-buttons">
-                                    <button
-                                        className="btn btn-outline btn-sm"
-                                        disabled={!canPrevious}
-                                        onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
-                                    >
-                                        Previous
-                                    </button>
-                                    <button
-                                        className="btn btn-outline btn-sm"
-                                        disabled={!canNext}
-                                        onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
-                                    >
-                                        Next
-                                    </button>
-                                </div>
-                            </div>
-                        </>
-                    ) : (
-                        <div
-                            style={{
-                                padding: '24px',
-                                textAlign: 'center',
-                                color: 'var(--muted-foreground)',
-                            }}
-                        >
-                            <p>{searchQuery.trim() ? 'No matching travel orders found.' : 'No travel orders found.'}</p>
                         </div>
-                    );
-                })()}
+
+                        {/* Pagination */}
+                        <div className="pagination" style={{ flexShrink: 0 }}>
+                            <span className="pagination-info">
+                                {filteredOrders.length > 0
+                                    ? `Showing ${masterTable.getState().pagination.pageIndex * masterTable.getState().pagination.pageSize + 1} to ${Math.min((masterTable.getState().pagination.pageIndex + 1) * masterTable.getState().pagination.pageSize, filteredOrders.length)} of ${filteredOrders.length} entries`
+                                    : 'No entries found'}
+                            </span>
+                            <div className="pagination-buttons">
+                                <button
+                                    className="btn btn-outline btn-sm"
+                                    disabled={!masterTable.getCanPreviousPage()}
+                                    onClick={() => masterTable.previousPage()}
+                                >
+                                    Previous
+                                </button>
+                                <button
+                                    className="btn btn-outline btn-sm"
+                                    disabled={!masterTable.getCanNextPage()}
+                                    onClick={() => masterTable.nextPage()}
+                                >
+                                    Next
+                                </button>
+                            </div>
+                        </div>
+                    </>
+                ) : (
+                    <div
+                        style={{
+                            padding: '24px',
+                            textAlign: 'center',
+                            color: 'var(--muted-foreground)',
+                        }}
+                    >
+                        <p>
+                            {searchQuery.trim()
+                                ? 'No matching travel orders found.'
+                                : 'No travel orders found.'}
+                        </p>
+                    </div>
+                )}
             </div>
 
             {/* Detail Section – Employees */}
@@ -764,7 +1131,12 @@ const TravelAuthorization = () => {
                                 className="form-select"
                                 value={selectedEmpId}
                                 onChange={(e) => setSelectedEmpId(e.target.value)}
-                                style={{ minWidth: '300px', fontSize: '13px', height: 'auto', padding: '0.5rem 2.5rem 0.5rem 0.75rem' }}
+                                style={{
+                                    minWidth: '300px',
+                                    fontSize: '13px',
+                                    height: 'auto',
+                                    padding: '0.5rem 2.5rem 0.5rem 0.75rem',
+                                }}
                             >
                                 <option value="">-- Select Employee --</option>
                                 {employees.map((emp) => (
@@ -773,19 +1145,30 @@ const TravelAuthorization = () => {
                                     </option>
                                 ))}
                             </select>
-                            <button
-                                className="btn btn-primary btn-sm"
-                                onClick={handleAddEmployee}
-                                disabled={!selectedEmpId || addingEmployee}
-                                style={{ whiteSpace: 'nowrap' }}
-                            >
-                                <FiUserPlus size={14} />
-                                {addingEmployee ? 'Adding...' : 'Add'}
-                            </button>
+                            {permissions.canUpdate && (
+                                <button
+                                    className="btn btn-primary btn-sm"
+                                    onClick={handleAddEmployee}
+                                    disabled={!selectedEmpId || addingEmployee}
+                                    style={{ whiteSpace: 'nowrap' }}
+                                >
+                                    <FiUserPlus size={14} />
+                                    {addingEmployee ? 'Adding...' : 'Add'}
+                                </button>
+                            )}
                         </div>
                     </div>
 
-                    <div ref={detailContainerRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                    <div
+                        ref={detailContainerRef}
+                        style={{
+                            flex: 1,
+                            minHeight: 0,
+                            overflow: 'hidden',
+                            display: 'flex',
+                            flexDirection: 'column',
+                        }}
+                    >
                         {loadingDetail ? (
                             <div className="loading-container" style={{ padding: '24px' }}>
                                 <div className="spinner spinner-sm"></div>
@@ -793,35 +1176,64 @@ const TravelAuthorization = () => {
                             </div>
                         ) : detailEmployees.length > 0 ? (
                             <>
-                                <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-                                    <table className="data-table">
-                                        <thead style={{ position: 'sticky', top: 0, zIndex: 1, backgroundColor: 'var(--secondary)' }}>
-                                            <tr>
-                                                <th style={{ width: '80%' }}>Employee Name</th>
-                                                <th style={{ width: '20%' }}></th>
-                                            </tr>
+                                <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+                                    <table className="table">
+                                        <thead className="table-header">
+                                            {detailTable.getHeaderGroups().map((headerGroup) => (
+                                                <tr key={headerGroup.id} className="table-row">
+                                                    {headerGroup.headers.map((header) => (
+                                                        <th
+                                                            key={header.id}
+                                                            className="table-head"
+                                                            style={{
+                                                                width: header.column.getSize(),
+                                                                textAlign:
+                                                                    header.id === 'actions'
+                                                                        ? 'center'
+                                                                        : 'left',
+                                                            }}
+                                                        >
+                                                            <div
+                                                                className="sort-header"
+                                                                style={{
+                                                                    justifyContent:
+                                                                        header.id === 'actions'
+                                                                            ? 'center'
+                                                                            : 'flex-start',
+                                                                }}
+                                                            >
+                                                                {flexRender(
+                                                                    header.column.columnDef.header,
+                                                                    header.getContext()
+                                                                )}
+                                                            </div>
+                                                        </th>
+                                                    ))}
+                                                </tr>
+                                            ))}
                                         </thead>
                                         <tbody>
-                                            {detailEmployees
-                                                .slice(detailPage * detailPageSize, (detailPage + 1) * detailPageSize)
-                                                .map((emp) => (
-                                                    <tr key={emp.toe_ctrlno}>
-                                                        <td>{emp.emp_name || ''}</td>
-                                                        <td>
-                                                            <div className="action-buttons">
-                                                                <button
-                                                                    className="btn-icon btn-icon-sm btn-icon-danger"
-                                                                    onClick={() =>
-                                                                        handleRemoveEmployeeClick(emp)
-                                                                    }
-                                                                    title="Remove employee"
-                                                                >
-                                                                    <FiUserMinus size={14} />
-                                                                </button>
-                                                            </div>
+                                            {detailTable.getRowModel().rows.map((row) => (
+                                                <tr key={row.id} className="table-row">
+                                                    {row.getVisibleCells().map((cell) => (
+                                                        <td
+                                                            key={cell.id}
+                                                            className="table-cell"
+                                                            style={{
+                                                                textAlign:
+                                                                    cell.column.id === 'actions'
+                                                                        ? 'center'
+                                                                        : 'left',
+                                                            }}
+                                                        >
+                                                            {flexRender(
+                                                                cell.column.columnDef.cell,
+                                                                cell.getContext()
+                                                            )}
                                                         </td>
-                                                    </tr>
-                                                ))}
+                                                    ))}
+                                                </tr>
+                                            ))}
                                         </tbody>
                                     </table>
                                 </div>
@@ -829,8 +1241,11 @@ const TravelAuthorization = () => {
                                     <span className="pagination-info">
                                         {(() => {
                                             const total = detailEmployees.length;
-                                            const start = total === 0 ? 0 : detailPage * detailPageSize + 1;
-                                            const end = Math.min((detailPage + 1) * detailPageSize, total);
+                                            const { pageIndex, pageSize } =
+                                                detailTable.getState().pagination;
+                                            const start =
+                                                total === 0 ? 0 : pageIndex * pageSize + 1;
+                                            const end = Math.min((pageIndex + 1) * pageSize, total);
                                             return total > 0
                                                 ? `Showing ${start} to ${end} of ${total} employees`
                                                 : 'No employees';
@@ -839,15 +1254,15 @@ const TravelAuthorization = () => {
                                     <div className="pagination-buttons">
                                         <button
                                             className="btn btn-outline btn-sm"
-                                            disabled={detailPage === 0}
-                                            onClick={() => setDetailPage((p) => p - 1)}
+                                            disabled={!detailTable.getCanPreviousPage()}
+                                            onClick={() => detailTable.previousPage()}
                                         >
                                             <FiChevronLeft size={14} />
                                         </button>
                                         <button
                                             className="btn btn-outline btn-sm"
-                                            disabled={(detailPage + 1) * detailPageSize >= detailEmployees.length}
-                                            onClick={() => setDetailPage((p) => p + 1)}
+                                            disabled={!detailTable.getCanNextPage()}
+                                            onClick={() => detailTable.nextPage()}
                                         >
                                             <FiChevronRight size={14} />
                                         </button>
@@ -880,11 +1295,7 @@ const TravelAuthorization = () => {
                                 {editingId ? 'Edit Travel Order' : 'Add Travel Order'}
                             </Dialog.Title>
                             <Dialog.Close asChild>
-                                <button
-                                    type="button"
-                                    className="dialog-close"
-                                    aria-label="Close"
-                                >
+                                <button type="button" className="dialog-close" aria-label="Close">
                                     <FiX size={16} />
                                 </button>
                             </Dialog.Close>
@@ -892,6 +1303,13 @@ const TravelAuthorization = () => {
 
                         <form onSubmit={handleSubmit}>
                             <div className="dialog-body">
+                                <input
+                                    ref={uploadInputRef}
+                                    type="file"
+                                    accept="application/pdf,.pdf"
+                                    style={{ display: 'none' }}
+                                    onChange={handleUploadChange}
+                                />
                                 <div
                                     style={{
                                         display: 'grid',
@@ -918,10 +1336,7 @@ const TravelAuthorization = () => {
                                             onChange={handleFormChange('to_dateprepared')}
                                         />
                                     </div>
-                                    <div
-                                        className="form-group"
-                                        style={{ gridColumn: '1 / -1' }}
-                                    >
+                                    <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                                         <label className="form-label">Destination</label>
                                         <input
                                             type="text"
@@ -949,10 +1364,7 @@ const TravelAuthorization = () => {
                                             onChange={handleFormChange('to_enddate')}
                                         />
                                     </div>
-                                    <div
-                                        className="form-group"
-                                        style={{ gridColumn: '1 / -1' }}
-                                    >
+                                    <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                                         <label className="form-label">Purpose</label>
                                         <textarea
                                             className="form-input"
@@ -971,10 +1383,21 @@ const TravelAuthorization = () => {
                                             onChange={handleFormChange('to_duration')}
                                         >
                                             <option value="">-- Select Duration --</option>
-                                            <option value="8:00 AM to 12 Noon">8:00 AM to 12 Noon</option>
-                                            <option value="8:00 AM to 5:00 PM">8:00 AM to 5:00 PM</option>
-                                            <option value="1:00 PM to 5:00 PM">1:00 PM to 5:00 PM</option>
-                                            <option value="5:00 PM to 6:00 PM">5:00 PM to 6:00 PM</option>
+                                            <option value="8:00 AM to 12 Noon">
+                                                8:00 AM to 12 Noon
+                                            </option>
+                                            <option value="8:00 AM to 5:00 PM">
+                                                8:00 AM to 5:00 PM
+                                            </option>
+                                            <option value="8:00 AM to 7:00 PM">
+                                                8:00 AM to 7:00 PM
+                                            </option>
+                                            <option value="1:00 PM to 5:00 PM">
+                                                1:00 PM to 5:00 PM
+                                            </option>
+                                            <option value="5:00 PM to 6:00 PM">
+                                                5:00 PM to 6:00 PM
+                                            </option>
                                         </select>
                                     </div>
                                     <div className="form-group">
@@ -986,6 +1409,53 @@ const TravelAuthorization = () => {
                                             onChange={handleFormChange('to_control')}
                                             placeholder="Control number"
                                         />
+                                    </div>
+                                    <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                                        <label className="form-label">PDF Attachment</label>
+                                        <div className="attachment-box">
+                                            <div className="attachment-box-header">
+                                                <span className="attachment-box-title">
+                                                    {getTravelOrderAttachmentFilename(form) ||
+                                                        'No T.O. number'}
+                                                </span>
+                                                <span
+                                                    className={`attachment-status ${attachmentExists ? 'is-success' : 'is-muted'}`}
+                                                >
+                                                    {attachmentExists
+                                                        ? 'Attached'
+                                                        : 'No PDF uploaded'}
+                                                </span>
+                                            </div>
+                                            <div className="attachment-actions">
+                                                <button
+                                                    type="button"
+                                                    className="attachment-icon-button"
+                                                    title="Upload PDF"
+                                                    onClick={handleUploadButtonClick}
+                                                    disabled={!form.to_number || attachmentBusy}
+                                                >
+                                                    <FiUpload size={16} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="attachment-icon-button attachment-icon-button-danger"
+                                                    title="Remove PDF"
+                                                    onClick={handleRemoveAttachment}
+                                                    disabled={
+                                                        !form.to_number ||
+                                                        !attachmentExists ||
+                                                        attachmentBusy
+                                                    }
+                                                >
+                                                    <FiTrash2 size={16} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                        {attachmentMessage ? (
+                                            <div className="attachment-message">
+                                                {attachmentMessage}
+                                            </div>
+                                        ) : null}
                                     </div>
                                 </div>
                             </div>
@@ -1001,13 +1471,14 @@ const TravelAuthorization = () => {
                                 <button
                                     type="submit"
                                     className="btn btn-primary"
-                                    disabled={saving}
+                                    disabled={
+                                        saving ||
+                                        (editingId
+                                            ? !permissions.canUpdate
+                                            : !permissions.canCreate)
+                                    }
                                 >
-                                    {saving
-                                        ? 'Saving...'
-                                        : editingId
-                                            ? 'Update'
-                                            : 'Save'}
+                                    {saving ? 'Saving...' : editingId ? 'Update' : 'Save'}
                                 </button>
                             </div>
                         </form>
@@ -1037,7 +1508,12 @@ const TravelAuthorization = () => {
             <DeleteModal
                 isOpen={isCancelModalOpen}
                 title="Cancel Travel Order"
-                message={<>Are you sure you want to <strong>CANCEL</strong> travel order {rowToCancel?.to_number}?</>}
+                message={
+                    <>
+                        Are you sure you want to <strong>CANCEL</strong> travel order{' '}
+                        {rowToCancel?.to_number}?
+                    </>
+                }
                 onConfirm={handleCancelConfirm}
                 onCancel={handleCancelClose}
                 confirmText="Yes, Cancel"

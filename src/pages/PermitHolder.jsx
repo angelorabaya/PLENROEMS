@@ -3,12 +3,17 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { api } from '../services/api';
+import {
+    dateInputToUTCDate,
+    formatDateInputPHT,
+    isDateOnOrAfterTodayPHT,
+} from '../utils/dateUtils';
 import plenroLogo from '../plenro.png';
-import { FiEye, FiList, FiSearch, FiRefreshCw } from 'react-icons/fi';
+import { FiEye, FiList, FiSearch, FiRefreshCw, FiUpload, FiTrash2 } from 'react-icons/fi';
 
 const formatDate = (value) => {
     if (!value) return '';
-    const d = new Date(value);
+    const d = dateInputToUTCDate(value) || new Date(value);
     if (Number.isNaN(d.getTime())) return '';
     return d.toLocaleDateString('en-US', { timeZone: 'Asia/Manila' });
 };
@@ -47,6 +52,10 @@ const PermitHolder = () => {
     const [loadingPrereqs, setLoadingPrereqs] = useState(false);
     const [prereqFileExists, setPrereqFileExists] = useState({});
     const [refreshingAttachments, setRefreshingAttachments] = useState(false);
+    const [uploadingPrereqIndex, setUploadingPrereqIndex] = useState(null);
+    const [removingPrereqIndex, setRemovingPrereqIndex] = useState(null);
+    const prereqUploadInputRef = useRef(null);
+    const pendingUploadRef = useRef(null);
 
     // Client autocomplete state
     const [clientSearch, setClientSearch] = useState('');
@@ -57,6 +66,13 @@ const PermitHolder = () => {
     useEffect(() => {
         loadClients();
     }, []);
+
+    useEffect(() => {
+        if (!error) return undefined;
+
+        const timer = setTimeout(() => setError(''), 3000);
+        return () => clearTimeout(timer);
+    }, [error]);
 
     // Restore state when returning from preview
     useEffect(() => {
@@ -94,6 +110,16 @@ const PermitHolder = () => {
             setPrereqFileExists({});
         }
     }, [selectedPermitForPrereqs]);
+
+    useEffect(() => {
+        if (!successMessage) return undefined;
+
+        const timeoutId = window.setTimeout(() => {
+            setSuccessMessage('');
+        }, 3000);
+
+        return () => window.clearTimeout(timeoutId);
+    }, [successMessage]);
 
     const loadClients = async () => {
         try {
@@ -194,8 +220,10 @@ const PermitHolder = () => {
         }
     };
 
-    // Helper to generate filename for prerequisite
-    const getPrereqFilename = (req, permitNo) => {
+    const getDisplayedPrereqFilename = (req, permitNo) => {
+        const sourceFile = (req.pr_source || '').trim();
+        if (sourceFile) return sourceFile;
+
         const cleanPermitNo = (permitNo || '').trim();
         const suffix = (req.pr_desc || '').substring(0, 2);
         if (cleanPermitNo) {
@@ -204,8 +232,8 @@ const PermitHolder = () => {
             }
             return `${cleanPermitNo}.pdf`;
         }
-        const sourceFile = (req.pr_source || '').trim();
-        return sourceFile || '';
+
+        return '';
     };
 
     const checkPrereqFileExistence = async (reqs, permitNo) => {
@@ -214,7 +242,7 @@ const PermitHolder = () => {
         const filenameToIndex = {};
 
         reqs.forEach((req, index) => {
-            const filename = getPrereqFilename(req, permitNo);
+            const filename = getDisplayedPrereqFilename(req, permitNo);
             filenames.push(filename);
             filenameToIndex[filename] = index;
         });
@@ -229,7 +257,7 @@ const PermitHolder = () => {
             const results = await api.checkAttachmentsBatch(filenames);
             const existsMap = {};
             reqs.forEach((req, index) => {
-                const filename = getPrereqFilename(req, permitNo);
+                const filename = getDisplayedPrereqFilename(req, permitNo);
                 existsMap[index] = results[filename] || false;
             });
             setPrereqFileExists(existsMap);
@@ -347,7 +375,7 @@ const PermitHolder = () => {
             return;
         }
 
-        const sourceFile = getPrereqFilename(req, selectedPermitForPrereqs.ph_permitno);
+        const sourceFile = getDisplayedPrereqFilename(req, selectedPermitForPrereqs.ph_permitno);
 
         // Skip redundant file check - we already verified existence with batch check
         const fullPath = `${ATTACHMENTS_BASE_PATH}${sourceFile}`;
@@ -371,6 +399,95 @@ const PermitHolder = () => {
         });
     };
 
+    const handlePrereqUploadButtonClick = (req, index) => {
+        if (!selectedPermitForPrereqs?.ph_permitno) {
+            setError('No permit selected');
+            return;
+        }
+
+        pendingUploadRef.current = { req, index };
+        prereqUploadInputRef.current?.click();
+    };
+
+    const handlePrereqUploadChange = async (event) => {
+        const file = event.target.files?.[0];
+        const pendingUpload = pendingUploadRef.current;
+        event.target.value = '';
+
+        if (!file || !pendingUpload) return;
+        if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+            setError('Only PDF files are allowed');
+            return;
+        }
+
+        if (!selectedPermitForPrereqs?.ph_permitno) {
+            setError('No permit selected');
+            return;
+        }
+
+        const { req, index } = pendingUpload;
+        const filename = getDisplayedPrereqFilename(req, selectedPermitForPrereqs.ph_permitno);
+
+        try {
+            setError('');
+            setSuccessMessage('');
+            setUploadingPrereqIndex(index);
+
+            const contentBase64 = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(new Error('Failed to read PDF file'));
+                reader.readAsDataURL(file);
+            });
+
+            await api.uploadNewApplicationAttachment({ filename, contentBase64 });
+            await api.updateNewApplicationRequirementAttachment({
+                permitNo: selectedPermitForPrereqs.ph_permitno,
+                description: req.pr_desc || '',
+                fileName: filename,
+                attached: true,
+            });
+
+            setPrereqFileExists((prev) => ({ ...prev, [index]: true }));
+            setSuccessMessage(`Uploaded ${filename}`);
+        } catch (err) {
+            setError(err.message || 'Failed to upload PDF');
+        } finally {
+            setUploadingPrereqIndex(null);
+            pendingUploadRef.current = null;
+        }
+    };
+
+    const handlePrereqRemoveClick = async (req, index) => {
+        if (!selectedPermitForPrereqs?.ph_permitno) {
+            setError('No permit selected');
+            return;
+        }
+
+        const filename = getDisplayedPrereqFilename(req, selectedPermitForPrereqs.ph_permitno);
+
+        try {
+            setError('');
+            setSuccessMessage('');
+            setRemovingPrereqIndex(index);
+
+            await api.removeNewApplicationAttachment({ filename });
+            await api.updateNewApplicationRequirementAttachment({
+                permitNo: selectedPermitForPrereqs.ph_permitno,
+                description: req.pr_desc || '',
+                fileName: filename,
+                attached: false,
+            });
+
+            setPrereqFileExists((prev) => ({ ...prev, [index]: false }));
+            setSuccessMessage(`Removed ${filename}`);
+        } catch (err) {
+            setError(err.message || 'Failed to remove PDF');
+        } finally {
+            setRemovingPrereqIndex(null);
+        }
+    };
+
     const handlePrerequisitesClick = (permit) => {
         setSelectedPermitForPrereqs(permit);
     };
@@ -388,6 +505,13 @@ const PermitHolder = () => {
                     <h2 className="page-title">Permit Holder</h2>
                 </div>
             </div>
+            <input
+                ref={prereqUploadInputRef}
+                type="file"
+                accept="application/pdf,.pdf"
+                style={{ display: 'none' }}
+                onChange={handlePrereqUploadChange}
+            />
 
             <div className="table-container" style={{ marginBottom: '16px', padding: '12px' }}>
                 <div className="transactions-compact-form">
@@ -546,33 +670,102 @@ const PermitHolder = () => {
                             <div
                                 className="table-container"
                                 style={{
-                                    maxHeight: '140px',
+                                    maxHeight: '170px',
                                     overflowY: 'auto',
                                 }}
                             >
                                 {permits.length > 0 ? (
                                     <table>
-                                        <thead>
+                                        <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
                                             <tr>
-                                                <th>Permit No.</th>
-                                                <th>Barangay</th>
-                                                <th>Municipality</th>
-                                                <th>Volume</th>
-                                                <th>Area</th>
-                                                <th>From</th>
-                                                <th>To</th>
-                                                <th style={{ textAlign: 'center' }}>Status</th>
-                                                <th></th>
+                                                <th
+                                                    style={{
+                                                        position: 'sticky',
+                                                        top: 0,
+                                                        background: 'var(--muted)',
+                                                    }}
+                                                >
+                                                    Permit No.
+                                                </th>
+                                                <th
+                                                    style={{
+                                                        position: 'sticky',
+                                                        top: 0,
+                                                        background: 'var(--muted)',
+                                                    }}
+                                                >
+                                                    Barangay
+                                                </th>
+                                                <th
+                                                    style={{
+                                                        position: 'sticky',
+                                                        top: 0,
+                                                        background: 'var(--muted)',
+                                                    }}
+                                                >
+                                                    Municipality
+                                                </th>
+                                                <th
+                                                    style={{
+                                                        position: 'sticky',
+                                                        top: 0,
+                                                        background: 'var(--muted)',
+                                                    }}
+                                                >
+                                                    Volume
+                                                </th>
+                                                <th
+                                                    style={{
+                                                        position: 'sticky',
+                                                        top: 0,
+                                                        background: 'var(--muted)',
+                                                    }}
+                                                >
+                                                    Area
+                                                </th>
+                                                <th
+                                                    style={{
+                                                        position: 'sticky',
+                                                        top: 0,
+                                                        background: 'var(--muted)',
+                                                    }}
+                                                >
+                                                    From
+                                                </th>
+                                                <th
+                                                    style={{
+                                                        position: 'sticky',
+                                                        top: 0,
+                                                        background: 'var(--muted)',
+                                                    }}
+                                                >
+                                                    To
+                                                </th>
+                                                <th
+                                                    style={{
+                                                        textAlign: 'center',
+                                                        position: 'sticky',
+                                                        top: 0,
+                                                        background: 'var(--muted)',
+                                                    }}
+                                                >
+                                                    Status
+                                                </th>
+                                                <th
+                                                    style={{
+                                                        position: 'sticky',
+                                                        top: 0,
+                                                        background: 'var(--muted)',
+                                                    }}
+                                                ></th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {permits.map((permit) => {
-                                                const today = new Date();
-                                                today.setHours(0, 0, 0, 0);
-                                                const dto = permit.ph_dto
-                                                    ? new Date(permit.ph_dto)
-                                                    : null;
-                                                const isActive = dto && dto >= today;
+                                                const dto = formatDateInputPHT(permit.ph_dto);
+                                                const isActive = dto
+                                                    ? isDateOnOrAfterTodayPHT(dto)
+                                                    : false;
                                                 const isSelected =
                                                     selectedPermitForPrereqs?.ph_ctrlno ===
                                                     permit.ph_ctrlno;
@@ -723,7 +916,7 @@ const PermitHolder = () => {
                                                     </th>
                                                     <th
                                                         style={{
-                                                            width: '120px',
+                                                            width: '240px',
                                                             textAlign: 'center',
                                                             position: 'sticky',
                                                             top: 0,
@@ -767,10 +960,11 @@ const PermitHolder = () => {
                                             </thead>
                                             <tbody>
                                                 {prerequisites.map((req, index) => {
-                                                    const generatedFilename = getPrereqFilename(
-                                                        req,
-                                                        selectedPermitForPrereqs.ph_permitno
-                                                    );
+                                                    const generatedFilename =
+                                                        getDisplayedPrereqFilename(
+                                                            req,
+                                                            selectedPermitForPrereqs.ph_permitno
+                                                        );
                                                     return (
                                                         <tr key={index}>
                                                             <td>{req.pr_desc || ''}</td>
@@ -784,30 +978,91 @@ const PermitHolder = () => {
                                                                 {generatedFilename}
                                                             </td>
                                                             <td style={{ textAlign: 'center' }}>
-                                                                <button
-                                                                    className="btn"
+                                                                <div
                                                                     style={{
-                                                                        backgroundColor:
-                                                                            prereqFileExists[index]
+                                                                        display: 'flex',
+                                                                        justifyContent: 'center',
+                                                                        gap: '8px',
+                                                                        flexWrap: 'wrap',
+                                                                    }}
+                                                                >
+                                                                    <button
+                                                                        className="btn btn-ghost btn-sm"
+                                                                        title="Preview PDF"
+                                                                        style={{
+                                                                            padding: '6px',
+                                                                            minWidth: 'auto',
+                                                                            color: prereqFileExists[
+                                                                                index
+                                                                            ]
                                                                                 ? '#22c55e'
                                                                                 : '#ef4444',
-                                                                        color: 'var(--primary-foreground)',
-                                                                        border: 'none',
-                                                                        padding: '4px 12px',
-                                                                        fontSize: '12px',
-                                                                    }}
-                                                                    onClick={() =>
-                                                                        handlePrereqPreviewClick(
-                                                                            req,
-                                                                            index
-                                                                        )
-                                                                    }
-                                                                    disabled={
-                                                                        !prereqFileExists[index]
-                                                                    }
-                                                                >
-                                                                    Preview
-                                                                </button>
+                                                                        }}
+                                                                        onClick={() =>
+                                                                            handlePrereqPreviewClick(
+                                                                                req,
+                                                                                index
+                                                                            )
+                                                                        }
+                                                                        disabled={
+                                                                            !prereqFileExists[index]
+                                                                        }
+                                                                    >
+                                                                        <FiEye size={16} />
+                                                                    </button>
+                                                                    <button
+                                                                        className="btn btn-ghost btn-sm"
+                                                                        title="Upload PDF"
+                                                                        style={{
+                                                                            padding: '6px',
+                                                                            minWidth: 'auto',
+                                                                            color:
+                                                                                uploadingPrereqIndex ===
+                                                                                index
+                                                                                    ? 'var(--muted-foreground)'
+                                                                                    : 'var(--foreground)',
+                                                                        }}
+                                                                        onClick={() =>
+                                                                            handlePrereqUploadButtonClick(
+                                                                                req,
+                                                                                index
+                                                                            )
+                                                                        }
+                                                                        disabled={
+                                                                            uploadingPrereqIndex ===
+                                                                                index ||
+                                                                            removingPrereqIndex ===
+                                                                                index
+                                                                        }
+                                                                    >
+                                                                        <FiUpload size={16} />
+                                                                    </button>
+                                                                    {prereqFileExists[index] && (
+                                                                        <button
+                                                                            className="btn btn-ghost btn-sm"
+                                                                            title="Remove PDF"
+                                                                            style={{
+                                                                                padding: '6px',
+                                                                                minWidth: 'auto',
+                                                                                color: '#ef4444',
+                                                                            }}
+                                                                            onClick={() =>
+                                                                                handlePrereqRemoveClick(
+                                                                                    req,
+                                                                                    index
+                                                                                )
+                                                                            }
+                                                                            disabled={
+                                                                                removingPrereqIndex ===
+                                                                                    index ||
+                                                                                uploadingPrereqIndex ===
+                                                                                    index
+                                                                            }
+                                                                        >
+                                                                            <FiTrash2 size={16} />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
                                                             </td>
                                                         </tr>
                                                     );

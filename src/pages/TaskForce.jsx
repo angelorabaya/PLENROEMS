@@ -1,16 +1,20 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useOutletContext } from 'react-router-dom';
 import { FiPlus, FiCheck, FiX, FiEdit2, FiTrash2 } from 'react-icons/fi';
 import { api } from '../services/api';
 import DeleteModal from '../components/modals/DeleteModal';
 import DuplicateDRModal from '../components/modals/DuplicateDRModal';
 import { useTheme } from '../context/ThemeContext';
-import { getTodayPHT } from '../utils/dateUtils';
+import { getTodayPHT, isDateBeforeTodayPHT } from '../utils/dateUtils';
+import { getUserPermissions } from '../utils/permissions';
 import '../styles/global.css';
 
 const TaskForce = () => {
     const { theme } = useTheme();
     const isDark = theme === 'dark';
+    const { currentUser } = useOutletContext() || {};
+    const permissions = useMemo(() => getUserPermissions(currentUser), [currentUser]);
 
     // Header state
     const [municipalities, setMunicipalities] = useState([]);
@@ -201,11 +205,7 @@ const TaskForce = () => {
     }, [checkerSearch, checkers]);
     const isPlateExpired = (expiryDate) => {
         if (!expiryDate) return false;
-        const expiry = new Date(expiryDate);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        expiry.setHours(0, 0, 0, 0);
-        return expiry < today;
+        return isDateBeforeTodayPHT(expiryDate);
     };
 
     const updateDropdownPosition = (ref, setter) => {
@@ -228,6 +228,7 @@ const TaskForce = () => {
 
     // Add record handlers
     const handleAddClick = () => {
+        if (!permissions.canCreate) return;
         setIsAdding(true);
         setNewRecord({
             tf_checker: '',
@@ -244,6 +245,7 @@ const TaskForce = () => {
     };
 
     const handleSaveNew = async () => {
+        if (!permissions.canCreate) return;
         // Prevent saving if DR validation already failed (red)
         if (drValidationStatus === false) {
             setError('Cannot save: Invalid or Duplicate DR Number');
@@ -301,6 +303,7 @@ const TaskForce = () => {
 
     // Edit handlers
     const handleEditClick = (record) => {
+        if (!permissions.canUpdate) return;
         setDrValidationStatus(null);
         setEditingId(record.tf_ctrlno);
         setEditForm({
@@ -317,6 +320,7 @@ const TaskForce = () => {
     };
 
     const handleSaveEdit = async () => {
+        if (!permissions.canUpdate) return;
         // Prevent saving if DR validation failed
         if (drValidationStatus === false) {
             setError('Cannot save: Invalid or Duplicate DR Number');
@@ -364,11 +368,13 @@ const TaskForce = () => {
 
     // Delete handlers
     const handleDeleteClick = (record) => {
+        if (!permissions.canDelete) return;
         setDeletingRecord(record);
         setIsDeleteModalOpen(true);
     };
 
     const handleConfirmDelete = async () => {
+        if (!permissions.canDelete || !deletingRecord) return;
         try {
             await api.deleteTaskforceRecord(deletingRecord.tf_ctrlno);
             setSuccessMessage('Record deleted successfully');
@@ -1020,7 +1026,7 @@ const TaskForce = () => {
             <div className="page-header">
                 <h1 className="page-title">Task Force</h1>
                 <div className="page-actions">
-                    {selectedArea && selectedDate && (
+                    {permissions.canCreate && selectedArea && selectedDate && (
                         <button className="btn btn-primary" onClick={handleAddClick}>
                             <FiPlus size={16} />
                             Add Record
@@ -1235,17 +1241,19 @@ const TaskForce = () => {
                                             />
                                         </td>
                                         <td className="table-cell" style={{ textAlign: 'center' }}>
-                                            <div className="actions-container">
-                                                <button
-                                                    className="btn-edit"
-                                                    onClick={handleSaveNew}
-                                                    title="Save"
-                                                >
-                                                    <FiCheck className="icon-sm" />
-                                                </button>
-                                                <button
-                                                    className="btn-delete"
-                                                    onClick={handleCancelNew}
+                                                <div className="actions-container">
+                                                    {permissions.canCreate && (
+                                                        <button
+                                                            className="btn-edit"
+                                                            onClick={handleSaveNew}
+                                                            title="Save"
+                                                        >
+                                                            <FiCheck className="icon-sm" />
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        className="btn-delete"
+                                                        onClick={handleCancelNew}
                                                     title="Cancel"
                                                 >
                                                     <FiX className="icon-sm" />
@@ -1340,13 +1348,15 @@ const TaskForce = () => {
                                                 style={{ textAlign: 'center' }}
                                             >
                                                 <div className="actions-container">
-                                                    <button
-                                                        className="btn-edit"
-                                                        onClick={handleSaveEdit}
-                                                        title="Save"
-                                                    >
-                                                        <FiCheck className="icon-sm" />
-                                                    </button>
+                                                    {permissions.canUpdate && (
+                                                        <button
+                                                            className="btn-edit"
+                                                            onClick={handleSaveEdit}
+                                                            title="Save"
+                                                        >
+                                                            <FiCheck className="icon-sm" />
+                                                        </button>
+                                                    )}
                                                     <button
                                                         className="btn-delete"
                                                         onClick={handleCancelEdit}
@@ -1427,20 +1437,24 @@ const TaskForce = () => {
                                                 style={{ textAlign: 'center' }}
                                             >
                                                 <div className="actions-container">
-                                                    <button
-                                                        className="btn-edit"
-                                                        onClick={() => handleEditClick(record)}
-                                                        title="Edit"
-                                                    >
-                                                        <FiEdit2 className="icon-sm" />
-                                                    </button>
-                                                    <button
-                                                        className="btn-delete"
-                                                        onClick={() => handleDeleteClick(record)}
-                                                        title="Delete"
-                                                    >
-                                                        <FiTrash2 className="icon-sm" />
-                                                    </button>
+                                                    {permissions.canUpdate && (
+                                                        <button
+                                                            className="btn-edit"
+                                                            onClick={() => handleEditClick(record)}
+                                                            title="Edit"
+                                                        >
+                                                            <FiEdit2 className="icon-sm" />
+                                                        </button>
+                                                    )}
+                                                    {permissions.canDelete && (
+                                                        <button
+                                                            className="btn-delete"
+                                                            onClick={() => handleDeleteClick(record)}
+                                                            title="Delete"
+                                                        >
+                                                            <FiTrash2 className="icon-sm" />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>

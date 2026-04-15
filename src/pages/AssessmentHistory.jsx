@@ -20,24 +20,13 @@ import {
 import { api } from '../services/api';
 import DeleteModal from '../components/modals/DeleteModal';
 import '../styles/global.css';
+import { getUserPermissions } from '../utils/permissions';
 
 const AssessmentHistory = () => {
     const navigate = useNavigate();
     const { currentUser } = useOutletContext() || {};
 
-    const isAdmin = useMemo(() => {
-        if (!currentUser) return false;
-
-        const role = currentUser.role?.toLowerCase() || '';
-        const username = currentUser.log_user?.toLowerCase()?.trim() || '';
-        const access = currentUser.log_access;
-
-        // Check various admin conditions
-        // 1. role is 'admin' (legacy/default)
-        // 2. username is 'admin'
-        // 3. log_access is 1 (standard admin flag) or '1'
-        return role === 'admin' || username === 'admin' || access == 1;
-    }, [currentUser]);
+    const permissions = useMemo(() => getUserPermissions(currentUser), [currentUser]);
 
     const [payments, setPayments] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -119,9 +108,7 @@ const AssessmentHistory = () => {
         try {
             await api.deletePaymentRegistration(paymentToDelete.aop_ctrlno);
             // Optimistically remove the deleted record from local state immediately
-            setPayments((prev) =>
-                prev.filter((p) => p.aop_ctrlno !== paymentToDelete.aop_ctrlno)
-            );
+            setPayments((prev) => prev.filter((p) => p.aop_ctrlno !== paymentToDelete.aop_ctrlno));
             setIsDeleteModalOpen(false);
             setPaymentToDelete(null);
             setSuccess('Payment registration deleted successfully');
@@ -294,7 +281,7 @@ const AssessmentHistory = () => {
                                 <FiEye className="icon-sm" />
                             )}
                         </button>
-                        {isAdmin && (
+                        {permissions.canDelete && (
                             <button
                                 className="btn-delete"
                                 onClick={() => {
@@ -310,7 +297,7 @@ const AssessmentHistory = () => {
                 ),
             },
         ],
-        [previewLoading, isAdmin]
+        [previewLoading, permissions.canDelete]
     );
 
     // Initialize TanStack Table

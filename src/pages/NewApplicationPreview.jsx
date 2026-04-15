@@ -37,6 +37,7 @@ const NewApplicationPreview = () => {
 
     useEffect(() => {
         let blobUrl = '';
+        let redirectTimer;
 
         const loadFile = async () => {
             if (!safeName) return;
@@ -57,7 +58,17 @@ const NewApplicationPreview = () => {
                 blobUrl = URL.createObjectURL(blob);
                 setPdfDataUrl(blobUrl);
             } catch (err) {
-                setLoadError(err.message || 'Failed to load attachment');
+                const message = err.message || 'Failed to load attachment';
+                setLoadError(message);
+                redirectTimer = window.setTimeout(() => {
+                    navigate(returnPath, {
+                        replace: true,
+                        state: {
+                            restoreState: returnState,
+                            previewError: message,
+                        },
+                    });
+                }, 100);
             } finally {
                 setLoading(false);
             }
@@ -66,11 +77,14 @@ const NewApplicationPreview = () => {
 
         // Cleanup blob URL on unmount
         return () => {
+            if (redirectTimer) {
+                window.clearTimeout(redirectTimer);
+            }
             if (blobUrl) {
                 URL.revokeObjectURL(blobUrl);
             }
         };
-    }, [safeName]);
+    }, [navigate, returnPath, returnState, safeName]);
 
     const pageStyle = {
         backgroundColor: bgColor,

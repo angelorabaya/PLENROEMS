@@ -22,6 +22,7 @@ import { api } from '../services/api';
 import PermitTypeModal from '../components/modals/PermitTypeModal';
 import DeleteModal from '../components/modals/DeleteModal';
 import '../styles/global.css';
+import { getUserPermissions } from '../utils/permissions';
 
 const PermitTypes = () => {
     const [permitTypes, setPermitTypes] = useState([]);
@@ -120,19 +121,7 @@ const PermitTypes = () => {
 
     const { currentUser } = useOutletContext();
 
-    const isAdmin = useMemo(() => {
-        if (!currentUser) return false;
-
-        const role = currentUser.role?.toLowerCase() || '';
-        const username = currentUser.log_user?.toLowerCase()?.trim() || '';
-        const access = currentUser.log_access;
-
-        // Check various admin conditions
-        // 1. role is 'admin' (legacy/default)
-        // 2. username is 'admin'
-        // 3. log_access is 1 (standard admin flag) or '1'
-        return role === 'admin' || username === 'admin' || access == 1;
-    }, [currentUser]);
+    const permissions = useMemo(() => getUserPermissions(currentUser), [currentUser]);
 
     // Define columns for TanStack Table
     const columns = useMemo(
@@ -184,17 +173,19 @@ const PermitTypes = () => {
                 enableSorting: false,
                 cell: ({ row }) => (
                     <div className="actions-container">
-                        <button
-                            className="btn-edit"
-                            onClick={() => {
-                                setEditingPermitType(row.original);
-                                setIsModalOpen(true);
-                            }}
-                            title="Edit"
-                        >
-                            <FiEdit2 className="icon-sm" />
-                        </button>
-                        {isAdmin && (
+                        {permissions.canUpdate && (
+                            <button
+                                className="btn-edit"
+                                onClick={() => {
+                                    setEditingPermitType(row.original);
+                                    setIsModalOpen(true);
+                                }}
+                                title="Edit"
+                            >
+                                <FiEdit2 className="icon-sm" />
+                            </button>
+                        )}
+                        {permissions.canDelete && (
                             <button
                                 className="btn-delete"
                                 onClick={() => {
@@ -210,7 +201,7 @@ const PermitTypes = () => {
                 ),
             },
         ],
-        [isAdmin]
+        [permissions.canDelete, permissions.canUpdate]
     );
 
     // Initialize TanStack Table
@@ -255,16 +246,18 @@ const PermitTypes = () => {
                             onChange={(e) => setGlobalFilter(e.target.value)}
                         />
                     </div>
-                    <button
-                        className="btn btn-primary"
-                        onClick={() => {
-                            setEditingPermitType(null);
-                            setIsModalOpen(true);
-                        }}
-                    >
-                        <FiPlus size={16} />
-                        Add Permit Type
-                    </button>
+                    {permissions.canCreate && (
+                        <button
+                            className="btn btn-primary"
+                            onClick={() => {
+                                setEditingPermitType(null);
+                                setIsModalOpen(true);
+                            }}
+                        >
+                            <FiPlus size={16} />
+                            Add Permit Type
+                        </button>
+                    )}
                 </div>
             </div>
 

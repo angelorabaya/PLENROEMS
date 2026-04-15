@@ -16,6 +16,17 @@ const getHeaders = () => {
 };
 
 export const api = {
+    getServerTime: async () => {
+        const response = await fetch(`${API_BASE}/api/system/time`, {
+            headers: getHeaders(),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.error || 'Failed to fetch server time');
+        }
+        return result;
+    },
+
     login: async (username, password) => {
         const response = await fetch(`${API_BASE}/api/login`, {
             method: 'POST',
@@ -30,11 +41,69 @@ export const api = {
         return user;
     },
 
+    getUsers: async () => {
+        const response = await fetch(`${API_BASE}/api/users`, {
+            headers: getHeaders(),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.error || 'Failed to fetch users');
+        }
+        return result;
+    },
+
+    createUser: async (data) => {
+        const response = await fetch(`${API_BASE}/api/users`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify(data),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.error || 'Failed to create user');
+        }
+        return result;
+    },
+
+    updateUser: async (id, data) => {
+        const response = await fetch(`${API_BASE}/api/users/${encodeURIComponent(id)}`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify(data),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.error || 'Failed to update user');
+        }
+        return result;
+    },
+
+    deleteUser: async (id) => {
+        const response = await fetch(`${API_BASE}/api/users/${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+            headers: getHeaders(),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.error || 'Failed to delete user');
+        }
+        return result;
+    },
+
     getClients: async () => {
         const response = await fetch(`${API_BASE}/api/clients`);
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
             throw new Error(errorData.error || 'Failed to fetch clients');
+        }
+        return response.json();
+    },
+
+    getApplicantClients: async () => {
+        const response = await fetch(`${API_BASE}/api/clients/applicants`);
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Failed to fetch applicant clients');
         }
         return response.json();
     },
@@ -115,6 +184,12 @@ export const api = {
     getPermitReqs: async () => {
         const response = await fetch(`${API_BASE}/api/permitreqs`);
         if (!response.ok) throw new Error('Failed to fetch permit requirements');
+        return response.json();
+    },
+
+    getPermitReqStatuses: async () => {
+        const response = await fetch(`${API_BASE}/api/permitreqs/statuses`);
+        if (!response.ok) throw new Error('Failed to fetch requirement types');
         return response.json();
     },
 
@@ -269,7 +344,7 @@ export const api = {
     },
 
     getPaymentRegistrations: async () => {
-        const response = await fetch(`${API_BASE}/api/paymentregistrations`);
+        const response = await fetch(`${API_BASE}/api/paymentregistrations?_t=${Date.now()}`);
         if (!response.ok) throw new Error('Failed to fetch payment registrations');
         return response.json();
     },
@@ -406,6 +481,19 @@ export const api = {
         return response.json();
     },
 
+    deleteNewApplication: async ({ permitNo, clientName }) => {
+        const response = await fetch(`${API_BASE}/api/newapplication`, {
+            method: 'DELETE',
+            headers: getHeaders(),
+            body: JSON.stringify({ permitNo, clientName }),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.error || 'Failed to delete new application');
+        }
+        return result;
+    },
+
     checkNewApplicationAttachment: async (filename) => {
         const response = await fetch(
             `${API_BASE}/api/newapplication/preview/${encodeURIComponent(filename)}`
@@ -442,6 +530,32 @@ export const api = {
         return result;
     },
 
+    uploadNewApplicationAttachment: async ({ filename, contentBase64 }) => {
+        const response = await fetch(`${API_BASE}/api/newapplication/upload`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ filename, contentBase64 }),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.error || 'Failed to upload attachment');
+        }
+        return result;
+    },
+
+    removeNewApplicationAttachment: async ({ filename }) => {
+        const response = await fetch(`${API_BASE}/api/newapplication/remove`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ filename }),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.error || 'Failed to remove attachment');
+        }
+        return result;
+    },
+
     updateNewApplicationRequirementAttachment: async ({
         permitNo,
         description,
@@ -450,7 +564,7 @@ export const api = {
     }) => {
         const response = await fetch(`${API_BASE}/api/newapplication/requirements/attachment`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getHeaders(),
             body: JSON.stringify({ permitNo, description, fileName, attached }),
         });
         const result = await response.json();
@@ -482,6 +596,24 @@ export const api = {
         const result = await response.json();
         if (!response.ok) {
             throw new Error(result.error || 'Failed to update permit number');
+        }
+        return result;
+    },
+
+    processNewApplicationApplicant: async ({
+        clientId,
+        applicantName,
+        tempPermitNo,
+        requirementType,
+    }) => {
+        const response = await fetch(`${API_BASE}/api/newapplication/process-applicant`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ clientId, applicantName, tempPermitNo, requirementType }),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.error || 'Failed to process applicant');
         }
         return result;
     },
@@ -941,10 +1073,13 @@ export const api = {
     },
 
     cancelTravelOrder: async (id) => {
-        const response = await fetch(`${API_BASE}/api/travelorders/${encodeURIComponent(id)}/cancel`, {
-            method: 'PUT',
-            headers: getHeaders(),
-        });
+        const response = await fetch(
+            `${API_BASE}/api/travelorders/${encodeURIComponent(id)}/cancel`,
+            {
+                method: 'PUT',
+                headers: getHeaders(),
+            }
+        );
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Failed to cancel travel order');
         return result;
@@ -1017,6 +1152,51 @@ export const api = {
         return result;
     },
 
+    // Employee Directory
+    getEmployeeDirectory: async () => {
+        const response = await fetch(`${API_BASE}/api/employee-directory`);
+        if (!response.ok) throw new Error('Failed to fetch employee directory');
+        return response.json();
+    },
+
+    createEmployeeDirectoryEntry: async (data) => {
+        const response = await fetch(`${API_BASE}/api/employee-directory`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify(data),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to create employee');
+        return result;
+    },
+
+    updateEmployeeDirectoryEntry: async (id, data) => {
+        const response = await fetch(
+            `${API_BASE}/api/employee-directory/${encodeURIComponent(id)}`,
+            {
+                method: 'PUT',
+                headers: getHeaders(),
+                body: JSON.stringify(data),
+            }
+        );
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to update employee');
+        return result;
+    },
+
+    deleteEmployeeDirectoryEntry: async (id) => {
+        const response = await fetch(
+            `${API_BASE}/api/employee-directory/${encodeURIComponent(id)}`,
+            {
+                method: 'DELETE',
+                headers: getHeaders(),
+            }
+        );
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to delete employee');
+        return result;
+    },
+
     getEmployees: async () => {
         const response = await fetch(`${API_BASE}/api/docreceiving/employees`);
         if (!response.ok) throw new Error('Failed to fetch employees');
@@ -1054,21 +1234,27 @@ export const api = {
     },
 
     updateLeaveApplication: async (id, data) => {
-        const response = await fetch(`${API_BASE}/api/leave/applications/${encodeURIComponent(id)}`, {
-            method: 'PUT',
-            headers: getHeaders(),
-            body: JSON.stringify(data),
-        });
+        const response = await fetch(
+            `${API_BASE}/api/leave/applications/${encodeURIComponent(id)}`,
+            {
+                method: 'PUT',
+                headers: getHeaders(),
+                body: JSON.stringify(data),
+            }
+        );
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Failed to update leave application');
         return result;
     },
 
     deleteLeaveApplication: async (id) => {
-        const response = await fetch(`${API_BASE}/api/leave/applications/${encodeURIComponent(id)}`, {
-            method: 'DELETE',
-            headers: getHeaders(),
-        });
+        const response = await fetch(
+            `${API_BASE}/api/leave/applications/${encodeURIComponent(id)}`,
+            {
+                method: 'DELETE',
+                headers: getHeaders(),
+            }
+        );
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Failed to delete leave application');
         return result;

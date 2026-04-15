@@ -1,22 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import {
     Card,
-    Metric,
     Text,
     Flex,
     BadgeDelta,
-    Grid,
     Title,
     AreaChart,
     Subtitle,
     ProgressBar,
 } from '@tremor/react';
-import { FiFileText, FiTruck, FiClipboard, FiTrendingUp, FiRefreshCw } from 'react-icons/fi';
+import {
+    FiAlertTriangle,
+    FiCalendar,
+    FiClipboard,
+    FiFileText,
+    FiMapPin,
+    FiRefreshCw,
+    FiShield,
+    FiTrendingUp,
+    FiTruck,
+} from 'react-icons/fi';
 import { api } from '../services/api';
 import plenroLogo from '../plenro.png';
 import '../styles/global.css';
 import ThemeToggle from '../components/ThemeToggle';
 import { useTheme } from '../context/ThemeContext';
+import { formatDatePHT, getCurrentYearPHT } from '../utils/dateUtils';
 
 const formatCurrency = (value) => {
     const formatted = new Intl.NumberFormat('en-PH', {
@@ -28,6 +37,75 @@ const formatCurrency = (value) => {
 
 const formatNumber = (value) => {
     return new Intl.NumberFormat('en-PH').format(value);
+};
+
+const formatDate = (value) => {
+    if (!value) return 'No expiry date';
+    return (
+        formatDatePHT(value, 'en-PH', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        }) || 'No expiry date'
+    );
+};
+
+const getPermitAlertMeta = (daysUntilExpiry) => {
+    if (daysUntilExpiry < 0) {
+        return {
+            label: `${Math.abs(daysUntilExpiry)} day${Math.abs(daysUntilExpiry) === 1 ? '' : 's'} overdue`,
+            tone: 'text-red-500',
+            badge: 'bg-red-500/10 text-red-500 border-red-500/20',
+        };
+    }
+
+    if (daysUntilExpiry === 0) {
+        return {
+            label: 'Expires today',
+            tone: 'text-amber-500',
+            badge: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+        };
+    }
+
+    return {
+        label: `Expires in ${daysUntilExpiry} day${daysUntilExpiry === 1 ? '' : 's'}`,
+        tone: 'text-amber-500',
+        badge: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+    };
+};
+
+const getPermitBucketLabel = (bucket) => {
+    if (bucket === 'thisMonth') return 'This month';
+    if (bucket === 'nextMonth') return 'Next month';
+    return 'Scheduled';
+};
+
+const buildDonutSegments = (items, palette) => {
+    const total = items.reduce((sum, item) => sum + (Number(item.value) || 0), 0);
+    if (!total) return [];
+
+    let current = 0;
+    return items.map((item, index) => {
+        const value = Number(item.value) || 0;
+        const start = current;
+        const share = (value / total) * 100;
+        current += share;
+
+        return {
+            ...item,
+            color: palette[index % palette.length],
+            share,
+            start,
+            end: current,
+        };
+    });
+};
+
+const donutBackground = (segments, fallback) => {
+    if (!segments.length) return fallback;
+    return `conic-gradient(${segments
+        .map((segment) => `${segment.color} ${segment.start}% ${segment.end}%`)
+        .join(', ')})`;
 };
 
 // Premium KPI Card with subtle gradient - now theme-aware
@@ -129,6 +207,81 @@ const KPICard = ({ title, value, subtitle, icon: Icon, accentColor, trend, isDar
     );
 };
 
+const InfographicDonut = ({ title, subtitle, totalLabel, totalValue, segments, isDark }) => {
+    const ringBackground = donutBackground(
+        segments,
+        isDark ? 'rgba(31, 41, 55, 0.9)' : 'rgba(226, 232, 240, 0.95)'
+    );
+
+    return (
+        <div
+            className={`rounded-[28px] border p-5 ${isDark ? 'border-slate-800 bg-slate-950/80' : 'border-slate-200 bg-white/90'}`}
+        >
+            <div className="mb-5">
+                <p
+                    className={`text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}
+                >
+                    {title}
+                </p>
+                <p className={`mt-1 text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    {subtitle}
+                </p>
+            </div>
+
+            <div className="flex flex-col items-center gap-5">
+                <div
+                    className={`relative flex h-52 w-52 items-center justify-center rounded-full shadow-[0_24px_60px_-28px_rgba(8,15,30,0.45)] ${isDark ? 'bg-slate-900/70' : 'bg-slate-100/80'}`}
+                    style={{ backgroundImage: ringBackground }}
+                >
+                    <div
+                        className={`flex h-32 w-32 flex-col items-center justify-center rounded-full border ${isDark ? 'border-slate-800 bg-slate-950 text-slate-100' : 'border-slate-200 bg-white text-slate-900'}`}
+                    >
+                        <span
+                            className={`text-[11px] uppercase tracking-[0.24em] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}
+                        >
+                            {totalLabel}
+                        </span>
+                        <span className="mt-1 text-4xl font-bold leading-none">{totalValue}</span>
+                    </div>
+                </div>
+
+                <div className="grid w-full gap-3">
+                    {segments.map((segment) => (
+                        <div
+                            key={segment.name}
+                            className={`flex items-center justify-between rounded-2xl border px-3 py-2.5 ${isDark ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-slate-50/90'}`}
+                        >
+                            <div className="flex items-center gap-3 min-w-0">
+                                <span
+                                    className="h-3 w-3 shrink-0 rounded-full"
+                                    style={{ backgroundColor: segment.color }}
+                                />
+                                <div className="min-w-0">
+                                    <p
+                                        className={`truncate text-sm font-medium ${isDark ? 'text-slate-100' : 'text-slate-900'}`}
+                                    >
+                                        {segment.name}
+                                    </p>
+                                    <p
+                                        className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}
+                                    >
+                                        {segment.share.toFixed(1)}%
+                                    </p>
+                                </div>
+                            </div>
+                            <span
+                                className={`ml-3 rounded-full px-2.5 py-1 text-xs font-semibold ${isDark ? 'bg-slate-800 text-slate-200' : 'bg-slate-200 text-slate-700'}`}
+                            >
+                                {formatNumber(segment.value)}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // Premium Peso Icon
 const PesoIcon = ({ className }) => <span className={`font-bold text-lg ${className}`}>₱</span>;
 
@@ -141,8 +294,8 @@ const Home = () => {
     const [error, setError] = useState('');
 
     const [availableYears, setAvailableYears] = useState([]);
-    const [year1, setYear1] = useState(new Date().getFullYear());
-    const [year2, setYear2] = useState(new Date().getFullYear() - 1);
+    const [year1, setYear1] = useState(getCurrentYearPHT());
+    const [year2, setYear2] = useState(getCurrentYearPHT() - 1);
 
     useEffect(() => {
         loadAvailableYears();
@@ -204,6 +357,18 @@ const Home = () => {
         stats?.collectionThisYear && stats?.collectionLastYear
             ? Math.min((stats.collectionThisYear / stats.collectionLastYear) * 100, 100)
             : 0;
+    const taskForceAreaData = (stats?.taskForceSnapshot?.topAreas || []).map((area) => ({
+        name: area.tf_area,
+        value: Number(area.totalRecords) || 0,
+    }));
+    const areaDonutSegments = buildDonutSegments(taskForceAreaData, [
+        '#f59e0b',
+        '#8b5cf6',
+        '#14b8a6',
+        '#fbbf24',
+        '#a78bfa',
+        '#2dd4bf',
+    ]);
 
     return (
         <div className={`min-h-full p-8 ${isDark ? 'bg-gray-950' : 'bg-gray-50'}`}>
@@ -340,6 +505,168 @@ const Home = () => {
                             isDark={isDark}
                         />
                     </div>
+                </div>
+
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    <Card
+                        className={`ring-0 p-6 ${isDark ? 'bg-gray-900/50 border-gray-800' : 'bg-white border-gray-200 shadow-sm'}`}
+                    >
+                        <div className="flex items-start justify-between gap-4 mb-5">
+                            <div>
+                                <Title
+                                    className={`text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}
+                                >
+                                    Permit Expiry Alerts
+                                </Title>
+                                <Subtitle className={isDark ? 'text-gray-500' : 'text-gray-600'}>
+                                    Expiries for this month and next month
+                                </Subtitle>
+                            </div>
+                            <div
+                                className={`p-3 rounded-xl ${isDark ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-50 text-amber-600'}`}
+                            >
+                                <FiAlertTriangle className="w-5 h-5" />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 mb-5">
+                            <div
+                                className={`rounded-2xl border p-4 ${isDark ? 'bg-gray-950/70 border-gray-800' : 'bg-gray-50 border-gray-200'}`}
+                            >
+                                <p
+                                    className={`text-xs uppercase tracking-wide ${isDark ? 'text-gray-500' : 'text-gray-500'}`}
+                                >
+                                    This Month
+                                </p>
+                                <p
+                                    className={`mt-2 text-3xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}
+                                >
+                                    {formatNumber(
+                                        stats?.permitExpiryAlerts?.expiringThisMonth || 0
+                                    )}
+                                </p>
+                            </div>
+                            <div
+                                className={`rounded-2xl border p-4 ${isDark ? 'bg-gray-950/70 border-gray-800' : 'bg-gray-50 border-gray-200'}`}
+                            >
+                                <p
+                                    className={`text-xs uppercase tracking-wide ${isDark ? 'text-gray-500' : 'text-gray-500'}`}
+                                >
+                                    Next Month
+                                </p>
+                                <p className="mt-2 text-3xl font-bold text-amber-500">
+                                    {formatNumber(
+                                        stats?.permitExpiryAlerts?.expiringNextMonth || 0
+                                    )}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            {(stats?.permitExpiryAlerts?.items || []).length > 0 ? (
+                                stats.permitExpiryAlerts.items.map((item) => {
+                                    const meta = getPermitAlertMeta(item.daysUntilExpiry);
+
+                                    return (
+                                        <div
+                                            key={`${item.ph_ctrlno}-${item.ph_permitno}`}
+                                            className={`rounded-2xl border p-4 ${isDark ? 'border-gray-800 bg-gray-950/60' : 'border-gray-200 bg-gray-50/80'}`}
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <p
+                                                        className={`font-semibold truncate ${isDark ? 'text-white' : 'text-gray-900'}`}
+                                                    >
+                                                        {item.ph_permitno || 'Untitled permit'}
+                                                    </p>
+                                                    <p
+                                                        className={`text-sm truncate ${isDark ? 'text-gray-400' : 'text-gray-600'}`}
+                                                    >
+                                                        {item.ph_cname ||
+                                                            'Unassigned permit holder'}
+                                                    </p>
+                                                </div>
+                                                <span
+                                                    className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium ${meta.badge}`}
+                                                >
+                                                    {getPermitBucketLabel(item.expiryBucket)} ·{' '}
+                                                    {meta.label}
+                                                </span>
+                                            </div>
+                                            <div
+                                                className={`mt-3 flex flex-wrap items-center gap-3 text-sm ${isDark ? 'text-gray-500' : 'text-gray-600'}`}
+                                            >
+                                                <span className="inline-flex items-center gap-1.5">
+                                                    <FiMapPin className="w-4 h-4" />
+                                                    {item.ph_mun || 'Municipality not set'}
+                                                </span>
+                                                <span className="inline-flex items-center gap-1.5">
+                                                    <FiCalendar
+                                                        className={`w-4 h-4 ${meta.tone}`}
+                                                    />
+                                                    {formatDate(item.ph_dto)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            ) : (
+                                <div
+                                    className={`rounded-2xl border border-dashed p-6 text-sm text-center ${isDark ? 'border-gray-800 text-gray-500 bg-gray-950/40' : 'border-gray-200 text-gray-500 bg-gray-50/70'}`}
+                                >
+                                    No permits are scheduled to expire this month or next month.
+                                </div>
+                            )}
+                        </div>
+                    </Card>
+
+                    <Card
+                        className={`ring-0 p-6 ${isDark ? 'bg-gray-900/50 border-gray-800' : 'bg-white border-gray-200 shadow-sm'}`}
+                    >
+                        <div className="flex items-start justify-between gap-4 mb-5">
+                            <div>
+                                <Title
+                                    className={`text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}
+                                >
+                                    Task Force Activity Snapshot
+                                </Title>
+                                <Subtitle className={isDark ? 'text-gray-500' : 'text-gray-600'}>
+                                    Rolling enforcement activity from recent records
+                                </Subtitle>
+                            </div>
+                            <div
+                                className={`p-3 rounded-xl ${isDark ? 'bg-cyan-500/10 text-cyan-400' : 'bg-cyan-50 text-cyan-600'}`}
+                            >
+                                <FiShield className="w-5 h-5" />
+                            </div>
+                        </div>
+
+                        <div>
+                            <div className="grid grid-cols-1 gap-4">
+                                {taskForceAreaData.length > 0 ? (
+                                    <InfographicDonut
+                                        title="Area Share, Last 30 Days"
+                                        subtitle="Where task force records were concentrated most"
+                                        totalLabel="Records"
+                                        totalValue={formatNumber(
+                                            taskForceAreaData.reduce(
+                                                (sum, item) => sum + (Number(item.value) || 0),
+                                                0
+                                            )
+                                        )}
+                                        segments={areaDonutSegments}
+                                        isDark={isDark}
+                                    />
+                                ) : (
+                                    <div
+                                        className={`rounded-2xl border border-dashed p-6 text-sm text-center ${isDark ? 'border-gray-800 text-gray-500 bg-gray-950/40' : 'border-gray-200 text-gray-500 bg-gray-50/70'}`}
+                                    >
+                                        No recent area activity found.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </Card>
                 </div>
 
                 {/* Chart Section */}

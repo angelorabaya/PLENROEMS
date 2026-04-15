@@ -24,6 +24,7 @@ import {
 import { api } from '../services/api';
 import ClientModal from '../components/modals/ClientModal';
 import DeleteModal from '../components/modals/DeleteModal';
+import { getUserPermissions } from '../utils/permissions';
 
 import '../styles/global.css';
 
@@ -125,19 +126,7 @@ const Clients = () => {
 
     const { currentUser } = useOutletContext();
 
-    const isAdmin = useMemo(() => {
-        if (!currentUser) return false;
-
-        const role = currentUser.role?.toLowerCase() || '';
-        const username = currentUser.log_user?.toLowerCase()?.trim() || '';
-        const access = currentUser.log_access;
-
-        // Check various admin conditions
-        // 1. role is 'admin' (legacy/default)
-        // 2. username is 'admin'
-        // 3. log_access is 1 (standard admin flag) or '1'
-        return role === 'admin' || username === 'admin' || access == 1;
-    }, [currentUser]);
+    const permissions = useMemo(() => getUserPermissions(currentUser), [currentUser]);
 
     // Define columns for TanStack Table
     const columns = useMemo(
@@ -189,17 +178,19 @@ const Clients = () => {
                 enableSorting: false,
                 cell: ({ row }) => (
                     <div className="actions-container">
-                        <button
-                            className="btn-edit"
-                            title="Edit"
-                            onClick={() => {
-                                setEditingClient(row.original);
-                                setIsModalOpen(true);
-                            }}
-                        >
-                            <FiEdit2 className="icon-sm" />
-                        </button>
-                        {isAdmin && (
+                        {permissions.canUpdate && (
+                            <button
+                                className="btn-edit"
+                                title="Edit"
+                                onClick={() => {
+                                    setEditingClient(row.original);
+                                    setIsModalOpen(true);
+                                }}
+                            >
+                                <FiEdit2 className="icon-sm" />
+                            </button>
+                        )}
+                        {permissions.canDelete && (
                             <button
                                 className="btn-delete"
                                 title="Delete"
@@ -215,7 +206,7 @@ const Clients = () => {
                 ),
             },
         ],
-        [isAdmin]
+        [permissions.canDelete, permissions.canUpdate]
     );
 
     // Initialize TanStack Table
@@ -261,15 +252,17 @@ const Clients = () => {
                             onChange={(e) => setGlobalFilter(e.target.value)}
                         />
                     </div>
-                    <button
-                        className="btn btn-primary"
-                        onClick={() => {
-                            setEditingClient(null);
-                            setIsModalOpen(true);
-                        }}
-                    >
-                        <FiPlus /> Add Client
-                    </button>
+                    {permissions.canCreate && (
+                        <button
+                            className="btn btn-primary"
+                            onClick={() => {
+                                setEditingClient(null);
+                                setIsModalOpen(true);
+                            }}
+                        >
+                            <FiPlus /> Add Client
+                        </button>
+                    )}
                 </div>
             </div>
 

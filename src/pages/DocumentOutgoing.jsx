@@ -6,37 +6,25 @@ import plenroLogo from '../plenro.png';
 import DocOutgoingModal from '../components/modals/DocOutgoingModal';
 import DeleteModal from '../components/modals/DeleteModal';
 import '../styles/global.css';
+import { getUserPermissions } from '../utils/permissions';
+import { formatDateTimePHT } from '../utils/dateUtils';
 
 const formatDateTime = (value) => {
     if (!value) return '';
-    let dateStr = String(value);
 
-    // Clean up SQL Server datetime2/ISO string
-    // Capture YYYY-MM-DD HH:mm:ss regardless of T or space separator
-    const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2}):(\d{2})/);
+    const match = String(value).match(
+        /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/
+    );
 
-    let dateObj;
     if (match) {
-        const [, year, month, day, hours, minutes, seconds] = match;
-        // Construct as UTC to ensure we have a fixed reference point before converting to target timezone
-        dateObj = new Date(Date.UTC(year, month - 1, day, hours, minutes, seconds));
-    } else {
-        // Fallback or if already standard format
-        dateObj = new Date(value);
+        const [, year, month, day, hour, minute, second = '00'] = match;
+        const hourNumber = Number(hour);
+        const meridiem = hourNumber >= 12 ? 'PM' : 'AM';
+        const displayHour = String(hourNumber % 12 || 12).padStart(2, '0');
+        return `${month}/${day}/${year}, ${displayHour}:${minute}:${second} ${meridiem}`;
     }
 
-    if (isNaN(dateObj.getTime())) return value;
-
-    // Display formatted to Philippine Standard Time (GMT+8)
-    return dateObj.toLocaleString('en-US', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true,
-        timeZone: 'Asia/Manila',
-    });
+    return formatDateTimePHT(value) || String(value);
 };
 
 const DEFAULT_ATTACHMENTS_BASE_PATH = '\\\\Enro-server\\servershare\\attachments\\';
@@ -64,19 +52,18 @@ const DocumentOutgoing = () => {
 
     const { currentUser } = useOutletContext();
 
-    const isAdmin = useMemo(() => {
-        if (!currentUser) return false;
-
-        const role = currentUser.role?.toLowerCase() || '';
-        const username = currentUser.log_user?.toLowerCase()?.trim() || '';
-        const access = currentUser.log_access;
-
-        return role === 'admin' || username === 'admin' || access == 1;
-    }, [currentUser]);
+    const permissions = useMemo(() => getUserPermissions(currentUser), [currentUser]);
 
     useEffect(() => {
         fetchRecords();
     }, []);
+
+    useEffect(() => {
+        if (!error) return undefined;
+
+        const timer = setTimeout(() => setError(''), 3000);
+        return () => clearTimeout(timer);
+    }, [error]);
 
     const fetchRecords = async () => {
         setLoading(true);
@@ -192,9 +179,11 @@ const DocumentOutgoing = () => {
                     />
                     <h2 className="page-title">Document Outgoing</h2>
                 </div>
-                <button className="btn btn-primary" onClick={handleAddClick}>
-                    + Add Document
-                </button>
+                {permissions.canCreate && (
+                    <button className="btn btn-primary" onClick={handleAddClick}>
+                        + Add Document
+                    </button>
+                )}
             </div>
 
             {error && <div className="error-alert">{error}</div>}
@@ -269,14 +258,16 @@ const DocumentOutgoing = () => {
                                             >
                                                 <FiEye size={14} />
                                             </button>
-                                            <button
-                                                className="btn-icon btn-icon-sm"
-                                                onClick={() => handleEditClick(record)}
-                                                title="Edit"
-                                            >
-                                                <FiEdit2 size={14} />
-                                            </button>
-                                            {isAdmin && (
+                                            {permissions.canUpdate && (
+                                                <button
+                                                    className="btn-icon btn-icon-sm"
+                                                    onClick={() => handleEditClick(record)}
+                                                    title="Edit"
+                                                >
+                                                    <FiEdit2 size={14} />
+                                                </button>
+                                            )}
+                                            {permissions.canDelete && (
                                                 <button
                                                     className="btn-icon btn-icon-sm btn-icon-danger"
                                                     onClick={() => handleDeleteClick(record)}

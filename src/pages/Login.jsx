@@ -1,13 +1,25 @@
 import React, { useState } from 'react';
-import { api } from '../services/api';
+import * as Dialog from '@radix-ui/react-dialog';
+import { changePassword, login } from '../services/auth';
+import { FiX } from 'react-icons/fi';
 import plenroLogo from '../plenro.png';
 import '../styles/global.css';
+import '../components/modals/Modal.css';
 
 const Login = ({ onLogin }) => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [pendingUser, setPendingUser] = useState(null);
+    const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+    const [changePasswordData, setChangePasswordData] = useState({
+        oldPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+    });
+    const [changePasswordError, setChangePasswordError] = useState('');
+    const [changePasswordLoading, setChangePasswordLoading] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -20,12 +32,67 @@ const Login = ({ onLogin }) => {
         setError('');
 
         try {
-            const user = await api.login(username, password);
+            const user = await login(username, password);
+            if (user.requirePasswordChange) {
+                setPendingUser(user);
+                setChangePasswordData({
+                    oldPassword: password,
+                    newPassword: '',
+                    confirmPassword: '',
+                });
+                setChangePasswordError('');
+                setIsChangePasswordOpen(true);
+                return;
+            }
             onLogin(user);
         } catch (err) {
             setError(err.message);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleChangePasswordSubmit = async (e) => {
+        e.preventDefault();
+        if (!pendingUser?.log_user) {
+            setChangePasswordError('No user is pending for password change.');
+            return;
+        }
+
+        if (
+            !changePasswordData.oldPassword ||
+            !changePasswordData.newPassword ||
+            !changePasswordData.confirmPassword
+        ) {
+            setChangePasswordError('Please fill in all password fields.');
+            return;
+        }
+
+        if (changePasswordData.newPassword.length < 8) {
+            setChangePasswordError('New password must be at least 8 characters long.');
+            return;
+        }
+
+        if (changePasswordData.newPassword !== changePasswordData.confirmPassword) {
+            setChangePasswordError('New password and confirm password do not match.');
+            return;
+        }
+
+        try {
+            setChangePasswordLoading(true);
+            setChangePasswordError('');
+            const result = await changePassword(
+                pendingUser.log_user,
+                changePasswordData.oldPassword,
+                changePasswordData.newPassword
+            );
+            setIsChangePasswordOpen(false);
+            setPendingUser(null);
+            onLogin(result.user);
+        } catch (err) {
+            setChangePasswordError(err.message);
+        } finally {
+            setChangePasswordLoading(false);
         }
     };
 
@@ -96,6 +163,102 @@ const Login = ({ onLogin }) => {
                     </button>
                 </form>
             </div>
+
+            <Dialog.Root open={isChangePasswordOpen}>
+                <Dialog.Portal>
+                    <Dialog.Overlay className="dialog-overlay" />
+                    <Dialog.Content className="dialog-content dialog-content-sm">
+                        <div className="dialog-header">
+                            <Dialog.Title className="dialog-title">Change Password</Dialog.Title>
+                            <button
+                                type="button"
+                                className="dialog-close"
+                                aria-label="Close"
+                                disabled
+                            >
+                                <FiX size={16} />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleChangePasswordSubmit}>
+                            <div className="dialog-body">
+                                <p
+                                    style={{
+                                        marginBottom: '0.75rem',
+                                        fontSize: '0.875rem',
+                                        color: 'var(--muted-foreground)',
+                                    }}
+                                >
+                                    Your account is still using a legacy password. You must change
+                                    it before continuing.
+                                </p>
+
+                                {changePasswordError && (
+                                    <div className="login-error" style={{ marginBottom: '1rem' }}>
+                                        {changePasswordError}
+                                    </div>
+                                )}
+
+                                <div className="form-group">
+                                    <label className="form-label">Old Password</label>
+                                    <input
+                                        type="password"
+                                        className="form-input"
+                                        value={changePasswordData.oldPassword}
+                                        onChange={(e) =>
+                                            setChangePasswordData((prev) => ({
+                                                ...prev,
+                                                oldPassword: e.target.value,
+                                            }))
+                                        }
+                                        required
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">New Password</label>
+                                    <input
+                                        type="password"
+                                        className="form-input"
+                                        value={changePasswordData.newPassword}
+                                        onChange={(e) =>
+                                            setChangePasswordData((prev) => ({
+                                                ...prev,
+                                                newPassword: e.target.value,
+                                            }))
+                                        }
+                                        required
+                                    />
+                                </div>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label className="form-label">Confirm Password</label>
+                                    <input
+                                        type="password"
+                                        className="form-input"
+                                        value={changePasswordData.confirmPassword}
+                                        onChange={(e) =>
+                                            setChangePasswordData((prev) => ({
+                                                ...prev,
+                                                confirmPassword: e.target.value,
+                                            }))
+                                        }
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="dialog-footer">
+                                <button
+                                    type="submit"
+                                    className="btn-primary"
+                                    disabled={changePasswordLoading}
+                                >
+                                    {changePasswordLoading ? 'Updating...' : 'Update Password'}
+                                </button>
+                            </div>
+                        </form>
+                    </Dialog.Content>
+                </Dialog.Portal>
+            </Dialog.Root>
 
             <style>{`
                 .login-page {

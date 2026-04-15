@@ -1,81 +1,61 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import {
     useReactTable,
     getCoreRowModel,
-    getSortedRowModel,
     getFilteredRowModel,
     getPaginationRowModel,
+    getSortedRowModel,
     flexRender,
 } from '@tanstack/react-table';
-import { FiSearch, FiChevronUp, FiChevronDown, FiEdit2, FiTrash2 } from 'react-icons/fi';
+import {
+    FiAlertCircle,
+    FiCheckCircle,
+    FiChevronDown,
+    FiChevronUp,
+    FiEdit2,
+    FiLoader,
+    FiPlus,
+    FiSearch,
+    FiTrash2,
+} from 'react-icons/fi';
 import { api } from '../services/api';
-import VehicleModal from '../components/modals/VehicleModal';
+import EmployeeDirectoryModal from '../components/modals/EmployeeDirectoryModal';
 import DeleteModal from '../components/modals/DeleteModal';
 import '../styles/global.css';
 import { getUserPermissions } from '../utils/permissions';
-import {
-    dateInputToUTCDate,
-    formatDateInputPHT,
-    isDateOnOrAfterTodayPHT,
-} from '../utils/dateUtils';
 
-const VehicleRegistration = () => {
-    const { currentUser } = useOutletContext() || {};
+const EmployeeDirectory = () => {
+    const [employees, setEmployees] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [globalFilter, setGlobalFilter] = useState('');
+    const [sorting, setSorting] = useState([]);
+    const [pageSize, setPageSize] = useState(10);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingEmployee, setEditingEmployee] = useState(null);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [employeeToDelete, setEmployeeToDelete] = useState(null);
+
+    const tableContainerRef = React.useRef(null);
+    const { currentUser } = useOutletContext();
 
     const permissions = useMemo(() => getUserPermissions(currentUser), [currentUser]);
 
-    const [vehicles, setVehicles] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
-    const [sorting, setSorting] = useState([{ id: 'vr_datereg', desc: true }]);
-    const [pageSize, setPageSize] = useState(10);
-
-    // Modal states
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [currentVehicle, setCurrentVehicle] = useState(null);
-    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-    const [vehicleToDelete, setVehicleToDelete] = useState(null);
-
-    // Use localStorage for persistent search filter
-    const [globalFilter, setGlobalFilterState] = useState(() => {
-        const saved = localStorage.getItem('vehicleSearchFilter');
-        return saved || '';
-    });
-
-    const setGlobalFilter = (value) => {
-        localStorage.setItem('vehicleSearchFilter', value || '');
-        setGlobalFilterState(value);
-        setPageIndexState(0);
-        localStorage.setItem('vehiclePageIndex', '0');
-    };
-
-    // Use localStorage for persistent page index
-    const [pageIndex, setPageIndexState] = useState(() => {
-        const saved = localStorage.getItem('vehiclePageIndex');
-        return saved ? parseInt(saved, 10) : 0;
-    });
-
-    const tableContainerRef = React.useRef(null);
-
-    // Calculate rows per page based on available container height
     useEffect(() => {
         const calculateRows = () => {
             if (!tableContainerRef.current) return;
 
             const containerHeight = tableContainerRef.current.clientHeight;
-            // Subtract header height (~49px for thead)
             const availableHeight = containerHeight - 49;
-            const rowHeight = 49;
+            const rowHeight = 56;
             const calculatedRows = Math.floor(availableHeight / rowHeight);
             setPageSize(Math.max(5, Math.min(10, calculatedRows)));
         };
 
-        // Initial calculation
         calculateRows();
 
-        // Observe container resize
         const observer = new ResizeObserver(() => {
             calculateRows();
         });
@@ -88,98 +68,71 @@ const VehicleRegistration = () => {
     }, []);
 
     useEffect(() => {
-        fetchVehicles();
+        fetchEmployees();
     }, []);
 
-    const fetchVehicles = async () => {
+    const fetchEmployees = async () => {
         setLoading(true);
+        setError('');
+
         try {
-            const data = await api.getVehicleRegistrations();
-            setVehicles(data);
+            const data = await api.getEmployeeDirectory();
+            setEmployees(data || []);
         } catch (err) {
-            setError('Failed to load vehicles');
-            console.error(err);
+            setError(err.message);
         } finally {
             setLoading(false);
         }
     };
 
-    const handleAdd = () => {
-        setCurrentVehicle(null);
-        setIsModalOpen(true);
-    };
-
-    const handleEdit = (vehicle) => {
-        setCurrentVehicle(vehicle);
-        setIsModalOpen(true);
-    };
-
-    const handleDeleteClick = (vehicle) => {
-        setVehicleToDelete(vehicle);
-        setIsDeleteModalOpen(true);
-    };
-
-    const handleSave = async (vehicleData) => {
+    const handleSave = async (data) => {
         try {
-            if (currentVehicle) {
-                await api.updateVehicleRegistration(currentVehicle.vr_ctrlno, vehicleData);
-                setSuccess('Vehicle updated successfully');
+            if (editingEmployee) {
+                await api.updateEmployeeDirectoryEntry(editingEmployee.emp_ctrlno, data);
+                setSuccess('Employee updated successfully');
             } else {
-                await api.createVehicleRegistration(vehicleData);
-                setSuccess('Vehicle added successfully');
+                await api.createEmployeeDirectoryEntry(data);
+                setSuccess('Employee added successfully');
             }
+
+            await fetchEmployees();
             setIsModalOpen(false);
-            fetchVehicles();
+            setEditingEmployee(null);
             setTimeout(() => setSuccess(''), 3000);
         } catch (err) {
-            setError('Operation failed: ' + err.message);
+            setError(err.message);
             setTimeout(() => setError(''), 3000);
         }
     };
 
-    const handleDeleteConfirm = async () => {
+    const handleDelete = async () => {
+        if (!employeeToDelete) return;
+
         try {
-            await api.deleteVehicleRegistration(vehicleToDelete.vr_ctrlno);
-            setSuccess('Vehicle deleted successfully');
+            await api.deleteEmployeeDirectoryEntry(employeeToDelete.emp_ctrlno);
+            setSuccess('Employee deleted successfully');
+            await fetchEmployees();
             setIsDeleteModalOpen(false);
-            fetchVehicles();
-            setVehicleToDelete(null);
+            setEmployeeToDelete(null);
             setTimeout(() => setSuccess(''), 3000);
         } catch (err) {
-            setError('Failed to delete vehicle');
+            setError(err.message);
             setTimeout(() => setError(''), 3000);
         }
-    };
-
-    const formatDate = (dateString) => {
-        if (!dateString) return '';
-        const normalized = dateInputToUTCDate(dateString);
-        if (!normalized) return '';
-        return normalized.toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            timeZone: 'Asia/Manila',
-        });
-    };
-
-    const getStatus = (expiryDate) => {
-        if (!expiryDate) return <span className="status-badge inactive">No Expiry</span>;
-        const isActive = isDateOnOrAfterTodayPHT(expiryDate);
-
-        return (
-            <span className={`status-badge ${isActive ? 'status-active' : 'status-expired'}`}>
-                {isActive ? 'Active' : 'Expired'}
-            </span>
-        );
     };
 
     const columns = useMemo(
         () => [
             {
-                accessorKey: 'vr_cname',
-                header: 'Name',
-                size: 200,
+                accessorKey: 'emp_ctrlno',
+                header: 'Employee ID',
+                size: 140,
+                cell: ({ getValue }) => <span className="cell-text">{getValue()}</span>,
+            },
+            {
+                accessorKey: 'emp_name',
+                header: 'Employee Name',
+                size: 360,
                 cell: ({ getValue }) => (
                     <span className="cell-text cell-name" title={getValue()}>
                         {getValue()}
@@ -187,52 +140,20 @@ const VehicleRegistration = () => {
                 ),
             },
             {
-                accessorKey: 'vr_trucktype',
-                header: 'Truck Type',
-                size: 150,
-                cell: ({ getValue }) => <span className="cell-text">{getValue()}</span>,
-            },
-            {
-                accessorKey: 'vr_plateno',
-                header: 'Plate No.',
-                size: 130,
-                cell: ({ getValue }) => <span className="cell-text">{getValue()}</span>,
-            },
-            {
-                accessorKey: 'vr_controlno',
-                header: 'Control',
-                size: 130,
-                cell: ({ getValue }) => <span className="cell-text">{getValue()}</span>,
-            },
-            {
-                accessorKey: 'vr_code',
-                header: 'Code',
-                size: 100,
-                cell: ({ getValue }) => <span className="cell-text">{getValue()}</span>,
-            },
-            {
-                accessorKey: 'vr_expiry',
-                header: 'Status',
-                size: 120,
-                cell: ({ getValue }) => getStatus(getValue()),
-            },
-            {
-                accessorKey: 'vr_datereg',
-                header: 'Date Reg.',
-                size: 120,
-                cell: ({ getValue }) => <span className="cell-text">{formatDate(getValue())}</span>,
-            },
-            {
                 id: 'actions',
                 header: 'Actions',
-                size: 100,
+                size: 96,
+                enableSorting: false,
                 cell: ({ row }) => (
                     <div className="actions-container">
                         {permissions.canUpdate && (
                             <button
                                 className="btn-edit"
-                                onClick={() => handleEdit(row.original)}
                                 title="Edit"
+                                onClick={() => {
+                                    setEditingEmployee(row.original);
+                                    setIsModalOpen(true);
+                                }}
                             >
                                 <FiEdit2 className="icon-sm" />
                             </button>
@@ -240,8 +161,11 @@ const VehicleRegistration = () => {
                         {permissions.canDelete && (
                             <button
                                 className="btn-delete"
-                                onClick={() => handleDeleteClick(row.original)}
                                 title="Delete"
+                                onClick={() => {
+                                    setEmployeeToDelete(row.original);
+                                    setIsDeleteModalOpen(true);
+                                }}
                             >
                                 <FiTrash2 className="icon-sm" />
                             </button>
@@ -253,17 +177,12 @@ const VehicleRegistration = () => {
         [permissions.canDelete, permissions.canUpdate]
     );
 
-    // Initialize TanStack Table
     const table = useReactTable({
-        data: vehicles,
+        data: employees,
         columns,
         state: {
             globalFilter,
             sorting,
-            pagination: {
-                pageIndex,
-                pageSize,
-            },
         },
         onGlobalFilterChange: setGlobalFilter,
         onSortingChange: setSorting,
@@ -271,102 +190,70 @@ const VehicleRegistration = () => {
         getSortedRowModel: getSortedRowModel(),
         getFilteredRowModel: getFilteredRowModel(),
         getPaginationRowModel: getPaginationRowModel(),
-        manualPagination: false,
+        initialState: {
+            pagination: {
+                pageSize,
+            },
+        },
     });
 
-    const goToNextPage = () => {
-        if (table.getCanNextPage()) {
-            const newIndex = pageIndex + 1;
-            localStorage.setItem('vehiclePageIndex', newIndex.toString());
-            setPageIndexState(newIndex);
-        }
-    };
-
-    const goToPreviousPage = () => {
-        if (table.getCanPreviousPage()) {
-            const newIndex = pageIndex - 1;
-            localStorage.setItem('vehiclePageIndex', newIndex.toString());
-            setPageIndexState(newIndex);
-        }
-    };
-
-    // Update page size logic to prevent index out of bounds
     useEffect(() => {
-        const maxPage = Math.ceil(vehicles.length / pageSize) - 1;
-        if (pageIndex > maxPage && maxPage >= 0) {
-            setPageIndexState(maxPage);
-            localStorage.setItem('vehiclePageIndex', maxPage.toString());
-        }
-    }, [pageSize, vehicles.length, pageIndex]);
+        table.setPageSize(pageSize);
+    }, [pageSize, table]);
 
     return (
         <div className="page-container">
-            {/* Header Section */}
             <div className="page-header">
-                <h1 className="page-title">Vehicle Registration</h1>
+                <h1 className="page-title">Employee Directory</h1>
+
                 <div className="page-actions">
                     <div className="search-container">
-                        <FiSearch className="search-icon" size={16} />
+                        <FiSearch className="search-icon" />
                         <input
                             type="text"
                             className="search-input"
-                            placeholder="Search vehicles..."
+                            placeholder="Search employees..."
                             value={globalFilter ?? ''}
-                            onChange={(e) => setGlobalFilter(e.target.value)}
+                            onChange={(event) => setGlobalFilter(event.target.value)}
                         />
                     </div>
                     {permissions.canCreate && (
-                        <button className="btn btn-primary" onClick={handleAdd}>
-                            + Add Vehicle
+                        <button
+                            className="btn btn-primary"
+                            onClick={() => {
+                                setEditingEmployee(null);
+                                setIsModalOpen(true);
+                            }}
+                        >
+                            <FiPlus />
+                            Add Employee
                         </button>
                     )}
                 </div>
             </div>
 
-            {/* Alerts */}
+            {loading && (
+                <div className="loading-container">
+                    <FiLoader className="loading-spinner" />
+                    <span className="loading-text">Loading employees...</span>
+                </div>
+            )}
+
             {error && (
                 <div className="alert alert-error">
-                    <svg
-                        className="alert-icon"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                    >
-                        <circle cx="12" cy="12" r="10" />
-                        <line x1="12" y1="8" x2="12" y2="12" />
-                        <line x1="12" y1="16" x2="12.01" y2="16" />
-                    </svg>
+                    <FiAlertCircle className="alert-icon" />
                     {error}
                 </div>
             )}
+
             {success && (
                 <div className="alert alert-success">
-                    <svg
-                        className="alert-icon"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                    >
-                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                        <polyline points="22 4 12 14.01 9 11.01" />
-                    </svg>
+                    <FiCheckCircle className="alert-icon" />
                     {success}
                 </div>
             )}
 
-            {/* Table */}
-            {loading ? (
-                <div className="loading-container">
-                    <div className="spinner"></div>
-                    <span className="loading-text">Loading vehicles...</span>
-                </div>
-            ) : (
+            {!loading && (
                 <div className="table-wrapper">
                     <div className="table-scroll-container" ref={tableContainerRef}>
                         <table className="table">
@@ -383,9 +270,9 @@ const VehicleRegistration = () => {
                                                         : undefined
                                                 }
                                                 style={{
+                                                    width: header.column.getSize(),
                                                     textAlign:
                                                         header.id === 'actions' ? 'center' : 'left',
-                                                    width: header.column.getSize(),
                                                 }}
                                             >
                                                 <div
@@ -446,7 +333,7 @@ const VehicleRegistration = () => {
                                 ) : (
                                     <tr>
                                         <td colSpan={columns.length} className="table-empty">
-                                            No vehicles found
+                                            No employees found
                                         </td>
                                     </tr>
                                 )}
@@ -454,13 +341,13 @@ const VehicleRegistration = () => {
                         </table>
                     </div>
 
-                    {/* Pagination */}
                     <div className="pagination">
                         {(() => {
                             const totalRows = table.getFilteredRowModel().rows.length;
-                            const { pageIndex, pageSize } = table.getState().pagination;
-                            const startIndex = totalRows === 0 ? 0 : pageIndex * pageSize + 1;
-                            const endIndex = Math.min((pageIndex + 1) * pageSize, totalRows);
+                            const { pageIndex, pageSize: activePageSize } =
+                                table.getState().pagination;
+                            const startIndex = totalRows === 0 ? 0 : pageIndex * activePageSize + 1;
+                            const endIndex = Math.min((pageIndex + 1) * activePageSize, totalRows);
 
                             return (
                                 <span className="pagination-info">
@@ -470,18 +357,19 @@ const VehicleRegistration = () => {
                                 </span>
                             );
                         })()}
+
                         <div className="pagination-buttons">
                             <button
                                 className="btn btn-outline btn-sm"
                                 disabled={!table.getCanPreviousPage()}
-                                onClick={goToPreviousPage}
+                                onClick={() => table.previousPage()}
                             >
                                 Previous
                             </button>
                             <button
                                 className="btn btn-outline btn-sm"
                                 disabled={!table.getCanNextPage()}
-                                onClick={goToNextPage}
+                                onClick={() => table.nextPage()}
                             >
                                 Next
                             </button>
@@ -490,22 +378,31 @@ const VehicleRegistration = () => {
                 </div>
             )}
 
-            <VehicleModal
+            <EmployeeDirectoryModal
                 isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
+                onClose={() => {
+                    setIsModalOpen(false);
+                    setEditingEmployee(null);
+                }}
                 onSave={handleSave}
-                vehicle={currentVehicle}
+                employee={editingEmployee}
             />
 
             <DeleteModal
                 isOpen={isDeleteModalOpen}
-                onClose={() => setIsDeleteModalOpen(false)}
-                onConfirm={handleDeleteConfirm}
-                title="Delete Vehicle"
-                message={`Are you sure you want to delete vehicle ${vehicleToDelete?.vr_plateno}?`}
+                onClose={() => {
+                    setIsDeleteModalOpen(false);
+                    setEmployeeToDelete(null);
+                }}
+                onConfirm={handleDelete}
+                message={
+                    employeeToDelete
+                        ? `Are you sure you want to delete ${employeeToDelete.emp_name}?`
+                        : 'Are you sure you want to delete this employee?'
+                }
             />
         </div>
     );
 };
 
-export default VehicleRegistration;
+export default EmployeeDirectory;

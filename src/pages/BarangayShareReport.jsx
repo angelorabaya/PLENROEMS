@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../services/api';
+import { getCurrentYearPHT } from '../utils/dateUtils';
 import '../styles/barangay-share-print.css';
 
 /* ============================================
@@ -37,7 +38,7 @@ const formatCurrency = (value) => {
 const BarangayShareReport = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const year = searchParams.get('year') || new Date().getFullYear();
+    const year = searchParams.get('year') || getCurrentYearPHT();
     const municipality = searchParams.get('municipality') || '';
     const barangay = searchParams.get('barangay') || '';
 

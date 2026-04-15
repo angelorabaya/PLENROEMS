@@ -5,6 +5,7 @@ import { FiTrash2 } from 'react-icons/fi';
 import { api } from '../services/api';
 import DeleteModal from '../components/modals/DeleteModal';
 import plenroLogo from '../plenro.png';
+import { getUserPermissions } from '../utils/permissions';
 
 const ClientTransactions = () => {
     const [clients, setClients] = useState([]);
@@ -30,17 +31,18 @@ const ClientTransactions = () => {
 
     // Admin check
     const { currentUser } = useOutletContext();
-    const isAdmin = useMemo(() => {
-        if (!currentUser) return false;
-        const role = currentUser.role?.toLowerCase() || '';
-        const username = currentUser.log_user?.toLowerCase()?.trim() || '';
-        const access = currentUser.log_access;
-        return role === 'admin' || username === 'admin' || access == 1;
-    }, [currentUser]);
+    const permissions = useMemo(() => getUserPermissions(currentUser), [currentUser]);
 
     useEffect(() => {
         fetchTransactionClients();
     }, []);
+
+    useEffect(() => {
+        if (!error) return undefined;
+
+        const timer = setTimeout(() => setError(''), 3000);
+        return () => clearTimeout(timer);
+    }, [error]);
 
     const fetchTransactionClients = async () => {
         try {
@@ -426,7 +428,7 @@ const ClientTransactions = () => {
                                         >
                                             Remarks
                                         </th>
-                                        {isAdmin && (
+                                        {permissions.canDelete && (
                                             <th
                                                 style={{
                                                     width: '60px',
@@ -488,7 +490,7 @@ const ClientTransactions = () => {
                                                     {total}
                                                 </td>
                                                 <td>{detail.aop_remarks}</td>
-                                                {isAdmin && (
+                                                {permissions.canDelete && (
                                                     <td style={{ textAlign: 'center' }}>
                                                         <button
                                                             className="btn-delete"

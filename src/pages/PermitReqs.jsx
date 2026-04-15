@@ -23,6 +23,7 @@ import { api } from '../services/api';
 import PermitReqModal from '../components/modals/PermitReqModal';
 import DeleteModal from '../components/modals/DeleteModal';
 import '../styles/global.css';
+import { getUserPermissions } from '../utils/permissions';
 
 const DEFAULT_ATTACHMENTS_BASE_PATH = '\\\\Enro-server\\servershare\\attachments\\';
 const normalizeAttachmentBasePath = (value) => {
@@ -132,19 +133,7 @@ const PermitReqs = () => {
 
     const { currentUser } = useOutletContext();
 
-    const isAdmin = useMemo(() => {
-        if (!currentUser) return false;
-
-        const role = currentUser.role?.toLowerCase() || '';
-        const username = currentUser.log_user?.toLowerCase()?.trim() || '';
-        const access = currentUser.log_access;
-
-        // Check various admin conditions
-        // 1. role is 'admin' (legacy/default)
-        // 2. username is 'admin'
-        // 3. log_access is 1 (standard admin flag) or '1'
-        return role === 'admin' || username === 'admin' || access == 1;
-    }, [currentUser]);
+    const permissions = useMemo(() => getUserPermissions(currentUser), [currentUser]);
 
     const handleViewRequirements = (fileName) => {
         navigate('/newapp/preview', {
@@ -187,17 +176,19 @@ const PermitReqs = () => {
                 enableSorting: false,
                 cell: ({ row }) => (
                     <div className="actions-container">
-                        <button
-                            className="btn-edit"
-                            onClick={() => {
-                                setEditingPermitReq(row.original);
-                                setIsModalOpen(true);
-                            }}
-                            title="Edit"
-                        >
-                            <FiEdit2 className="icon-sm" />
-                        </button>
-                        {isAdmin && (
+                        {permissions.canUpdate && (
+                            <button
+                                className="btn-edit"
+                                onClick={() => {
+                                    setEditingPermitReq(row.original);
+                                    setIsModalOpen(true);
+                                }}
+                                title="Edit"
+                            >
+                                <FiEdit2 className="icon-sm" />
+                            </button>
+                        )}
+                        {permissions.canDelete && (
                             <button
                                 className="btn-delete"
                                 onClick={() => {
@@ -213,7 +204,7 @@ const PermitReqs = () => {
                 ),
             },
         ],
-        [isAdmin]
+        [permissions.canDelete, permissions.canUpdate]
     );
 
     // Initialize TanStack Table
@@ -258,16 +249,18 @@ const PermitReqs = () => {
                             onChange={(e) => setGlobalFilter(e.target.value)}
                         />
                     </div>
-                    <button
-                        className="btn btn-primary"
-                        onClick={() => {
-                            setEditingPermitReq(null);
-                            setIsModalOpen(true);
-                        }}
-                    >
-                        <FiPlus size={16} />
-                        Add Requirement
-                    </button>
+                    {permissions.canCreate && (
+                        <button
+                            className="btn btn-primary"
+                            onClick={() => {
+                                setEditingPermitReq(null);
+                                setIsModalOpen(true);
+                            }}
+                        >
+                            <FiPlus size={16} />
+                            Add Requirement
+                        </button>
+                    )}
                 </div>
             </div>
 

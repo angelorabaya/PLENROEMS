@@ -38,6 +38,13 @@ const PersonnelTravelLogs = () => {
     const [selectedMonth, setSelectedMonth] = useState('');
 
     useEffect(() => {
+        if (!error) return undefined;
+
+        const timer = setTimeout(() => setError(''), 3000);
+        return () => clearTimeout(timer);
+    }, [error]);
+
+    useEffect(() => {
         const init = async () => {
             await fetchNames();
             // Restore state from navigation (returning from preview)
@@ -141,15 +148,16 @@ const PersonnelTravelLogs = () => {
         // Apply search filter
         if (searchQuery.trim()) {
             const q = searchQuery.trim().toLowerCase();
-            filtered = filtered.filter((row) =>
-                (row['T.O. NUMBER'] || '').toLowerCase().includes(q) ||
-                formatDate(row['DATE PREPARED']).toLowerCase().includes(q) ||
-                (row['DESTINATION'] || '').toLowerCase().includes(q) ||
-                formatDate(row['START DATE']).toLowerCase().includes(q) ||
-                formatDate(row['END DATE']).toLowerCase().includes(q) ||
-                (row['PURPOSE'] || '').toLowerCase().includes(q) ||
-                (row['DURATION'] || '').toLowerCase().includes(q) ||
-                (row['CONTROL'] || '').toLowerCase().includes(q)
+            filtered = filtered.filter(
+                (row) =>
+                    (row['T.O. NUMBER'] || '').toLowerCase().includes(q) ||
+                    formatDate(row['DATE PREPARED']).toLowerCase().includes(q) ||
+                    (row['DESTINATION'] || '').toLowerCase().includes(q) ||
+                    formatDate(row['START DATE']).toLowerCase().includes(q) ||
+                    formatDate(row['END DATE']).toLowerCase().includes(q) ||
+                    (row['PURPOSE'] || '').toLowerCase().includes(q) ||
+                    (row['DURATION'] || '').toLowerCase().includes(q) ||
+                    (row['CONTROL'] || '').toLowerCase().includes(q)
             );
         }
 
@@ -157,10 +165,10 @@ const PersonnelTravelLogs = () => {
         return [...filtered].sort((a, b) => {
             const dateA = new Date(a['START DATE']).getTime();
             const dateB = new Date(b['START DATE']).getTime();
-            
+
             const isAValid = !isNaN(dateA);
             const isBValid = !isNaN(dateB);
-            
+
             if (isAValid && isBValid) {
                 return dateB - dateA;
             } else if (isAValid) {
@@ -196,7 +204,10 @@ const PersonnelTravelLogs = () => {
             <div className="table-container" style={{ marginBottom: '16px', padding: '12px' }}>
                 <div
                     className="transactions-compact-form"
-                    style={{ gridTemplateColumns: selectedName && details.length > 0 ? '1fr 1fr 1fr' : '1fr' }}
+                    style={{
+                        gridTemplateColumns:
+                            selectedName && details.length > 0 ? '1fr 1fr 1fr' : '1fr',
+                    }}
                 >
                     <div className="transactions-compact-group">
                         <label className="transactions-compact-label">Personnel</label>
@@ -281,87 +292,102 @@ const PersonnelTravelLogs = () => {
                                     {filteredDetails.map((row, index) => {
                                         const isCancelled = row['STATUS'] === 'CANCELLED';
                                         return (
-                                        <tr 
-                                            key={index}
-                                            style={{
-                                                opacity: isCancelled ? 0.7 : 1,
-                                                backgroundColor: isCancelled ? 'rgba(239, 68, 68, 0.05)' : 'transparent'
-                                            }}
-                                        >
-                                            <td>{row['T.O. NUMBER'] || ''}</td>
-                                            <td>{formatDate(row['DATE PREPARED'])}</td>
-                                            <td>{row['DESTINATION'] || ''}</td>
-                                            <td>{formatDate(row['START DATE'])}</td>
-                                            <td>{formatDate(row['END DATE'])}</td>
-                                            <td>
-                                                <span
-                                                    style={{
-                                                        display: '-webkit-box',
-                                                        WebkitLineClamp: 3,
-                                                        WebkitBoxOrient: 'vertical',
-                                                        overflow: 'hidden',
-                                                        whiteSpace: 'normal',
-                                                        wordBreak: 'break-word',
-                                                        lineHeight: '1.4',
-                                                    }}
-                                                    title={row['PURPOSE']}
-                                                >
-                                                    {row['PURPOSE'] || ''}
-                                                </span>
-                                            </td>
-                                            <td>{row['DURATION'] || ''}</td>
-                                            <td>
-                                                {row['CONTROL'] || ''}
-                                                {isCancelled && (
-                                                    <span style={{
-                                                        marginLeft: '8px',
-                                                        padding: '2px 6px',
-                                                        backgroundColor: 'rgba(239,68,68,0.1)',
-                                                        color: '#ef4444',
-                                                        borderRadius: '4px',
-                                                        fontSize: '11px',
-                                                        fontWeight: '600'
-                                                    }}>
-                                                        CANCELLED
+                                            <tr
+                                                key={index}
+                                                style={{
+                                                    opacity: isCancelled ? 0.7 : 1,
+                                                    backgroundColor: isCancelled
+                                                        ? 'rgba(239, 68, 68, 0.05)'
+                                                        : 'transparent',
+                                                }}
+                                            >
+                                                <td>{row['T.O. NUMBER'] || ''}</td>
+                                                <td>{formatDate(row['DATE PREPARED'])}</td>
+                                                <td>{row['DESTINATION'] || ''}</td>
+                                                <td>{formatDate(row['START DATE'])}</td>
+                                                <td>{formatDate(row['END DATE'])}</td>
+                                                <td>
+                                                    <span
+                                                        style={{
+                                                            display: '-webkit-box',
+                                                            WebkitLineClamp: 3,
+                                                            WebkitBoxOrient: 'vertical',
+                                                            overflow: 'hidden',
+                                                            whiteSpace: 'normal',
+                                                            wordBreak: 'break-word',
+                                                            lineHeight: '1.4',
+                                                        }}
+                                                        title={row['PURPOSE']}
+                                                    >
+                                                        {row['PURPOSE'] || ''}
                                                     </span>
-                                                )}
-                                            </td>
-                                            <td>
-                                                <button
-                                                    className="btn-icon btn-icon-sm"
-                                                    title="Preview"
-                                                    onClick={() => {
-                                                        const toNumber = (row['T.O. NUMBER'] || '').trim();
-                                                        if (!toNumber) return;
-                                                        const fileName = `TO${toNumber}.pdf`;
-                                                        const fullPath = `${ATTACHMENTS_BASE_PATH}${fileName}`;
-                                                        const webPath = api.getNewApplicationAttachmentUrl(fileName);
-                                                        api.checkNewApplicationAttachment(fileName)
-                                                            .then(() => {
-                                                                navigate('/newapp/preview', {
-                                                                    state: {
-                                                                        filePath: webPath,
-                                                                        displayPath: fullPath,
-                                                                        source: fileName,
-                                                                        safeName: fileName,
-                                                                        returnPath: '/personnel-travel-logs',
-                                                                        restoreState: {
-                                                                            selectedName,
-                                                                            selectedMonth,
-                                                                            searchQuery,
+                                                </td>
+                                                <td>{row['DURATION'] || ''}</td>
+                                                <td>
+                                                    {row['CONTROL'] || ''}
+                                                    {isCancelled && (
+                                                        <span
+                                                            style={{
+                                                                marginLeft: '8px',
+                                                                padding: '2px 6px',
+                                                                backgroundColor:
+                                                                    'rgba(239,68,68,0.1)',
+                                                                color: '#ef4444',
+                                                                borderRadius: '4px',
+                                                                fontSize: '11px',
+                                                                fontWeight: '600',
+                                                            }}
+                                                        >
+                                                            CANCELLED
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    <button
+                                                        className="btn-icon btn-icon-sm"
+                                                        title="Preview"
+                                                        onClick={() => {
+                                                            const toNumber = (
+                                                                row['T.O. NUMBER'] || ''
+                                                            ).trim();
+                                                            if (!toNumber) return;
+                                                            const fileName = `TO${toNumber}.pdf`;
+                                                            const fullPath = `${ATTACHMENTS_BASE_PATH}${fileName}`;
+                                                            const webPath =
+                                                                api.getNewApplicationAttachmentUrl(
+                                                                    fileName
+                                                                );
+                                                            api.checkNewApplicationAttachment(
+                                                                fileName
+                                                            )
+                                                                .then(() => {
+                                                                    navigate('/newapp/preview', {
+                                                                        state: {
+                                                                            filePath: webPath,
+                                                                            displayPath: fullPath,
+                                                                            source: fileName,
+                                                                            safeName: fileName,
+                                                                            returnPath:
+                                                                                '/personnel-travel-logs',
+                                                                            restoreState: {
+                                                                                selectedName,
+                                                                                selectedMonth,
+                                                                                searchQuery,
+                                                                            },
                                                                         },
-                                                                    },
+                                                                    });
+                                                                })
+                                                                .catch(() => {
+                                                                    setError(
+                                                                        `Attachment not found: ${fullPath}`
+                                                                    );
                                                                 });
-                                                            })
-                                                            .catch(() => {
-                                                                setError(`Attachment not found: ${fullPath}`);
-                                                            });
-                                                    }}
-                                                >
-                                                    <FiEye size={14} />
-                                                </button>
-                                            </td>
-                                        </tr>
+                                                        }}
+                                                    >
+                                                        <FiEye size={14} />
+                                                    </button>
+                                                </td>
+                                            </tr>
                                         );
                                     })}
                                 </tbody>

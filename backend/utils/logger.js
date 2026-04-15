@@ -1,5 +1,7 @@
 const sql = require('mssql');
 
+const SQL_AUDIT_NOW_EXPR = 'GETDATE()';
+
 /**
  * Logs a user activity to the database.
  * @param {import('mssql').ConnectionPool} pool - The MSSQL connection pool.
@@ -44,31 +46,45 @@ const logActivity = async (pool, req, { action, tableName, recordId, oldValues, 
 
         const request = pool.request();
 
-        // Use Node.js time to ensure consistency with application server time
-        const createdAt = new Date();
-        console.log('📝 Audit Log Inserting:', { action, tableName, createdAt: createdAt.toLocaleString('en-US', { timeZone: 'Asia/Manila' }) });
+        console.log('📝 Audit Log Inserting:', { action, tableName, createdAt: 'SQL_SERVER_NOW' });
 
         request.input('UserID', sql.NVarChar(255), userId);
         request.input('UserName', sql.NVarChar(255), userName);
         request.input('ActionType', sql.NVarChar(50), action);
         request.input('TableName', sql.NVarChar(100), tableName);
         request.input('RecordID', sql.NVarChar(100), recordId ? String(recordId) : null);
-        request.input('OldValues', sql.NVarChar(sql.MAX), oldValues ? JSON.stringify(oldValues) : null);
-        request.input('NewValues', sql.NVarChar(sql.MAX), newValues ? JSON.stringify(newValues) : null);
+        request.input(
+            'OldValues',
+            sql.NVarChar(sql.MAX),
+            oldValues ? JSON.stringify(oldValues) : null
+        );
+        request.input(
+            'NewValues',
+            sql.NVarChar(sql.MAX),
+            newValues ? JSON.stringify(newValues) : null
+        );
         request.input('IPAddress', sql.NVarChar(50), ip);
         request.input('UserAgent', sql.NVarChar(sql.MAX), userAgent);
-        request.input('CreatedAt', sql.DateTime2, createdAt);
-
         // Fire and forget - don't await this if you don't want to block the response
         // But catching errors is important.
         await request.query(`
             INSERT INTO ActivityLogs (UserID, UserName, ActionType, TableName, RecordID, OldValues, NewValues, IPAddress, UserAgent, CreatedAt)
-            VALUES (@UserID, @UserName, @ActionType, @TableName, @RecordID, @OldValues, @NewValues, @IPAddress, @UserAgent, @CreatedAt)
+            VALUES (
+                @UserID,
+                @UserName,
+                @ActionType,
+                @TableName,
+                @RecordID,
+                @OldValues,
+                @NewValues,
+                @IPAddress,
+                @UserAgent,
+                ${SQL_AUDIT_NOW_EXPR}
+            )
         `);
-
     } catch (err) {
-        console.error("❌ Audit Log Error:", err.message);
-        console.error("Stack:", err.stack);
+        console.error('❌ Audit Log Error:', err.message);
+        console.error('Stack:', err.stack);
     }
 };
 

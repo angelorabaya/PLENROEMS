@@ -548,3 +548,85 @@
     background-color: var(--accent);
     color: var(--accent-foreground);
 }
+
+.attachment-box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background-color: var(--secondary);
+}
+
+.attachment-box-header {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.attachment-box-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--foreground);
+    word-break: break-word;
+}
+
+.attachment-status {
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.attachment-status.is-success {
+    color: #15803d;
+}
+
+.attachment-status.is-muted {
+    color: var(--muted-foreground);
+}
+
+.attachment-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.attachment-icon-button {
+    width: 2rem;
+    height: 2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+    color: var(--foreground);
+    cursor: pointer;
+    transition:
+        background-color 0.2s,
+        border-color 0.2s,
+        color 0.2s;
+}
+
+.attachment-icon-button:hover:not(:disabled) {
+    background-color: var(--accent);
+    border-color: var(--accent);
+}
+
+.attachment-icon-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.attachment-icon-button-danger {
+    color: var(--destructive);
+}
+
+.attachment-message {
+    margin-top: 0.35rem;
+    font-size: 0.75rem;
+    color: var(--muted-foreground);
+}

@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { FiX } from 'react-icons/fi';
+import { FiUpload, FiTrash2, FiX } from 'react-icons/fi';
 import { api } from '../../services/api';
 import './Modal.css';
 
@@ -31,6 +31,7 @@ const PURPOSE_OPTIONS = [
 ];
 
 const DocReceivingModal = ({ isOpen, onClose, onSave, record }) => {
+    const uploadInputRef = useRef(null);
     const [formData, setFormData] = useState({
         dms_control: '',
         dms_source: '',
@@ -41,9 +42,13 @@ const DocReceivingModal = ({ isOpen, onClose, onSave, record }) => {
     });
     const [employees, setEmployees] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [attachmentExists, setAttachmentExists] = useState(false);
+    const [attachmentBusy, setAttachmentBusy] = useState(false);
+    const [attachmentMessage, setAttachmentMessage] = useState('');
 
     useEffect(() => {
         if (isOpen) {
+            setAttachmentMessage('');
             loadEmployees();
             if (record) {
                 // Editing existing record
@@ -55,12 +60,28 @@ const DocReceivingModal = ({ isOpen, onClose, onSave, record }) => {
                     dms_purpose: record.dms_purpose || '',
                     dms_desc: record.dms_desc || '',
                 });
+                checkAttachment(record.dms_control || '');
             } else {
                 // New record - get next control number
                 loadNextControl();
             }
         }
     }, [isOpen, record]);
+
+    const checkAttachment = async (controlNo) => {
+        const trimmedControlNo = (controlNo || '').trim();
+        if (!trimmedControlNo) {
+            setAttachmentExists(false);
+            return;
+        }
+
+        try {
+            await api.checkNewApplicationAttachment(`${trimmedControlNo}.pdf`);
+            setAttachmentExists(true);
+        } catch {
+            setAttachmentExists(false);
+        }
+    };
 
     const loadEmployees = async () => {
         try {
@@ -74,17 +95,82 @@ const DocReceivingModal = ({ isOpen, onClose, onSave, record }) => {
     const loadNextControl = async () => {
         try {
             const data = await api.getDocReceivingNextControl();
+            const nextControl = data.nextControl || '';
             setFormData((prev) => ({
                 ...prev,
-                dms_control: data.nextControl || '',
+                dms_control: nextControl,
                 dms_source: '',
                 dms_empid: '',
                 dms_type: '',
                 dms_purpose: '',
                 dms_desc: '',
             }));
+            checkAttachment(nextControl);
         } catch (err) {
             console.error('Failed to load next control:', err);
+        }
+    };
+
+    const handleUploadButtonClick = () => {
+        if (!formData.dms_control?.trim() || attachmentBusy) return;
+        uploadInputRef.current?.click();
+    };
+
+    const handleUploadChange = async (event) => {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+
+        if (!file) return;
+        if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+            setAttachmentMessage('Only PDF files are allowed.');
+            return;
+        }
+
+        const controlNo = (formData.dms_control || '').trim();
+        if (!controlNo) {
+            setAttachmentMessage('Control number is required before uploading.');
+            return;
+        }
+
+        try {
+            setAttachmentBusy(true);
+            setAttachmentMessage('');
+
+            const contentBase64 = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(new Error('Failed to read PDF file'));
+                reader.readAsDataURL(file);
+            });
+
+            await api.uploadNewApplicationAttachment({
+                filename: `${controlNo}.pdf`,
+                contentBase64,
+            });
+
+            setAttachmentExists(true);
+            setAttachmentMessage('PDF uploaded successfully.');
+        } catch (err) {
+            setAttachmentMessage(err.message || 'Failed to upload PDF.');
+        } finally {
+            setAttachmentBusy(false);
+        }
+    };
+
+    const handleRemoveAttachment = async () => {
+        const controlNo = (formData.dms_control || '').trim();
+        if (!controlNo || attachmentBusy) return;
+
+        try {
+            setAttachmentBusy(true);
+            setAttachmentMessage('');
+            await api.removeNewApplicationAttachment({ filename: `${controlNo}.pdf` });
+            setAttachmentExists(false);
+            setAttachmentMessage('PDF removed successfully.');
+        } catch (err) {
+            setAttachmentMessage(err.message || 'Failed to remove PDF.');
+        } finally {
+            setAttachmentBusy(false);
         }
     };
 
@@ -218,6 +304,58 @@ const DocReceivingModal = ({ isOpen, onClose, onSave, record }) => {
                                     onChange={handleChange}
                                     rows={2}
                                     placeholder="Enter description..."
+                                />
+                            </div>
+
+                            <div className="form-group">
+                                <label className="form-label">PDF Attachment</label>
+                                <div className="attachment-box">
+                                    <div className="attachment-box-header">
+                                        <span className="attachment-box-title">
+                                            {formData.dms_control
+                                                ? `${formData.dms_control}.pdf`
+                                                : 'No control number'}
+                                        </span>
+                                        <span
+                                            className={`attachment-status ${attachmentExists ? 'is-success' : 'is-muted'}`}
+                                        >
+                                            {attachmentExists ? 'Attached' : 'No PDF uploaded'}
+                                        </span>
+                                    </div>
+                                    <div className="attachment-actions">
+                                        <button
+                                            type="button"
+                                            className="attachment-icon-button"
+                                            title="Upload PDF"
+                                            onClick={handleUploadButtonClick}
+                                            disabled={!formData.dms_control || attachmentBusy}
+                                        >
+                                            <FiUpload size={16} />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="attachment-icon-button attachment-icon-button-danger"
+                                            title="Remove PDF"
+                                            onClick={handleRemoveAttachment}
+                                            disabled={
+                                                !formData.dms_control ||
+                                                !attachmentExists ||
+                                                attachmentBusy
+                                            }
+                                        >
+                                            <FiTrash2 size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+                                {attachmentMessage ? (
+                                    <div className="attachment-message">{attachmentMessage}</div>
+                                ) : null}
+                                <input
+                                    ref={uploadInputRef}
+                                    type="file"
+                                    accept="application/pdf,.pdf"
+                                    style={{ display: 'none' }}
+                                    onChange={handleUploadChange}
                                 />
                             </div>
                         </div>

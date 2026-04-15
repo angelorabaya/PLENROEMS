@@ -7,8 +7,15 @@ export default defineConfig(() => ({
   build: {
     rollupOptions: {
       output: {
+        onlyExplicitManualChunks: true,
         manualChunks(id) {
           if (!id.includes('node_modules')) return;
+
+          if (
+            /[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom)[\\/]/.test(id)
+          ) {
+            return 'core-vendor';
+          }
 
           if (id.includes('@tremor') || id.includes('recharts')) {
             return 'charts-vendor';

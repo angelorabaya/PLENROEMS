@@ -32,6 +32,7 @@ import {
     FiCalendar,
 } from 'react-icons/fi';
 import '../styles/layout.css';
+import { getUserPermissions } from '../utils/permissions';
 
 // Custom Philippine Peso icon component
 const PesoIcon = ({ className }) => (
@@ -61,19 +62,7 @@ const Sidebar = ({ onLogout, isCollapsed, onToggleCollapse, userRole, user }) =>
 
     const isActive = (path) => location.pathname === path;
 
-    const isAdmin = useMemo(() => {
-        if (!user) return false;
-
-        const role = user.role?.toLowerCase() || '';
-        const username = user.log_user?.toLowerCase()?.trim() || '';
-        const access = user.log_access;
-
-        // Check various admin conditions
-        // 1. role is 'admin' (legacy/default)
-        // 2. username is 'admin'
-        // 3. log_access is 1 (standard admin flag) or '1'
-        return role === 'admin' || username === 'admin' || access == 1;
-    }, [user]);
+    const permissions = useMemo(() => getUserPermissions(user), [user]);
 
     // NavItem Component
     const NavItem = ({ to, icon: Icon, children }) => {
@@ -152,6 +141,9 @@ const Sidebar = ({ onLogout, isCollapsed, onToggleCollapse, userRole, user }) =>
                 <NavSection title="Master Data" id="master-data" icon={FiSettings}>
                     <NavItem to="/clients" icon={FiUsers}>
                         Clients
+                    </NavItem>
+                    <NavItem to="/employee-directory" icon={FiBriefcase}>
+                        Employee Directory
                     </NavItem>
                     <NavItem to="/permittypes" icon={FiLayers}>
                         Permit Type
@@ -233,8 +225,11 @@ const Sidebar = ({ onLogout, isCollapsed, onToggleCollapse, userRole, user }) =>
                     </NavItem>
                 </NavSection>
 
-                {isAdmin && (
+                {permissions.isAdministrator && (
                     <NavSection title="System" id="system" icon={FiActivity}>
+                        <NavItem to="/user-management" icon={FiUsers}>
+                            User Management
+                        </NavItem>
                         <NavItem to="/activitylogs" icon={FiList}>
                             Audit Logs
                         </NavItem>

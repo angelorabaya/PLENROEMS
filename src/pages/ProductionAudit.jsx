@@ -5,6 +5,13 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { FiX, FiEdit2, FiTrash2 } from 'react-icons/fi';
 import { api } from '../services/api';
 import DeleteModal from '../components/modals/DeleteModal';
+import { getUserPermissions } from '../utils/permissions';
+import {
+    dateInputToUTCDate,
+    formatDateInputPHT,
+    getFirstDayOfCurrentMonthPHT,
+    isDateOnOrAfterTodayPHT,
+} from '../utils/dateUtils';
 
 import '../styles/global.css';
 import '../components/modals/Modal.css';
@@ -24,16 +31,17 @@ const ORDINALS = [
 
 const startOfMonth = (date) => {
     if (!date) return null;
-    const d = new Date(date);
-    return new Date(d.getFullYear(), d.getMonth(), 1);
+    const d = dateInputToUTCDate(date);
+    if (!d) return null;
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1, 12, 0, 0));
 };
 
 const cycleRanges = (permit) => {
     if (!permit?.ph_dfrom || !permit?.ph_dto) return [];
 
     // Parse start and end dates from permit
-    const dFrom = new Date(permit.ph_dfrom);
-    const dTo = new Date(permit.ph_dto);
+    const dFrom = dateInputToUTCDate(permit.ph_dfrom);
+    const dTo = dateInputToUTCDate(permit.ph_dto);
 
     if (Number.isNaN(dFrom.getTime()) || Number.isNaN(dTo.getTime())) return [];
 
@@ -41,10 +49,10 @@ const cycleRanges = (permit) => {
 
     // Start logic: Next month from ph_dfrom
     // Example: ph_dfrom = May 14, 2024 -> First cycle start = June 1, 2024
-    let cursor = new Date(dFrom.getFullYear(), dFrom.getMonth() + 1, 1);
+    let cursor = new Date(Date.UTC(dFrom.getUTCFullYear(), dFrom.getUTCMonth() + 1, 1, 12, 0, 0));
 
     // End logic: ph_dto determines the absolute cutoff
-    const absoluteEnd = new Date(dTo.getFullYear(), dTo.getMonth(), 1); // Normalize to start of month for comparison
+    const absoluteEnd = new Date(Date.UTC(dTo.getUTCFullYear(), dTo.getUTCMonth(), 1, 12, 0, 0)); // Normalize to start of month for comparison
 
     while (cursor <= absoluteEnd) {
         // Define cycle start
@@ -52,7 +60,9 @@ const cycleRanges = (permit) => {
 
         // Define expected cycle end: 12 months later (inclusive range)
         // e.g., Start June 2024 -> End May 2025
-        const rangeEnd = new Date(rangeStart.getFullYear(), rangeStart.getMonth() + 11, 1);
+        const rangeEnd = new Date(
+            Date.UTC(rangeStart.getUTCFullYear(), rangeStart.getUTCMonth() + 11, 1, 12, 0, 0)
+        );
 
         // Check if the calculated end exceeds the permit's actual expiration
         // If the permit ends mid-cycle, we cap the cycle at the permit end.
@@ -64,7 +74,9 @@ const cycleRanges = (permit) => {
 
         // Prepare cursor for next cycle: Start of the month AFTER the current cycle ends
         // e.g., Current Ends May 2025 -> Next Starts June 2025
-        cursor = new Date(effectiveEnd.getFullYear(), effectiveEnd.getMonth() + 1, 1);
+        cursor = new Date(
+            Date.UTC(effectiveEnd.getUTCFullYear(), effectiveEnd.getUTCMonth() + 1, 1, 12, 0, 0)
+        );
 
         // Safety break to prevent infinite loops if dates are messed up
         if (cursor <= rangeStart) break;
@@ -93,15 +105,11 @@ const formatVolumeValue = (value) => {
 };
 
 const formatDateInput = (value) => {
-    if (!value) return '';
-    const d = new Date(value);
-    if (Number.isNaN(d)) return '';
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return formatDateInputPHT(value);
 };
 
 const firstDayOfCurrentMonthInput = () => {
-    const now = new Date();
-    return formatDateInput(new Date(now.getFullYear(), now.getMonth(), 1));
+    return getFirstDayOfCurrentMonthPHT();
 };
 
 const ProductionAudit = () => {
@@ -130,19 +138,7 @@ const ProductionAudit = () => {
 
     const { currentUser } = useOutletContext();
 
-    const isAdmin = useMemo(() => {
-        if (!currentUser) return false;
-
-        const role = currentUser.role?.toLowerCase() || '';
-        const username = currentUser.log_user?.toLowerCase()?.trim() || '';
-        const access = currentUser.log_access;
-
-        // Check various admin conditions
-        // 1. role is 'admin' (legacy/default)
-        // 2. username is 'admin'
-        // 3. log_access is 1 (standard admin flag) or '1'
-        return role === 'admin' || username === 'admin' || access == 1;
-    }, [currentUser]);
+    const permissions = useMemo(() => getUserPermissions(currentUser), [currentUser]);
 
     // Client autocomplete state
     const [clientSearch, setClientSearch] = useState('');
@@ -162,9 +158,7 @@ const ProductionAudit = () => {
 
     const permitStatus = useMemo(() => {
         if (!selectedPermitObj?.ph_dto) return '';
-        const end = new Date(selectedPermitObj.ph_dto);
-        if (Number.isNaN(end)) return '';
-        return new Date() <= end ? 'Active' : 'Expired';
+        return isDateOnOrAfterTodayPHT(selectedPermitObj.ph_dto) ? 'Active' : 'Expired';
     }, [selectedPermitObj]);
 
     // Auto-hide success notification after 3 seconds
@@ -316,7 +310,9 @@ const ProductionAudit = () => {
             let cursor = new Date(range.start);
             while (cursor <= range.end) {
                 allMonths.push(new Date(cursor));
-                cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+                cursor = new Date(
+                    Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1, 12, 0, 0)
+                );
             }
 
             // Map each month to existing production data or mark as no production
@@ -703,21 +699,23 @@ const ProductionAudit = () => {
                     >
                         Print Preview
                     </button>
-                    <button
-                        className="btn btn-primary btn-sm"
-                        onClick={() => {
-                            setEditingId(null);
-                            setForm({
-                                pr_date: firstDayOfCurrentMonthInput(),
-                                pr_vextracted: '',
-                                pr_vsold: '',
-                            });
-                            setIsModalOpen(true);
-                        }}
-                        disabled={!selectedPermit}
-                    >
-                        + Add Production
-                    </button>
+                    {permissions.canCreate && (
+                        <button
+                            className="btn btn-primary btn-sm"
+                            onClick={() => {
+                                setEditingId(null);
+                                setForm({
+                                    pr_date: firstDayOfCurrentMonthInput(),
+                                    pr_vextracted: '',
+                                    pr_vsold: '',
+                                });
+                                setIsModalOpen(true);
+                            }}
+                            disabled={!selectedPermit}
+                        >
+                            + Add Production
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -833,15 +831,19 @@ const ProductionAudit = () => {
                                                                     justifyContent: 'flex-start',
                                                                 }}
                                                             >
-                                                                <button
-                                                                    className="btn-edit"
-                                                                    type="button"
-                                                                    onClick={() => handleEdit(row)}
-                                                                    title="Edit"
-                                                                >
-                                                                    <FiEdit2 className="icon-sm" />
-                                                                </button>
-                                                                {isAdmin && (
+                                                                {permissions.canUpdate && (
+                                                                    <button
+                                                                        className="btn-edit"
+                                                                        type="button"
+                                                                        onClick={() =>
+                                                                            handleEdit(row)
+                                                                        }
+                                                                        title="Edit"
+                                                                    >
+                                                                        <FiEdit2 className="icon-sm" />
+                                                                    </button>
+                                                                )}
+                                                                {permissions.canDelete && (
                                                                     <button
                                                                         className="btn-delete"
                                                                         type="button"
@@ -1028,7 +1030,13 @@ const ProductionAudit = () => {
                                 <button
                                     type="submit"
                                     className={`btn-primary btn-sm ${savingProduction ? 'btn-loading' : ''}`}
-                                    disabled={!selectedPermit || savingProduction}
+                                    disabled={
+                                        !selectedPermit ||
+                                        savingProduction ||
+                                        (editingId
+                                            ? !permissions.canUpdate
+                                            : !permissions.canCreate)
+                                    }
                                 >
                                     {savingProduction ? '' : editingId ? 'Update' : 'Add'}
                                 </button>

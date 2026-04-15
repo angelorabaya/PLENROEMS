@@ -19,6 +19,7 @@ import {
 import { api } from '../services/api';
 import '../styles/global.css';
 import { useTheme } from '../context/ThemeContext';
+import { getCurrentMonthIndexPHT } from '../utils/dateUtils';
 
 // Premium category card with gradient header - now theme-aware
 const CategorySection = ({ category, onReportClick, yearSelector, isDark }) => {
@@ -191,7 +192,7 @@ const ReportsHub = () => {
         loadMunicipalities();
         // Set default month to current month only if not already set from localStorage
         if (!selectedMonth) {
-            const currentMonthIndex = new Date().getMonth();
+            const currentMonthIndex = getCurrentMonthIndexPHT();
             setSelectedMonth(months[currentMonthIndex]);
         }
     }, []);

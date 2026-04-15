@@ -12,14 +12,34 @@ import { FiSearch, FiRefreshCw, FiChevronUp, FiChevronDown, FiEye, FiX } from 'r
 import { api } from '../services/api';
 import '../styles/global.css';
 import '../components/modals/Modal.css';
+import { formatDateTimePHT } from '../utils/dateUtils';
 
-const ACTIVITY_TIME_ZONE = 'Asia/Manila';
 const BREAKPOINT_SM_PX = 640;
 const BREAKPOINT_LG_PX = 1024;
 const APPROX_ROW_HEIGHT_PX = 52;
 const PAGINATION_GAP_PX = 32;
 const VIEWPORT_BOTTOM_PADDING_PX = 24;
 const CLIP_SAFETY_BUFFER_PX = 16;
+
+const formatPlainDateTimeParts = (year, month, day, hour, minute, second) => {
+    const hourNumber = Number(hour);
+    const displayHour = hourNumber % 12 || 12;
+    const meridiem = hourNumber >= 12 ? 'PM' : 'AM';
+    return `${month}/${day}/${year}, ${String(displayHour).padStart(2, '0')}:${minute}:${second} ${meridiem}`;
+};
+
+const formatSqlLikeDateTime = (value) => {
+    if (typeof value !== 'string') return null;
+
+    const match = value.match(
+        /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z)?$/
+    );
+
+    if (!match) return null;
+
+    const [, year, month, day, hour, minute, second] = match;
+    return formatPlainDateTimeParts(year, month, day, hour, minute, second);
+};
 
 const clampRowsByBreakpoint = (rows, viewportWidth) => {
     if (viewportWidth < BREAKPOINT_SM_PX) {
@@ -33,18 +53,11 @@ const clampRowsByBreakpoint = (rows, viewportWidth) => {
 
 const formatDateTime = (value) => {
     if (!value) return '';
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return '';
-    return parsed.toLocaleString('en-PH', {
-        timeZone: ACTIVITY_TIME_ZONE,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: true,
-    });
+
+    const sqlLikeFormatted = formatSqlLikeDateTime(value);
+    if (sqlLikeFormatted) return sqlLikeFormatted;
+
+    return formatDateTimePHT(value);
 };
 
 const ActivityLogs = () => {
@@ -134,23 +147,8 @@ const ActivityLogs = () => {
 
     const formatJSONValue = (value) => {
         if (typeof value === 'string') {
-            // Detect ISO 8601 date strings and convert to Asia/Manila timezone
-            const isoDateRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
-            if (isoDateRegex.test(value)) {
-                const parsed = new Date(value);
-                if (!Number.isNaN(parsed.getTime())) {
-                    return parsed.toLocaleString('en-PH', {
-                        timeZone: ACTIVITY_TIME_ZONE,
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                        hour12: true,
-                    });
-                }
-            }
+            const sqlLikeFormatted = formatSqlLikeDateTime(value);
+            if (sqlLikeFormatted) return sqlLikeFormatted;
         }
         return value;
     };
@@ -522,30 +520,67 @@ const ActivityLogs = () => {
                         >
                             {selectedLog && (
                                 <div className="vstack vstack-4">
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+                                    <div
+                                        style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: '1fr 1fr 1fr',
+                                            gap: '0.75rem',
+                                        }}
+                                    >
                                         <div>
                                             <span className="text-xs text-muted">DATE & TIME</span>
-                                            <p className="cell-text" style={{ marginTop: '0.25rem' }}>{formatDateTime(selectedLog.CreatedAt)}</p>
+                                            <p
+                                                className="cell-text"
+                                                style={{ marginTop: '0.25rem' }}
+                                            >
+                                                {formatDateTime(selectedLog.CreatedAt)}
+                                            </p>
                                         </div>
                                         <div>
                                             <span className="text-xs text-muted">USER</span>
-                                            <p className="cell-text" style={{ marginTop: '0.25rem' }}>{selectedLog.UserName || 'Unknown'} (@{selectedLog.UserID || 'System'})</p>
+                                            <p
+                                                className="cell-text"
+                                                style={{ marginTop: '0.25rem' }}
+                                            >
+                                                {selectedLog.UserName || 'Unknown'} (@
+                                                {selectedLog.UserID || 'System'})
+                                            </p>
                                         </div>
                                         <div>
                                             <span className="text-xs text-muted">ACTION</span>
-                                            <p className="cell-text" style={{ marginTop: '0.25rem' }}>{selectedLog.ActionType}</p>
+                                            <p
+                                                className="cell-text"
+                                                style={{ marginTop: '0.25rem' }}
+                                            >
+                                                {selectedLog.ActionType}
+                                            </p>
                                         </div>
                                         <div>
                                             <span className="text-xs text-muted">TABLE</span>
-                                            <p className="cell-text" style={{ marginTop: '0.25rem' }}>{selectedLog.TableName}</p>
+                                            <p
+                                                className="cell-text"
+                                                style={{ marginTop: '0.25rem' }}
+                                            >
+                                                {selectedLog.TableName}
+                                            </p>
                                         </div>
                                         <div>
                                             <span className="text-xs text-muted">RECORD ID</span>
-                                            <p className="cell-text" style={{ marginTop: '0.25rem' }}>{selectedLog.RecordID || '-'}</p>
+                                            <p
+                                                className="cell-text"
+                                                style={{ marginTop: '0.25rem' }}
+                                            >
+                                                {selectedLog.RecordID || '-'}
+                                            </p>
                                         </div>
                                         <div>
                                             <span className="text-xs text-muted">IP ADDRESS</span>
-                                            <p className="cell-text" style={{ marginTop: '0.25rem' }}>{selectedLog.IPAddress || '-'}</p>
+                                            <p
+                                                className="cell-text"
+                                                style={{ marginTop: '0.25rem' }}
+                                            >
+                                                {selectedLog.IPAddress || '-'}
+                                            </p>
                                         </div>
                                     </div>
                                     <div>

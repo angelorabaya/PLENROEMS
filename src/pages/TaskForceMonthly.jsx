@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../services/api';
+import { getCurrentYearPHT } from '../utils/dateUtils';
 import '../styles/active-permittees-print.css';
 
 /* ============================================
@@ -31,7 +32,7 @@ const formatVolume = (value) => {
 const TaskForceMonthly = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const year = searchParams.get('year') || new Date().getFullYear().toString();
+    const year = searchParams.get('year') || getCurrentYearPHT().toString();
     const month = searchParams.get('month') || 'January';
 
     const [data, setData] = useState([]);

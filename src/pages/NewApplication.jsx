@@ -2,7 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../services/api';
 import plenroLogo from '../plenro.png';
-import { FiRefreshCw, FiCheckCircle } from 'react-icons/fi';
+import { FiRefreshCw, FiCheckCircle, FiEye, FiUpload, FiTrash2, FiPlus } from 'react-icons/fi';
+import ProcessApplicantModal from '../components/modals/ProcessApplicantModal';
+import DeleteModal from '../components/modals/DeleteModal';
 
 const DEFAULT_ATTACHMENTS_BASE_PATH = '\\\\Enro-server\\servershare\\attachments\\';
 const normalizeAttachmentBasePath = (value) => {
@@ -30,8 +32,16 @@ const NewApplication = () => {
     const [error, setError] = useState('');
     const [attachMessage, setAttachMessage] = useState('');
     const [refreshingAttachments, setRefreshingAttachments] = useState(false);
+    const [deletingApplication, setDeletingApplication] = useState(false);
+    const [uploadingRequirementIndex, setUploadingRequirementIndex] = useState(null);
+    const [removingRequirementIndex, setRemovingRequirementIndex] = useState(null);
     const [isPermitModalOpen, setIsPermitModalOpen] = useState(false);
+    const [isProcessApplicantModalOpen, setIsProcessApplicantModalOpen] = useState(false);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
+    const requirementUploadInputRef = useRef(null);
+    const pendingUploadRef = useRef(null);
+    const isAdmin = (currentUser?.role || currentUser?.log_role || '').toLowerCase().trim() === 'admin';
 
     useEffect(() => {
         const savedUser = localStorage.getItem('currentUser');
@@ -44,6 +54,13 @@ const NewApplication = () => {
         }
         loadClients();
     }, []);
+
+    useEffect(() => {
+        if (!error) return undefined;
+
+        const timer = setTimeout(() => setError(''), 3000);
+        return () => clearTimeout(timer);
+    }, [error]);
 
     const loadClients = async () => {
         try {
@@ -58,6 +75,12 @@ const NewApplication = () => {
     const getRequirementFilename = (req, permitNo) => {
         const descPrefix = (req.pr_desc || '').substring(0, 2);
         return `${permitNo}-${descPrefix}.pdf`;
+    };
+
+    const getDisplayedRequirementFilename = (req, permitNo) => {
+        const sourceFile = (req.pr_source || '').trim();
+        if (sourceFile) return sourceFile;
+        return getRequirementFilename(req, permitNo);
     };
 
     // Refresh attachment existence checks
@@ -75,8 +98,7 @@ const NewApplication = () => {
         // Build list of filenames to check
         const filenames = [];
         reqs.forEach((req) => {
-            const descPrefix = (req.pr_desc || '').substring(0, 2);
-            const fileName = `${permitNo}-${descPrefix}.pdf`;
+            const fileName = getDisplayedRequirementFilename(req, permitNo);
             filenames.push(fileName);
         });
 
@@ -90,8 +112,7 @@ const NewApplication = () => {
             const results = await api.checkAttachmentsBatch(filenames);
             const existsMap = {};
             reqs.forEach((req, index) => {
-                const descPrefix = (req.pr_desc || '').substring(0, 2);
-                const fileName = `${permitNo}-${descPrefix}.pdf`;
+                const fileName = getDisplayedRequirementFilename(req, permitNo);
                 existsMap[index] = results[fileName] || false;
             });
             setFileExists(existsMap);
@@ -118,6 +139,16 @@ const NewApplication = () => {
             restored.current = true;
         }
     }, [clients, restoreState]);
+
+    useEffect(() => {
+        if (!attachMessage) return undefined;
+
+        const timeoutId = window.setTimeout(() => {
+            setAttachMessage('');
+        }, 3000);
+
+        return () => window.clearTimeout(timeoutId);
+    }, [attachMessage]);
 
     const handleClientSelect = async (e) => {
         const clientId = e.target.value;
@@ -150,8 +181,7 @@ const NewApplication = () => {
     const handlePreviewAttachment = (req) => {
         // Skip redundant file check - we already verified existence with batch check
         const permitNo = (selectedClient?.ph_tpermit || '').trim();
-        const descPrefix = (req.pr_desc || '').substring(0, 2);
-        const safeName = `${permitNo}-${descPrefix}.pdf`;
+        const safeName = getDisplayedRequirementFilename(req, permitNo);
         const fullPath = `${ATTACHMENTS_BASE_PATH}${safeName}`;
         const webPath = api.getNewApplicationAttachmentUrl(safeName);
 
@@ -171,30 +201,62 @@ const NewApplication = () => {
         });
     };
 
-    const handleAttachClick = async (req, index) => {
-        setAttachMessage('');
-        setError('');
-
+    const handleRequirementUploadButtonClick = (req, index) => {
         const permitNo = (selectedClient?.ph_tpermit || '').trim();
         if (!permitNo) {
-            setError('Please select a client with a permit number before checking attachments.');
+            setError('Please select a client with a permit number before uploading attachments.');
             setTimeout(() => setError(''), 3000);
             return;
         }
 
-        const prefix = ((req?.pr_desc || '').trim().replace(/\s+/g, '') || 'NA').slice(0, 2);
-        const fileName = `${permitNo}-${prefix}.pdf`;
-        const displayPath = `${ATTACHMENTS_BASE_PATH}${fileName}`;
+        pendingUploadRef.current = { req, index };
+        requirementUploadInputRef.current?.click();
+    };
+
+    const handleRequirementUploadChange = async (event) => {
+        const file = event.target.files?.[0];
+        const pendingUpload = pendingUploadRef.current;
+        event.target.value = '';
+
+        if (!file || !pendingUpload) return;
+        if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+            setError('Only PDF files are allowed');
+            setTimeout(() => setError(''), 3000);
+            return;
+        }
+
+        const permitNo = (selectedClient?.ph_tpermit || '').trim();
+        if (!permitNo) {
+            setError('Please select a client with a permit number before uploading attachments.');
+            setTimeout(() => setError(''), 3000);
+            pendingUploadRef.current = null;
+            return;
+        }
+
+        const { req, index } = pendingUpload;
+        const fileName = getDisplayedRequirementFilename(req, permitNo);
 
         try {
-            await api.checkNewApplicationAttachment(fileName);
+            setAttachMessage('');
+            setError('');
+            setUploadingRequirementIndex(index);
+
+            const contentBase64 = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(new Error('Failed to read PDF file'));
+                reader.readAsDataURL(file);
+            });
+
+            await api.uploadNewApplicationAttachment({ filename: fileName, contentBase64 });
             await api.updateNewApplicationRequirementAttachment({
                 permitNo,
                 description: req?.pr_desc || '',
                 fileName,
                 attached: true,
             });
-            setAttachMessage(`Attachment exists: ${displayPath}`);
+
+            setFileExists((prev) => ({ ...prev, [index]: true }));
             setRequirements((prev) =>
                 prev.map((item, idx) =>
                     idx === index
@@ -206,9 +268,58 @@ const NewApplication = () => {
                         : item
                 )
             );
+            setAttachMessage(`Uploaded ${fileName}`);
         } catch (err) {
-            setError(`Attachment not found: ${displayPath}`);
+            setError(err.message || 'Failed to upload PDF');
         } finally {
+            setUploadingRequirementIndex(null);
+            pendingUploadRef.current = null;
+            setTimeout(() => {
+                setAttachMessage('');
+                setError('');
+            }, 3000);
+        }
+    };
+
+    const handleRequirementRemoveClick = async (req, index) => {
+        setError('');
+        setAttachMessage('');
+
+        const permitNo = (selectedClient?.ph_tpermit || '').trim();
+        if (!permitNo) {
+            setError('Please select a client with a permit number before removing attachments.');
+            setTimeout(() => setError(''), 3000);
+            return;
+        }
+
+        const fileName = getDisplayedRequirementFilename(req, permitNo);
+
+        try {
+            setRemovingRequirementIndex(index);
+            await api.removeNewApplicationAttachment({ filename: fileName });
+            await api.updateNewApplicationRequirementAttachment({
+                permitNo,
+                description: req?.pr_desc || '',
+                fileName,
+                attached: false,
+            });
+            setAttachMessage(`Removed ${fileName}`);
+            setFileExists((prev) => ({ ...prev, [index]: false }));
+            setRequirements((prev) =>
+                prev.map((item, idx) =>
+                    idx === index
+                        ? {
+                              ...item,
+                              pr_source: '',
+                              pr_wsource: 0,
+                          }
+                        : item
+                )
+            );
+        } catch (err) {
+            setError(err.message || 'Failed to remove PDF');
+        } finally {
+            setRemovingRequirementIndex(null);
             setTimeout(() => {
                 setAttachMessage('');
                 setError('');
@@ -221,8 +332,48 @@ const NewApplication = () => {
         return [client.ph_address1, client.ph_address2].filter(Boolean).join(', ');
     };
 
+    const handleDeleteApplication = async () => {
+        const permitNo = (selectedClient?.ph_tpermit || '').trim();
+        const clientName = (selectedClient?.ph_cname || '').trim();
+
+        if (!permitNo || !clientName) {
+            setError('Please select a client with a permit number before deleting.');
+            setTimeout(() => setError(''), 3000);
+            return;
+        }
+
+        try {
+            setDeletingApplication(true);
+            setIsDeleteModalOpen(false);
+            setError('');
+            setAttachMessage('');
+            await api.deleteNewApplication({ permitNo, clientName });
+            await loadClients();
+            setSelectedClientId('');
+            setSelectedClient(null);
+            setRequirements([]);
+            setFileExists({});
+            setAttachMessage(`Deleted new application ${permitNo}`);
+        } catch (err) {
+            setError(err.message || 'Failed to delete new application');
+        } finally {
+            setDeletingApplication(false);
+            setTimeout(() => {
+                setAttachMessage('');
+                setError('');
+            }, 3000);
+        }
+    };
+
     return (
         <div className="transactions-page">
+            <input
+                ref={requirementUploadInputRef}
+                type="file"
+                accept="application/pdf,.pdf"
+                style={{ display: 'none' }}
+                onChange={handleRequirementUploadChange}
+            />
             <div className="page-header">
                 <div className="page-title-section">
                     <img
@@ -234,14 +385,23 @@ const NewApplication = () => {
                     <h2 className="page-title">New Application</h2>
                 </div>
                 <div className="page-actions">
-                    {currentUser?.log_access === 1 && (
-                        <button
-                            className="btn btn-primary"
-                            onClick={() => setIsPermitModalOpen(true)}
-                            disabled={requirements.length === 0}
-                        >
-                            <FiCheckCircle /> Permit Approved
-                        </button>
+                    {isAdmin && (
+                        <>
+                            <button
+                                className="btn btn-outline"
+                                type="button"
+                                onClick={() => setIsProcessApplicantModalOpen(true)}
+                            >
+                                <FiPlus /> Process Applicant
+                            </button>
+                            <button
+                                className="btn btn-primary"
+                                onClick={() => setIsPermitModalOpen(true)}
+                                disabled={requirements.length === 0}
+                            >
+                                <FiCheckCircle /> Permit Approved
+                            </button>
+                        </>
                     )}
                 </div>
             </div>
@@ -254,6 +414,54 @@ const NewApplication = () => {
                 onSave={(data) => {
                     console.log('Permit Approved Data:', data);
                 }}
+            />
+
+            <ProcessApplicantModal
+                isOpen={isProcessApplicantModalOpen}
+                onClose={() => setIsProcessApplicantModalOpen(false)}
+                onSave={async (data) => {
+                    const clientId = String(
+                        data?.result?.clientId || data?.applicant?.ph_ctrlno || ''
+                    );
+                    const permitNo = data?.result?.permitNo || data?.tempPermitNo || '';
+
+                    await loadClients();
+
+                    if (clientId) {
+                        setSelectedClientId(clientId);
+                    }
+
+                    if (data?.applicant) {
+                        setSelectedClient({
+                            ...data.applicant,
+                            ph_ctrlno: data.applicant.ph_ctrlno,
+                            ph_tpermit: permitNo,
+                            ph_address1: data.applicant.caddress || '',
+                            ph_address2: '',
+                        });
+                    }
+
+                    if (permitNo) {
+                        const res = await api.getNewApplicationRequirements(permitNo);
+                        setRequirements(res || []);
+                        await checkFileExistence(res || [], permitNo);
+                    }
+
+                    setAttachMessage(`Processed applicant ${data?.applicant?.ph_cname || ''}`);
+                }}
+            />
+
+            <DeleteModal
+                isOpen={isDeleteModalOpen}
+                onClose={() => setIsDeleteModalOpen(false)}
+                onCancel={() => setIsDeleteModalOpen(false)}
+                onConfirm={handleDeleteApplication}
+                title="Delete New Application"
+                message={
+                    selectedClient?.ph_tpermit && selectedClient?.ph_cname
+                        ? `Are you sure you want to delete the new application for ${selectedClient.ph_cname} (${selectedClient.ph_tpermit})?`
+                        : 'Are you sure you want to delete this new application?'
+                }
             />
 
             <div className="table-container" style={{ marginBottom: '16px', padding: '12px' }}>
@@ -362,7 +570,7 @@ const NewApplication = () => {
                                                 position: 'sticky',
                                                 top: 0,
                                                 background: 'var(--muted)',
-                                                width: '120px',
+                                                width: '160px',
                                                 textAlign: 'center',
                                             }}
                                         >
@@ -393,6 +601,32 @@ const NewApplication = () => {
                                                         }
                                                     />
                                                 </button>
+                                                {isAdmin && (
+                                                    <button
+                                                        className="btn btn-ghost btn-sm"
+                                                        title="Delete"
+                                                        type="button"
+                                                        onClick={() => setIsDeleteModalOpen(true)}
+                                                        disabled={
+                                                            deletingApplication ||
+                                                            !selectedClient?.ph_tpermit ||
+                                                            !selectedClient?.ph_cname
+                                                        }
+                                                        style={{
+                                                            padding: '4px',
+                                                            minWidth: 'auto',
+                                                            opacity:
+                                                                deletingApplication ||
+                                                                !selectedClient?.ph_tpermit ||
+                                                                !selectedClient?.ph_cname
+                                                                    ? 0.5
+                                                                    : 1,
+                                                            color: '#ef4444',
+                                                        }}
+                                                    >
+                                                        <FiTrash2 size={14} />
+                                                    </button>
+                                                )}
                                             </div>
                                         </th>
                                     </tr>
@@ -400,7 +634,10 @@ const NewApplication = () => {
                                 <tbody>
                                     {requirements.map((req, index) => {
                                         const permitNo = (selectedClient?.ph_tpermit || '').trim();
-                                        const filename = getRequirementFilename(req, permitNo);
+                                        const filename = getDisplayedRequirementFilename(
+                                            req,
+                                            permitNo
+                                        );
                                         return (
                                             <tr key={`${req.pr_desc}-${index}`}>
                                                 <td>{req.pr_desc}</td>
@@ -414,22 +651,83 @@ const NewApplication = () => {
                                                     {filename}
                                                 </td>
                                                 <td style={{ textAlign: 'center' }}>
-                                                    <button
-                                                        className="btn"
+                                                    <div
                                                         style={{
-                                                            backgroundColor: fileExists[index]
-                                                                ? '#22c55e'
-                                                                : '#ef4444',
-                                                            color: 'var(--primary-foreground)',
-                                                            border: 'none',
-                                                            padding: '4px 12px',
-                                                            fontSize: '12px',
+                                                            display: 'flex',
+                                                            justifyContent: 'center',
+                                                            gap: '8px',
+                                                            flexWrap: 'wrap',
                                                         }}
-                                                        onClick={() => handlePreviewAttachment(req)}
-                                                        disabled={!fileExists[index]}
                                                     >
-                                                        Preview
-                                                    </button>
+                                                        <button
+                                                            className="btn btn-ghost btn-sm"
+                                                            title="Preview PDF"
+                                                            style={{
+                                                                padding: '6px',
+                                                                minWidth: 'auto',
+                                                                color: fileExists[index]
+                                                                    ? '#22c55e'
+                                                                    : '#ef4444',
+                                                            }}
+                                                            onClick={() =>
+                                                                handlePreviewAttachment(req)
+                                                            }
+                                                            disabled={!fileExists[index]}
+                                                        >
+                                                            <FiEye size={16} />
+                                                        </button>
+                                                        <button
+                                                            className="btn btn-ghost btn-sm"
+                                                            title="Upload PDF"
+                                                            style={{
+                                                                padding: '6px',
+                                                                minWidth: 'auto',
+                                                                color:
+                                                                    uploadingRequirementIndex ===
+                                                                    index
+                                                                        ? 'var(--muted-foreground)'
+                                                                        : 'var(--foreground)',
+                                                            }}
+                                                            onClick={() =>
+                                                                handleRequirementUploadButtonClick(
+                                                                    req,
+                                                                    index
+                                                                )
+                                                            }
+                                                            disabled={
+                                                                uploadingRequirementIndex ===
+                                                                    index ||
+                                                                removingRequirementIndex === index
+                                                            }
+                                                        >
+                                                            <FiUpload size={16} />
+                                                        </button>
+                                                        {fileExists[index] && (
+                                                            <button
+                                                                className="btn btn-ghost btn-sm"
+                                                                title="Remove PDF"
+                                                                style={{
+                                                                    padding: '6px',
+                                                                    minWidth: 'auto',
+                                                                    color: '#ef4444',
+                                                                }}
+                                                                onClick={() =>
+                                                                    handleRequirementRemoveClick(
+                                                                        req,
+                                                                        index
+                                                                    )
+                                                                }
+                                                                disabled={
+                                                                    removingRequirementIndex ===
+                                                                        index ||
+                                                                    uploadingRequirementIndex ===
+                                                                        index
+                                                                }
+                                                            >
+                                                                <FiTrash2 size={16} />
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </td>
                                             </tr>
                                         );

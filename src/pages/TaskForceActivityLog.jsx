@@ -15,6 +15,13 @@ const TaskForceActivityLog = () => {
         fetchNames();
     }, []);
 
+    useEffect(() => {
+        if (!error) return undefined;
+
+        const timer = setTimeout(() => setError(''), 3000);
+        return () => clearTimeout(timer);
+    }, [error]);
+
     const fetchNames = async () => {
         try {
             const data = await api.getTaskForceActivityLogNames();
@@ -105,11 +112,15 @@ const TaskForceActivityLog = () => {
                 return (
                     dateStr.toLowerCase().includes(q) ||
                     (row['AREA'] || '').toLowerCase().includes(q) ||
-                    String(row['DELIVERY RECEIPT'] || '').toLowerCase().includes(q) ||
+                    String(row['DELIVERY RECEIPT'] || '')
+                        .toLowerCase()
+                        .includes(q) ||
                     (row['DESTINATION'] || '').toLowerCase().includes(q) ||
                     (row['PLATE NO.'] || '').toLowerCase().includes(q) ||
                     (row['DESCRIPTION'] || '').toLowerCase().includes(q) ||
-                    String(row['VOLUME'] || '').toLowerCase().includes(q) ||
+                    String(row['VOLUME'] || '')
+                        .toLowerCase()
+                        .includes(q) ||
                     (row['REMARKS'] || '').toLowerCase().includes(q)
                 );
             });
@@ -142,7 +153,10 @@ const TaskForceActivityLog = () => {
             <div className="table-container" style={{ marginBottom: '16px', padding: '12px' }}>
                 <div
                     className="transactions-compact-form"
-                    style={{ gridTemplateColumns: selectedName && details.length > 0 ? '1fr 1fr 1fr' : '1fr' }}
+                    style={{
+                        gridTemplateColumns:
+                            selectedName && details.length > 0 ? '1fr 1fr 1fr' : '1fr',
+                    }}
                 >
                     <div className="transactions-compact-group">
                         <label className="transactions-compact-label">Client</label>

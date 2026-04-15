@@ -4,15 +4,13 @@ import { useTheme } from '../context/ThemeContext';
 import { api } from '../services/api';
 import plenroLogo from '../plenro.png';
 import ShipmentModal from '../components/modals/ShipmentModal';
+import { getUserPermissions } from '../utils/permissions';
+import { formatDateInputPHT, getTodayPHT, isDateOnOrAfterTodayPHT } from '../utils/dateUtils';
 
 const MAX_ITEMS = 4;
 
 const formatDateInput = (date) => {
-    if (!date) return '';
-    const d = new Date(date);
-    const month = `${d.getMonth() + 1}`.padStart(2, '0');
-    const day = `${d.getDate()}`.padStart(2, '0');
-    return `${d.getFullYear()}-${month}-${day}`;
+    return formatDateInputPHT(date);
 };
 
 const generateControlNo = () => {
@@ -44,11 +42,7 @@ const createEmptyItem = () => ({
 
 const checkPermitStatus = (permitDate) => {
     if (!permitDate) return '';
-    const permit = new Date(permitDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    permit.setHours(0, 0, 0, 0);
-    return permit >= today ? 'Active' : 'Expired';
+    return isDateOnOrAfterTodayPHT(permitDate) ? 'Active' : 'Expired';
 };
 
 const computeTotal = (volume, charge, volumeLocked) => {
@@ -63,6 +57,7 @@ const computeTotal = (volume, charge, volumeLocked) => {
 const Assessment = () => {
     const navigate = useNavigate();
     const { currentUser } = useOutletContext() || {};
+    const permissions = useMemo(() => getUserPermissions(currentUser), [currentUser]);
     const { theme } = useTheme();
     const [clients, setClients] = useState([]);
     const [natureOptions, setNatureOptions] = useState([]);
@@ -74,7 +69,7 @@ const Assessment = () => {
     const [items, setItems] = useState([createEmptyItem()]);
 
     const [controlNo, setControlNo] = useState(generateControlNo());
-    const [assessmentDate, setAssessmentDate] = useState(formatDateInput(new Date()));
+    const [assessmentDate, setAssessmentDate] = useState(getTodayPHT());
     const [clientId, setClientId] = useState('');
     const [nature, setNature] = useState('');
     const [apprehended, setApprehended] = useState('');
@@ -218,7 +213,7 @@ const Assessment = () => {
 
     const resetForm = () => {
         setControlNo(generateControlNo());
-        setAssessmentDate(formatDateInput(new Date()));
+        setAssessmentDate(getTodayPHT());
         setClientId('');
         setClientSearch('');
         setNature('');
@@ -945,14 +940,16 @@ const Assessment = () => {
                         </table>
                     </div>
                     <div className="assessment-add">
-                        <button
-                            type="button"
-                            className="btn btn-secondary"
-                            onClick={handleAddItem}
-                            disabled={items.length >= MAX_ITEMS}
-                        >
-                            + Add Item
-                        </button>
+                        {permissions.canCreate && (
+                            <button
+                                type="button"
+                                className="btn btn-secondary"
+                                onClick={handleAddItem}
+                                disabled={items.length >= MAX_ITEMS}
+                            >
+                                + Add Item
+                            </button>
+                        )}
                     </div>
                     <div className="assessment-total">
                         <span>Total Amount</span>
@@ -978,7 +975,11 @@ const Assessment = () => {
                 </div>
 
                 <div className="assessment-actions">
-                    <button type="submit" className="btn btn-primary" disabled={loading.submitting}>
+                    <button
+                        type="submit"
+                        className="btn btn-primary"
+                        disabled={loading.submitting || !permissions.canCreate}
+                    >
                         {loading.submitting ? 'Saving...' : 'Save Assessment'}
                     </button>
                 </div>
