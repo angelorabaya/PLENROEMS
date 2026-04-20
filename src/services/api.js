@@ -920,6 +920,24 @@ export const api = {
         return response.json();
     },
 
+    getBrgyShareYearTotal: async (year) => {
+        const params = new URLSearchParams({
+            year: year.toString(),
+        });
+        const response = await fetch(`${API_BASE}/api/reports/brgyshare-year-total?${params}`);
+        if (!response.ok) throw new Error('Failed to fetch barangay share year total');
+        return response.json();
+    },
+
+    getMunShareYearTotal: async (year) => {
+        const params = new URLSearchParams({
+            year: year.toString(),
+        });
+        const response = await fetch(`${API_BASE}/api/reports/munshare-year-total?${params}`);
+        if (!response.ok) throw new Error('Failed to fetch municipal share year total');
+        return response.json();
+    },
+
     getActivePermittees: async () => {
         const response = await fetch(`${API_BASE}/api/reports/active-permittees`);
         if (!response.ok) throw new Error('Failed to fetch active permittees report');

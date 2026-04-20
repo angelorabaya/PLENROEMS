@@ -4204,6 +4204,22 @@ app.delete('/api/docreceiving/:id', async (req, res) => {
         );
         const oldValues = oldResult.recordset[0];
 
+        if (!oldValues) {
+            return res.status(404).json({ error: 'Record not found' });
+        }
+
+        const attachmentName = `${String(oldValues.dms_control || '').trim()}.pdf`;
+        if (attachmentName !== '.pdf') {
+            const attachmentPath = path.join(ATTACHMENTS_BASE_PATH, path.basename(attachmentName));
+            try {
+                await fs.promises.unlink(attachmentPath);
+            } catch (attachmentErr) {
+                if (attachmentErr.code !== 'ENOENT') {
+                    throw attachmentErr;
+                }
+            }
+        }
+
         const request = pool.request();
         request.input('dms_ctrlno', sql.Int, id);
 
@@ -4384,6 +4400,22 @@ app.delete('/api/docoutgoing/:id', async (req, res) => {
         );
         const oldValues = oldResult.recordset[0];
 
+        if (!oldValues) {
+            return res.status(404).json({ error: 'Record not found' });
+        }
+
+        const attachmentName = `${String(oldValues.dms_control || '').trim()}.pdf`;
+        if (attachmentName !== '.pdf') {
+            const attachmentPath = path.join(ATTACHMENTS_BASE_PATH, path.basename(attachmentName));
+            try {
+                await fs.promises.unlink(attachmentPath);
+            } catch (attachmentErr) {
+                if (attachmentErr.code !== 'ENOENT') {
+                    throw attachmentErr;
+                }
+            }
+        }
+
         const request = pool.request();
         request.input('dms_ctrlno', sql.Int, id);
 
@@ -4562,11 +4594,11 @@ app.get('/api/dashboard/stats', async (req, res) => {
         const currentYear = year1 ? parseInt(year1, 10) : defaultCurrentYear;
         const lastYear = year2 ? parseInt(year2, 10) : defaultLastYear;
 
-        const collectionRequest = pool.request();
-        collectionRequest.input('year1', sql.Int, currentYear);
-        collectionRequest.input('year2', sql.Int, lastYear);
+        const grossCollectionRequest = pool.request();
+        grossCollectionRequest.input('year1', sql.Int, currentYear);
+        grossCollectionRequest.input('year2', sql.Int, lastYear);
 
-        const collectionResult = await collectionRequest.query(`
+        const grossCollectionResult = await grossCollectionRequest.query(`
       WITH YearlyTotals AS (
         SELECT yr, SUM(total) AS yearTotal
         FROM View_gross
@@ -4574,10 +4606,26 @@ app.get('/api/dashboard/stats', async (req, res) => {
         GROUP BY yr
       )
       SELECT 
-        (SELECT ISNULL(yearTotal, 0) FROM YearlyTotals WHERE yr = @year1) AS collectionThisYear,
-        (SELECT ISNULL(yearTotal, 0) FROM YearlyTotals WHERE yr = @year2) AS collectionLastYear,
+        (SELECT ISNULL(yearTotal, 0) FROM YearlyTotals WHERE yr = @year1) AS grossCollectionThisYear,
+        (SELECT ISNULL(yearTotal, 0) FROM YearlyTotals WHERE yr = @year2) AS grossCollectionLastYear,
         @year1 AS latestYear,
         @year2 AS previousYear
+    `);
+
+        const netCollectionRequest = pool.request();
+        netCollectionRequest.input('year1', sql.Int, currentYear);
+        netCollectionRequest.input('year2', sql.Int, lastYear);
+
+        const netCollectionResult = await netCollectionRequest.query(`
+      WITH YearlyTotals AS (
+        SELECT [Year] AS reportYear, SUM(ISNULL(Net_Share, 0)) AS yearTotal
+        FROM View_collectionreport
+        WHERE [Year] IN (@year1, @year2)
+        GROUP BY [Year]
+      )
+      SELECT 
+        (SELECT ISNULL(yearTotal, 0) FROM YearlyTotals WHERE reportYear = @year1) AS netCollectionThisYear,
+        (SELECT ISNULL(yearTotal, 0) FROM YearlyTotals WHERE reportYear = @year2) AS netCollectionLastYear
     `);
 
         // Get pending applications count from View_applicants
@@ -4665,8 +4713,8 @@ app.get('/api/dashboard/stats', async (req, res) => {
     `);
 
         // Get monthly collection for latest year and previous year from View_gross
-        const latestYear = collectionResult.recordset[0]?.latestYear || currentYear;
-        const previousYear = collectionResult.recordset[0]?.previousYear || lastYear;
+        const latestYear = grossCollectionResult.recordset[0]?.latestYear || currentYear;
+        const previousYear = grossCollectionResult.recordset[0]?.previousYear || lastYear;
 
         const monthlyRequest = pool.request();
         monthlyRequest.input('latestYear', sql.Int, latestYear);
@@ -4713,10 +4761,12 @@ app.get('/api/dashboard/stats', async (req, res) => {
 
         const permitAlertsSummary = permitAlertsResult.recordsets?.[1]?.[0] || {};
         const stats = {
-            collectionThisYear: collectionResult.recordset[0]?.collectionThisYear || 0,
-            collectionLastYear: collectionResult.recordset[0]?.collectionLastYear || 0,
-            latestYear: collectionResult.recordset[0]?.latestYear || currentYear,
-            previousYear: collectionResult.recordset[0]?.previousYear || lastYear,
+            collectionThisYear: grossCollectionResult.recordset[0]?.grossCollectionThisYear || 0,
+            collectionLastYear: grossCollectionResult.recordset[0]?.grossCollectionLastYear || 0,
+            netCollectionThisYear: netCollectionResult.recordset[0]?.netCollectionThisYear || 0,
+            netCollectionLastYear: netCollectionResult.recordset[0]?.netCollectionLastYear || 0,
+            latestYear: grossCollectionResult.recordset[0]?.latestYear || currentYear,
+            previousYear: grossCollectionResult.recordset[0]?.previousYear || lastYear,
             pendingApplications: pendingResult.recordset[0]?.pendingCount || 0,
             activePermits: permitsResult.recordset[0]?.activePermits || 0,
             activeVehicles: vehiclesResult.recordset[0]?.activeVehicles || 0,
@@ -4730,7 +4780,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
                 topAreas: taskForceSnapshotResult.recordset || [],
             },
             monthlyCollection,
-            year: collectionResult.recordset[0]?.latestYear || currentYear,
+            year: grossCollectionResult.recordset[0]?.latestYear || currentYear,
         };
 
         console.log('📊 Monthly collection data:', JSON.stringify(monthlyCollection.slice(0, 3)));
@@ -5074,6 +5124,100 @@ app.get('/api/reports/municipal-share', async (req, res) => {
     } catch (err) {
         console.error('❌ Get Municipal Share Error:', err.message);
         res.status(500).json({ error: 'Failed to fetch municipal share: ' + err.message });
+    }
+});
+
+// ==================== BARANGAY SHARE YEAR TOTAL ENDPOINT ====================
+
+app.get('/api/reports/brgyshare-year-total', async (req, res) => {
+    try {
+        const { year } = req.query;
+
+        if (!year) {
+            return res.status(400).json({ error: 'Year is required' });
+        }
+
+        console.log(`[API] Fetching barangay share year total for ${year}`);
+
+        const request = pool.request();
+        request.input('year', sql.Int, parseInt(year));
+
+        let result;
+        try {
+            result = await request.query(`
+          SELECT RptYear, ISNULL(SUM(total_share), 0) AS TotalBrgyShare
+          FROM View_brgysharesyear
+          WHERE RptYear = @year
+          GROUP BY RptYear
+        `);
+        } catch (viewErr) {
+            console.error(
+                `❌ Barangay share year view query failed for ${year}:`,
+                viewErr.message
+            );
+            const fallbackRequest = pool.request();
+            fallbackRequest.input('year', sql.Int, parseInt(year));
+            const fallbackResult = await fallbackRequest.query(`
+          SELECT DISTINCT CAST(SUBSTRING(aop_dt, 1, 4) AS INT) AS RptYear, 0 AS TotalBrgyShare
+          FROM tbl_assessmentofpayment
+          WHERE CAST(SUBSTRING(aop_dt, 1, 4) AS INT) = @year
+          GROUP BY CAST(SUBSTRING(aop_dt, 1, 4) AS INT)
+            `);
+            result = fallbackResult;
+        }
+
+        console.log(`✅ [API] Found barangay share total: ${result.recordset[0]?.TotalBrgyShare || 0}`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Brgy Share Year Total Error:', err.message);
+        res.json([{ TotalBrgyShare: 0 }]);
+    }
+});
+
+// ==================== MUNICIPAL SHARE YEAR TOTAL ENDPOINT ====================
+
+app.get('/api/reports/munshare-year-total', async (req, res) => {
+    try {
+        const { year } = req.query;
+
+        if (!year) {
+            return res.status(400).json({ error: 'Year is required' });
+        }
+
+        console.log(`[API] Fetching municipal share year total for ${year}`);
+
+        const request = pool.request();
+        request.input('year', sql.Int, parseInt(year));
+
+        let result;
+        try {
+            result = await request.query(`
+          SELECT RptYear, ISNULL(SUM(total_share), 0) AS TotalMunShare
+          FROM View_munshareyear
+          WHERE RptYear = @year
+          GROUP BY RptYear
+        `);
+        } catch (viewErr) {
+            console.error(
+                `❌ Municipal share year view query failed for ${year}:`,
+                viewErr.message
+            );
+            const fallbackRequest = pool.request();
+            fallbackRequest.input('year', sql.Int, parseInt(year));
+            const fallbackResult = await fallbackRequest.query(`
+          SELECT DISTINCT CAST(SUBSTRING(aop_dt, 1, 4) AS INT) AS RptYear, 0 AS TotalMunShare
+          FROM tbl_assessmentofpayment
+          WHERE CAST(SUBSTRING(aop_dt, 1, 4) AS INT) = @year
+          GROUP BY CAST(SUBSTRING(aop_dt, 1, 4) AS INT)
+            `);
+            result = fallbackResult;
+        }
+
+        console.log(`✅ [API] Found municipal share total: ${result.recordset[0]?.TotalMunShare || 0}`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Mun Share Year Total Error:', err.message);
+        res.json([{ TotalMunShare: 0 }]);
     }
 });
 
@@ -5986,6 +6130,22 @@ app.delete('/api/travelorders/:id', async (req, res) => {
         );
         const oldValues = oldResult.recordset[0];
 
+        if (!oldValues) {
+            return res.status(404).json({ error: 'Record not found' });
+        }
+
+        const attachmentName = `TO${String(oldValues.to_number || '').trim()}.pdf`;
+        if (attachmentName !== 'TO.pdf') {
+            const attachmentPath = path.join(ATTACHMENTS_BASE_PATH, path.basename(attachmentName));
+            try {
+                await fs.promises.unlink(attachmentPath);
+            } catch (attachmentErr) {
+                if (attachmentErr.code !== 'ENOENT') {
+                    throw attachmentErr;
+                }
+            }
+        }
+
         // Delete associated employees first
         const delEmpReq = pool.request();
         delEmpReq.input('toId', sql.Int, id);
@@ -6474,6 +6634,22 @@ app.delete('/api/leave/applications/:id', async (req, res) => {
             'SELECT * FROM tbl_leaveapplications WHERE la_ctrlno = @id'
         );
         const oldValues = oldResult.recordset[0];
+
+        if (!oldValues) {
+            return res.status(404).json({ error: 'Record not found' });
+        }
+
+        const attachmentName = `LF${String(oldValues.la_controlno || '').trim()}.pdf`;
+        if (attachmentName !== 'LF.pdf') {
+            const attachmentPath = path.join(ATTACHMENTS_BASE_PATH, path.basename(attachmentName));
+            try {
+                await fs.promises.unlink(attachmentPath);
+            } catch (attachmentErr) {
+                if (attachmentErr.code !== 'ENOENT') {
+                    throw attachmentErr;
+                }
+            }
+        }
 
         // Delete the application (Database constraint ON DELETE CASCADE will handle lad specific dates)
         const request = pool.request();

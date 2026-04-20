@@ -14,11 +14,13 @@ import {
     FiCalendar,
     FiClipboard,
     FiFileText,
+    FiHome,
     FiMapPin,
     FiRefreshCw,
     FiShield,
     FiTrendingUp,
     FiTruck,
+    FiUsers,
 } from 'react-icons/fi';
 import { api } from '../services/api';
 import plenroLogo from '../plenro.png';
@@ -43,9 +45,9 @@ const formatDate = (value) => {
     if (!value) return 'No expiry date';
     return (
         formatDatePHT(value, 'en-PH', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
         }) || 'No expiry date'
     );
 };
@@ -297,10 +299,17 @@ const Home = () => {
     const [year1, setYear1] = useState(getCurrentYearPHT());
     const [year2, setYear2] = useState(getCurrentYearPHT() - 1);
 
+    const [brgyShare, setBrgyShare] = useState({ thisYear: 0, lastYear: 0 });
+    const [munShare, setMunShare] = useState({ thisYear: 0, lastYear: 0 });
+
     useEffect(() => {
         loadAvailableYears();
-        loadDashboardStats();
     }, []);
+
+    useEffect(() => {
+        loadDashboardStats();
+        loadShareData();
+    }, [year1, year2]);
 
     const loadAvailableYears = async () => {
         try {
@@ -325,11 +334,51 @@ const Home = () => {
         }
     };
 
+    const loadShareData = async () => {
+        try {
+            const [brgy1, brgy2, mun1, mun2] = await Promise.all([
+                api.getBrgyShareYearTotal(year1),
+                api.getBrgyShareYearTotal(year2),
+                api.getMunShareYearTotal(year1),
+                api.getMunShareYearTotal(year2),
+            ]);
+            setBrgyShare({
+                thisYear: brgy1?.[0]?.TotalBrgyShare || 0,
+                lastYear: brgy2?.[0]?.TotalBrgyShare || 0,
+            });
+            setMunShare({
+                thisYear: mun1?.[0]?.TotalMunShare || 0,
+                lastYear: mun2?.[0]?.TotalMunShare || 0,
+            });
+        } catch (err) {
+            console.error('Failed to load share data:', err);
+        }
+    };
+
     const calculateTrend = () => {
         if (!stats || !stats.collectionLastYear || stats.collectionLastYear === 0) return null;
         return (
             ((stats.collectionThisYear - stats.collectionLastYear) / stats.collectionLastYear) * 100
         );
+    };
+
+    const calculateNetCollectionTrend = () => {
+        if (!stats || !stats.netCollectionLastYear || stats.netCollectionLastYear === 0) return null;
+        return (
+            ((stats.netCollectionThisYear - stats.netCollectionLastYear) /
+                stats.netCollectionLastYear) *
+            100
+        );
+    };
+
+    const calculateBrgyShareTrend = () => {
+        if (!brgyShare.lastYear || brgyShare.lastYear === 0) return null;
+        return ((brgyShare.thisYear - brgyShare.lastYear) / brgyShare.lastYear) * 100;
+    };
+
+    const calculateMunShareTrend = () => {
+        if (!munShare.lastYear || munShare.lastYear === 0) return null;
+        return ((munShare.thisYear - munShare.lastYear) / munShare.lastYear) * 100;
     };
 
     if (loading) {
@@ -432,20 +481,39 @@ const Home = () => {
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         <KPICard
-                            title={`Collection ${stats?.latestYear || 'This Year'}`}
+                            title={`GROSS COLLECTION ${stats?.latestYear || 'This Year'}`}
                             value={formatCurrency(stats?.collectionThisYear || 0)}
-                            subtitle="vs previous year"
+                            subtitle={`vs ${year2} ${formatCurrency(stats?.collectionLastYear || 0)}`}
                             icon={FiTrendingUp}
                             accentColor="emerald"
                             trend={trend}
                             isDark={isDark}
                         />
                         <KPICard
-                            title={`Collection ${stats?.previousYear || 'Last Year'}`}
-                            value={formatCurrency(stats?.collectionLastYear || 0)}
-                            subtitle={`Year ${stats?.previousYear || ''} Total`}
+                            title={`NET PROVINCIAL ALLOCATION ${year1}`}
+                            value={formatCurrency(stats?.netCollectionThisYear || 0)}
+                            subtitle={`vs ${year2} ${formatCurrency(stats?.netCollectionLastYear || 0)}`}
                             icon={FiTrendingUp}
                             accentColor="blue"
+                            trend={calculateNetCollectionTrend()}
+                            isDark={isDark}
+                        />
+                        <KPICard
+                            title={`Barangay Share ${year1}`}
+                            value={formatCurrency(brgyShare.thisYear)}
+                            subtitle={`vs ${year2} ${formatCurrency(brgyShare.lastYear)}`}
+                            icon={FiHome}
+                            accentColor="amber"
+                            trend={calculateBrgyShareTrend()}
+                            isDark={isDark}
+                        />
+                        <KPICard
+                            title={`Municipal Share ${year1}`}
+                            value={formatCurrency(munShare.thisYear)}
+                            subtitle={`vs ${year2} ${formatCurrency(munShare.lastYear)}`}
+                            icon={FiUsers}
+                            accentColor="violet"
+                            trend={calculateMunShareTrend()}
                             isDark={isDark}
                         />
                     </div>
@@ -696,7 +764,9 @@ const Home = () => {
                                     <span className="w-3 h-3 rounded-full bg-cyan-500"></span>
                                     <select
                                         value={year1}
-                                        onChange={(e) => setYear1(Number(e.target.value))}
+                                        onChange={(e) => {
+                                            setYear1(Number(e.target.value));
+                                        }}
                                         className={`text-sm rounded-lg border-none ring-1 py-1 pl-2 pr-8 cursor-pointer focus:ring-2 focus:ring-emerald-500
                                             ${isDark ? 'bg-gray-800 text-white ring-gray-700' : 'bg-white text-gray-700 ring-gray-200'}`}
                                     >
@@ -711,7 +781,9 @@ const Home = () => {
                                     <span className="w-3 h-3 rounded-full bg-rose-500"></span>
                                     <select
                                         value={year2}
-                                        onChange={(e) => setYear2(Number(e.target.value))}
+                                        onChange={(e) => {
+                                            setYear2(Number(e.target.value));
+                                        }}
                                         className={`text-sm rounded-lg border-none ring-1 py-1 pl-2 pr-8 cursor-pointer focus:ring-2 focus:ring-emerald-500
                                             ${isDark ? 'bg-gray-800 text-white ring-gray-700' : 'bg-white text-gray-700 ring-gray-200'}`}
                                     >
@@ -723,7 +795,10 @@ const Home = () => {
                                     </select>
                                 </div>
                                 <button
-                                    onClick={loadDashboardStats}
+                                    onClick={() => {
+                                        loadDashboardStats();
+                                        loadShareData();
+                                    }}
                                     className={`p-1.5 rounded-lg border transition-colors
                                         ${
                                             isDark
