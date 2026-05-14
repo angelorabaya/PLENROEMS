@@ -1289,7 +1289,7 @@ const TravelAuthorization = () => {
             <Dialog.Root open={isModalOpen} onOpenChange={(open) => !open && handleCancelModal()}>
                 <Dialog.Portal>
                     <Dialog.Overlay className="dialog-overlay" />
-                    <Dialog.Content className="dialog-content">
+                    <Dialog.Content className="dialog-content" aria-describedby={undefined}>
                         <div className="dialog-header">
                             <Dialog.Title className="dialog-title">
                                 {editingId ? 'Edit Travel Order' : 'Add Travel Order'}

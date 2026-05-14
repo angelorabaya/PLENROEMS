@@ -3,12 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { FiSend, FiArrowLeft, FiAlertCircle, FiRefreshCw } from 'react-icons/fi';
 import { useTheme } from '../context/ThemeContext';
 import aiBotImage from '../assets/airobot.png';
+import { buildApiUrl } from '../services/apiBase';
 import '../styles/ordinance-bot.css';
-
-// API URL helper
-const getApiUrl = () => {
-    return '';
-};
 
 const OrdinanceBot = () => {
     const navigate = useNavigate();
@@ -55,7 +51,7 @@ const OrdinanceBot = () => {
 
     const checkBotStatus = async () => {
         try {
-            const res = await fetch(`${getApiUrl()}/api/ordinance-bot/status`);
+            const res = await fetch(buildApiUrl('/api/ordinance-bot/status'));
             const data = await res.json();
             setBotStatus(data);
             if (!data.ready) {
@@ -79,7 +75,7 @@ const OrdinanceBot = () => {
         setIsLoading(true);
 
         try {
-            const res = await fetch(`${getApiUrl()}/api/ordinance-bot/chat`, {
+            const res = await fetch(buildApiUrl('/api/ordinance-bot/chat'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message: userMessage }),

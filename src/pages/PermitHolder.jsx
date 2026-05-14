@@ -221,11 +221,9 @@ const PermitHolder = () => {
     };
 
     const getDisplayedPrereqFilename = (req, permitNo) => {
-        const sourceFile = (req.pr_source || '').trim();
-        if (sourceFile) return sourceFile;
-
         const cleanPermitNo = (permitNo || '').trim();
         const suffix = (req.pr_desc || '').substring(0, 2);
+
         if (cleanPermitNo) {
             if (suffix) {
                 return `${cleanPermitNo}-${suffix}.pdf`;
@@ -233,7 +231,7 @@ const PermitHolder = () => {
             return `${cleanPermitNo}.pdf`;
         }
 
-        return '';
+        return (req.pr_source || '').trim();
     };
 
     const checkPrereqFileExistence = async (reqs, permitNo) => {

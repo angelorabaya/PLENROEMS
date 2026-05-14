@@ -13,7 +13,10 @@ const DeleteModal = ({ isOpen, onClose, onConfirm, onCancel, title, message }) =
         <Dialog.Root open={isOpen} onOpenChange={(open) => !open && handleClose()}>
             <Dialog.Portal>
                 <Dialog.Overlay className="dialog-overlay" />
-                <Dialog.Content className="dialog-content dialog-content-sm">
+                <Dialog.Content
+                    className="dialog-content dialog-content-sm"
+                    aria-describedby={undefined}
+                >
                     <div className="dialog-header">
                         <Dialog.Title className="dialog-title">
                             {title || 'Confirm Delete'}

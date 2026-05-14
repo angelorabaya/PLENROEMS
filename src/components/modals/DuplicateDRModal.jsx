@@ -10,7 +10,7 @@ const DuplicateDRModal = ({ isOpen, onClose, record }) => {
         <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>
             <Dialog.Portal>
                 <Dialog.Overlay className="dialog-overlay" />
-                <Dialog.Content className="dialog-content">
+                <Dialog.Content className="dialog-content" aria-describedby={undefined}>
                     <div className="dialog-header">
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <FiAlertTriangle size={18} color="#f59e0b" />

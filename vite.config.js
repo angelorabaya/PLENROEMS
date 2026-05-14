@@ -1,56 +1,30 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 // https://vite.dev/config/
-export default defineConfig(() => ({
-  plugins: [react()],
-  build: {
-    rollupOptions: {
-      output: {
-        onlyExplicitManualChunks: true,
-        manualChunks(id) {
-          if (!id.includes('node_modules')) return;
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  const base = env.VITE_APP_BASE_PATH || '/';
 
-          if (
-            /[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom)[\\/]/.test(id)
-          ) {
-            return 'core-vendor';
-          }
-
-          if (id.includes('@tremor') || id.includes('recharts')) {
-            return 'charts-vendor';
-          }
-
-          if (id.includes('docx') || id.includes('file-saver')) {
-            return 'export-vendor';
-          }
-
-          if (id.includes('@radix-ui')) {
-            return 'radix-vendor';
-          }
-
-          if (id.includes('react-icons')) {
-            return 'icons-vendor';
-          }
+  return {
+    plugins: [react()],
+    base,
+    server: {
+      open: true,
+      host: '0.0.0.0',
+      port: 6005,
+      allowedHosts: true,
+      proxy: {
+        '/api': {
+          target: 'http://localhost:5006',
+          changeOrigin: true,
+          secure: false,
         },
       },
     },
-  },
-  server: {
-    open: true,
-    host: '0.0.0.0',
-    port: 5173,
-    allowedHosts: true,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:5000',
-        changeOrigin: true,
-        secure: false,
-      },
-    },
-  },
-  preview: {
-    host: '0.0.0.0',
-    port: 4173,
-  }
-}));
+    preview: {
+      host: '0.0.0.0',
+      port: 4173,
+    }
+  };
+});

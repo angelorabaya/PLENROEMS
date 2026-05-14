@@ -53,7 +53,7 @@ const DeliveryReceiptModal = ({ isOpen, onClose, onSave, receipt }) => {
         <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>
             <Dialog.Portal>
                 <Dialog.Overlay className="dialog-overlay" />
-                <Dialog.Content className="dialog-content">
+                <Dialog.Content className="dialog-content" aria-describedby={undefined}>
                     <form onSubmit={handleSubmit}>
                         {/* Header */}
                         <div className="dialog-header">

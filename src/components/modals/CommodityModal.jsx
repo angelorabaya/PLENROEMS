@@ -37,7 +37,10 @@ const CommodityModal = ({ isOpen, onClose, onSave, commodity }) => {
         <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>
             <Dialog.Portal>
                 <Dialog.Overlay className="dialog-overlay" />
-                <Dialog.Content className="dialog-content dialog-content-md">
+                <Dialog.Content
+                    className="dialog-content dialog-content-md"
+                    aria-describedby={undefined}
+                >
                     <form onSubmit={handleSubmit}>
                         <div className="dialog-header">
                             <Dialog.Title className="dialog-title">

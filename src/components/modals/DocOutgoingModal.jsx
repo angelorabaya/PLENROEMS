@@ -184,10 +184,12 @@ const DocOutgoingModal = ({ isOpen, onClose, onSave, record }) => {
         setLoading(true);
         try {
             // Convert destination and description to uppercase
+            const selectedEmp = employees.find((emp) => String(emp.emp_ctrlno) === String(formData.dms_empid));
             const dataToSave = {
                 ...formData,
                 dms_destination: (formData.dms_destination || '').toUpperCase(),
                 dms_desc: (formData.dms_desc || '').toUpperCase(),
+                emp_name: selectedEmp ? selectedEmp.emp_name : '',
             };
             await onSave(dataToSave);
         } finally {

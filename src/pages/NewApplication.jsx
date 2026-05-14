@@ -411,8 +411,13 @@ const NewApplication = () => {
                 onClose={() => setIsPermitModalOpen(false)}
                 clientId={selectedClientId}
                 currentPermitNo={selectedClient?.ph_tpermit || ''}
-                onSave={(data) => {
+                onSave={async (data) => {
                     console.log('Permit Approved Data:', data);
+                    setSelectedClientId('');
+                    setSelectedClient(null);
+                    setRequirements([]);
+                    setAttachMessage('Application approved successfully.');
+                    await loadClients();
                 }}
             />
 

@@ -4,6 +4,7 @@ import { FiEye, FiEdit2, FiTrash2 } from 'react-icons/fi';
 import { api } from '../services/api';
 import plenroLogo from '../plenro.png';
 import DocOutgoingModal from '../components/modals/DocOutgoingModal';
+import DocOutgoingPrintModal from '../components/modals/DocOutgoingPrintModal';
 import DeleteModal from '../components/modals/DeleteModal';
 import '../styles/global.css';
 import { getUserPermissions } from '../utils/permissions';
@@ -49,6 +50,8 @@ const DocumentOutgoing = () => {
     const [editingRecord, setEditingRecord] = useState(null);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [recordToDelete, setRecordToDelete] = useState(null);
+    const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+    const [printData, setPrintData] = useState(null);
 
     const { currentUser } = useOutletContext();
 
@@ -103,19 +106,39 @@ const DocumentOutgoing = () => {
         setError('');
         setSuccess('');
         try {
+            let savedDate = editingRecord ? editingRecord.dms_date : new Date().toISOString();
+
             if (editingRecord) {
                 await api.updateDocumentOutgoing(editingRecord.dms_ctrlno, formData);
                 setSuccess('Record updated successfully');
             } else {
-                await api.createDocumentOutgoing(formData);
+                const result = await api.createDocumentOutgoing(formData);
                 setSuccess('Record created successfully');
+                if (result.dms_date) {
+                    savedDate = result.dms_date;
+                }
             }
             handleModalClose();
             fetchRecords();
             setTimeout(() => setSuccess(''), 3000);
+
+            // Open print modal with the saved data
+            setPrintData({
+                dms_control: formData.dms_control,
+                dms_destination: formData.dms_destination,
+                emp_name: formData.emp_name,
+                dms_desc: formData.dms_desc,
+                dms_date: savedDate
+            });
+            setIsPrintModalOpen(true);
         } catch (err) {
             setError(err.message || 'Failed to save record');
         }
+    };
+
+    const handlePrintModalClose = () => {
+        setIsPrintModalOpen(false);
+        setPrintData(null);
     };
 
     const handleDeleteConfirm = async () => {
@@ -295,6 +318,13 @@ const DocumentOutgoing = () => {
                 onClose={handleModalClose}
                 onSave={handleSave}
                 record={editingRecord}
+            />
+
+            {/* Print QR Code Modal */}
+            <DocOutgoingPrintModal
+                isOpen={isPrintModalOpen}
+                onClose={handlePrintModalClose}
+                printData={printData}
             />
 
             {/* Delete Confirmation Modal */}

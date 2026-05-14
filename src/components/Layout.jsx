@@ -42,7 +42,10 @@ const Layout = ({ onLogout, currentUser }) => {
             <Dialog.Root open={isLogoutModalOpen} onOpenChange={setIsLogoutModalOpen}>
                 <Dialog.Portal>
                     <Dialog.Overlay className="dialog-overlay" />
-                    <Dialog.Content className="dialog-content dialog-content-sm">
+                    <Dialog.Content
+                        className="dialog-content dialog-content-sm"
+                        aria-describedby={undefined}
+                    >
                         <div className="dialog-header">
                             <Dialog.Title className="dialog-title">Confirm Logout</Dialog.Title>
                             <Dialog.Close asChild>

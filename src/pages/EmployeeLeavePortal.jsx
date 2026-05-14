@@ -770,6 +770,7 @@ const EmployeeLeavePortal = () => {
                 <Dialog.Portal>
                     <Dialog.Overlay className="dialog-overlay" />
                     <Dialog.Content
+                        aria-describedby={undefined}
                         className="dialog-content max-w-2xl"
                         style={{ maxHeight: '90vh' }}
                     >
@@ -1177,7 +1178,10 @@ const EmployeeLeavePortal = () => {
             <Dialog.Root open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
                 <Dialog.Portal>
                     <Dialog.Overlay className="dialog-overlay" />
-                    <Dialog.Content className="dialog-content max-w-md">
+                    <Dialog.Content
+                        className="dialog-content max-w-md"
+                        aria-describedby={undefined}
+                    >
                         <div className="dialog-header">
                             <Dialog.Title className="dialog-title text-red-600 dark:text-red-400 flex items-center gap-2">
                                 <ExclamationTriangleIcon width={20} height={20} />
@@ -1234,6 +1238,7 @@ const EmployeeLeavePortal = () => {
                 <Dialog.Portal>
                     <Dialog.Overlay className="dialog-overlay" />
                     <Dialog.Content
+                        aria-describedby={undefined}
                         className="dialog-content max-w-2xl"
                         style={{ maxHeight: '90vh' }}
                     >

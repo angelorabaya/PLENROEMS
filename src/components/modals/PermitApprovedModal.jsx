@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Select from '@radix-ui/react-select';
-import { FiX, FiCheck, FiChevronDown } from 'react-icons/fi';
+import { FiX, FiCheck, FiChevronDown, FiUpload, FiTrash2 } from 'react-icons/fi';
 import { api } from '../../services/api';
 import './Modal.css';
 
@@ -21,9 +21,13 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
         validTo: '',
     });
 
+    const uploadInputRef = useRef(null);
+    const [attachmentExists, setAttachmentExists] = useState(false);
+    const [attachmentBusy, setAttachmentBusy] = useState(false);
+    const [attachmentMessage, setAttachmentMessage] = useState('');
+
     useEffect(() => {
         if (isOpen) {
-            // Reset form when opening
             setFormData({
                 permitNo: '',
                 municipality: '',
@@ -34,16 +38,112 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                 validFrom: '',
                 validTo: '',
             });
+            setAttachmentExists(false);
+            setAttachmentBusy(false);
+            setAttachmentMessage('');
             fetchMunicipalities();
         }
     }, [isOpen]);
 
+    useEffect(() => {
+        const no = formData.permitNo?.trim();
+        if (!no) {
+            setAttachmentExists(false);
+            setAttachmentMessage('');
+            return;
+        }
+        
+        const filename = `${no}.pdf`;
+        let isMounted = true;
+        
+        const check = async () => {
+            try {
+                await api.checkNewApplicationAttachment(filename);
+                if (isMounted) setAttachmentExists(true);
+            } catch {
+                if (isMounted) setAttachmentExists(false);
+            }
+        };
+        
+        const timer = setTimeout(check, 500);
+        return () => {
+            isMounted = false;
+            clearTimeout(timer);
+        };
+    }, [formData.permitNo]);
+
+    const getAttachmentFilename = (permitNo) => {
+        const no = (permitNo || '').trim();
+        if (!no) return '';
+        return `${no}.pdf`;
+    };
+
+    const handleUploadButtonClick = () => {
+        if (!formData.permitNo?.trim() || attachmentBusy) return;
+        uploadInputRef.current?.click();
+    };
+
+    const handleUploadChange = async (event) => {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+
+        if (!file) return;
+        if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+            setAttachmentMessage('Only PDF files are allowed.');
+            return;
+        }
+
+        const filename = getAttachmentFilename(formData.permitNo);
+        if (!filename) {
+            setAttachmentMessage('Permit No. is required before uploading.');
+            return;
+        }
+
+        try {
+            setAttachmentBusy(true);
+            setAttachmentMessage('');
+
+            const contentBase64 = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(new Error('Failed to read PDF file'));
+                reader.readAsDataURL(file);
+            });
+
+            await api.uploadNewApplicationAttachment({
+                filename,
+                contentBase64,
+            });
+
+            setAttachmentExists(true);
+            setAttachmentMessage('PDF uploaded successfully.');
+        } catch (err) {
+            setAttachmentMessage(err.message || 'Failed to upload PDF.');
+        } finally {
+            setAttachmentBusy(false);
+        }
+    };
+
+    const handleRemoveAttachment = async () => {
+        const filename = getAttachmentFilename(formData.permitNo);
+        if (!filename || attachmentBusy) return;
+
+        try {
+            setAttachmentBusy(true);
+            setAttachmentMessage('');
+            await api.removeNewApplicationAttachment({ filename });
+            setAttachmentExists(false);
+            setAttachmentMessage('PDF removed successfully.');
+        } catch (err) {
+            setAttachmentMessage(err.message || 'Failed to remove PDF.');
+        } finally {
+            setAttachmentBusy(false);
+        }
+    };
+
     const fetchMunicipalities = async () => {
         try {
             const data = await api.getMasterMunicipalities();
-            // Assuming data is array of strings or objects.
-            // Based on api.js structure it seems like standard fetch.
-            // Adjust mapping if needed after testing.
             setMunicipalities(data);
         } catch (err) {
             console.error('Failed to fetch municipalities', err);
@@ -56,7 +156,6 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
             return;
         }
         try {
-            // Using getAssessmentBarangays(municipality) as identified for the specific query
             const data = await api.getAssessmentBarangays(mun);
             setBarangays(data);
         } catch (err) {
@@ -66,7 +165,6 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
 
     const handleChange = (e) => {
         const { name, value } = e.target;
-        // Number only validation for Volume and Area
         if ((name === 'volume' || name === 'area') && value && !/^\d*\.?\d*$/.test(value)) {
             return;
         }
@@ -121,7 +219,6 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                 await onSave(formData);
             }
             onClose();
-            window.location.reload();
         } catch (err) {
             console.error('Failed to approve permit', err);
             setError(err.message || 'Failed to approve permit.');
@@ -134,7 +231,10 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
         <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>
             <Dialog.Portal>
                 <Dialog.Overlay className="dialog-overlay" />
-                <Dialog.Content className="dialog-content dialog-content-lg">
+                <Dialog.Content
+                    className="dialog-content dialog-content-lg"
+                    aria-describedby={undefined}
+                >
                     <form onSubmit={handleSubmit}>
                         {/* Header */}
                         <div className="dialog-header">
@@ -148,6 +248,13 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
 
                         {/* Body */}
                         <div className="dialog-body">
+                            <input
+                                ref={uploadInputRef}
+                                type="file"
+                                accept="application/pdf,.pdf"
+                                style={{ display: 'none' }}
+                                onChange={handleUploadChange}
+                            />
                             {error && (
                                 <div className="error-alert" style={{ marginBottom: '10px' }}>
                                     {error}
@@ -191,11 +298,7 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                         >
                                             <Select.Viewport className="select-viewport">
                                                 {municipalities.map((mun, idx) => {
-                                                    // Handling if municipalities are strings or objects
-                                                    const val =
-                                                        typeof mun === 'string'
-                                                            ? mun
-                                                            : mun.mun_name;
+                                                    const val = typeof mun === 'string' ? mun : mun.mun_name;
                                                     return (
                                                         <Select.Item
                                                             key={idx}
@@ -223,9 +326,7 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                     </label>
                                     <Select.Root
                                         value={formData.barangay1}
-                                        onValueChange={(val) =>
-                                            handleSelectChange('barangay1', val)
-                                        }
+                                        onValueChange={(val) => handleSelectChange('barangay1', val)}
                                         required
                                         disabled={!formData.municipality}
                                     >
@@ -243,10 +344,7 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                             >
                                                 <Select.Viewport className="select-viewport">
                                                     {barangays.map((brgy, idx) => {
-                                                        const val =
-                                                            typeof brgy === 'string'
-                                                                ? brgy
-                                                                : brgy.mun_brgy;
+                                                        const val = typeof brgy === 'string' ? brgy : brgy.mun_brgy;
                                                         return (
                                                             <Select.Item
                                                                 key={idx}
@@ -256,9 +354,7 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                                                 <Select.ItemIndicator className="select-item-indicator">
                                                                     <FiCheck size={12} />
                                                                 </Select.ItemIndicator>
-                                                                <Select.ItemText>
-                                                                    {val}
-                                                                </Select.ItemText>
+                                                                <Select.ItemText>{val}</Select.ItemText>
                                                             </Select.Item>
                                                         );
                                                     })}
@@ -271,9 +367,7 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                     <label className="form-label">Barangay 2</label>
                                     <Select.Root
                                         value={formData.barangay2}
-                                        onValueChange={(val) =>
-                                            handleSelectChange('barangay2', val)
-                                        }
+                                        onValueChange={(val) => handleSelectChange('barangay2', val)}
                                         disabled={!formData.municipality}
                                     >
                                         <Select.Trigger className="select-trigger">
@@ -290,10 +384,7 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                             >
                                                 <Select.Viewport className="select-viewport">
                                                     {barangays.map((brgy, idx) => {
-                                                        const val =
-                                                            typeof brgy === 'string'
-                                                                ? brgy
-                                                                : brgy.mun_brgy;
+                                                        const val = typeof brgy === 'string' ? brgy : brgy.mun_brgy;
                                                         return (
                                                             <Select.Item
                                                                 key={idx}
@@ -303,9 +394,7 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                                                 <Select.ItemIndicator className="select-item-indicator">
                                                                     <FiCheck size={12} />
                                                                 </Select.ItemIndicator>
-                                                                <Select.ItemText>
-                                                                    {val}
-                                                                </Select.ItemText>
+                                                                <Select.ItemText>{val}</Select.ItemText>
                                                             </Select.Item>
                                                         );
                                                     })}
@@ -396,6 +485,55 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                         />
                                     </div>
                                 </div>
+                            </div>
+                            
+                            {/* PDF Attachment */}
+                            <div className="form-group" style={{ marginTop: '16px' }}>
+                                <label className="form-label">PDF Attachment</label>
+                                <div className="attachment-box">
+                                    <div className="attachment-box-header">
+                                        <span className="attachment-box-title">
+                                            {getAttachmentFilename(formData.permitNo) ||
+                                                'No Permit No.'}
+                                        </span>
+                                        <span
+                                            className={`attachment-status ${attachmentExists ? 'is-success' : 'is-muted'}`}
+                                        >
+                                            {attachmentExists
+                                                ? 'Attached'
+                                                : 'No PDF uploaded'}
+                                        </span>
+                                    </div>
+                                    <div className="attachment-actions">
+                                        <button
+                                            type="button"
+                                            className="attachment-icon-button"
+                                            title="Upload PDF"
+                                            onClick={handleUploadButtonClick}
+                                            disabled={!formData.permitNo?.trim() || attachmentBusy}
+                                        >
+                                            <FiUpload size={16} />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="attachment-icon-button attachment-icon-button-danger"
+                                            title="Remove PDF"
+                                            onClick={handleRemoveAttachment}
+                                            disabled={
+                                                !formData.permitNo?.trim() ||
+                                                !attachmentExists ||
+                                                attachmentBusy
+                                            }
+                                        >
+                                            <FiTrash2 size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+                                {attachmentMessage ? (
+                                    <div className="attachment-message">
+                                        {attachmentMessage}
+                                    </div>
+                                ) : null}
                             </div>
                         </div>
 

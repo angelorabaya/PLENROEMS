@@ -1,4 +1,4 @@
-const API_BASE = '';
+import { API_BASE } from './apiBase';
 
 const getHeaders = () => {
     const headers = { 'Content-Type': 'application/json' };

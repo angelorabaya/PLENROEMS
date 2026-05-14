@@ -159,7 +159,7 @@ function App() {
 
     return (
         <ThemeProvider>
-            <Router>
+            <Router basename={import.meta.env.BASE_URL}>
                 <BackgroundShapes />
                 <Suspense fallback={<RouteLoadingFallback />}>
                     <Routes>

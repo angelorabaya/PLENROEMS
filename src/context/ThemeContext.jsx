@@ -5,8 +5,12 @@ const ThemeContext = createContext();
 export const ThemeProvider = ({ children }) => {
     // Default to 'dark' theme if no preference is saved
     const [theme, setTheme] = useState(() => {
-        const savedTheme = localStorage.getItem('theme');
-        return savedTheme || 'dark';
+        try {
+            const savedTheme = localStorage.getItem('theme');
+            return savedTheme || 'dark';
+        } catch {
+            return 'dark';
+        }
     });
 
     useEffect(() => {
@@ -15,7 +19,11 @@ export const ThemeProvider = ({ children }) => {
         root.setAttribute('data-theme', theme);
 
         // Save to localStorage
-        localStorage.setItem('theme', theme);
+        try {
+            localStorage.setItem('theme', theme);
+        } catch {
+            // Ignore storage failures and keep the current in-memory theme.
+        }
     }, [theme]);
 
     const toggleTheme = () => {

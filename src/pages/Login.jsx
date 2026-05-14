@@ -179,20 +179,19 @@ const Login = ({ onLogin }) => {
                                 <FiX size={16} />
                             </button>
                         </div>
+                        <Dialog.Description
+                            style={{
+                                marginBottom: '0.75rem',
+                                fontSize: '0.875rem',
+                                color: 'var(--muted-foreground)',
+                            }}
+                        >
+                            Your account is still using a legacy password. You must change it
+                            before continuing.
+                        </Dialog.Description>
 
                         <form onSubmit={handleChangePasswordSubmit}>
                             <div className="dialog-body">
-                                <p
-                                    style={{
-                                        marginBottom: '0.75rem',
-                                        fontSize: '0.875rem',
-                                        color: 'var(--muted-foreground)',
-                                    }}
-                                >
-                                    Your account is still using a legacy password. You must change
-                                    it before continuing.
-                                </p>
-
                                 {changePasswordError && (
                                     <div className="login-error" style={{ marginBottom: '1rem' }}>
                                         {changePasswordError}

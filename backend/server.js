@@ -8,6 +8,12 @@ const { logActivity } = require('./utils/logger');
 const { toSqlDateLiteral, toSqlDateTimeLiteral } = require('./utils/dateTime');
 const bcrypt = require('bcrypt');
 const ExcelJS = require('exceljs');
+const { Mistral } = require('@mistralai/mistralai');
+const {
+    getOrdinanceContent,
+    getRelevantOrdinanceContext,
+    ordinanceExists,
+} = require('./utils/ordinanceParser');
 
 const envPath = path.resolve(__dirname, '.env');
 const rootEnvPath = path.resolve(__dirname, '..', '.env');
@@ -16,7 +22,9 @@ const rootEnvPath = path.resolve(__dirname, '..', '.env');
 try {
     const parsed = dotenv.parse(fs.readFileSync(envPath));
     Object.entries(parsed).forEach(([key, value]) => {
-        process.env[key] = value;
+        if (process.env[key] === undefined) {
+            process.env[key] = value;
+        }
     });
     // eslint-disable-next-line no-console
     console.log('📄 Loaded backend env from:', envPath);
@@ -83,7 +91,11 @@ const SQL_MANILA_TIME_ZONE = 'Singapore Standard Time';
 const SQL_MANILA_NOW_EXPR = `CAST(SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE '${SQL_MANILA_TIME_ZONE}' AS datetime2(3))`;
 const SQL_MANILA_TODAY_EXPR = `CAST(${SQL_MANILA_NOW_EXPR} AS date)`;
 const SQL_MANILA_YEAR_EXPR = `DATEPART(YEAR, ${SQL_MANILA_TODAY_EXPR})`;
-console.log('📁 Attachments path:', ATTACHMENTS_BASE_PATH);
+console.log('📁 Attachments env:', {
+    backendEnv: process.env.ATTACHMENTS_BASE_PATH || null,
+    rootEnvFallback: process.env.VITE_ATTACHMENTS_BASE_PATH || null,
+    effectivePath: ATTACHMENTS_BASE_PATH,
+});
 
 // eslint-disable-next-line no-console
 console.log('📄 Effective DB env:', {
@@ -2737,10 +2749,25 @@ app.post('/api/newapplication/requirements/attachment', async (req, res) => {
                 .json({ error: 'permitNo, description, and fileName are required' });
         }
 
+        const oldRequest = pool.request();
+        oldRequest.input('permitNo', sql.VarChar(100), permitNo);
+        oldRequest.input('description', sql.VarChar(255), description);
+        const oldResult = await oldRequest.query(`
+      SELECT TOP 1 pr_permitno, pr_desc, pr_source, pr_wsource
+      FROM tbl_permitreqnewapp
+      WHERE pr_permitno = @permitNo AND pr_desc = @description
+    `);
+        const oldValues = oldResult.recordset?.[0];
+
+        if (!oldValues) {
+            return res.status(404).json({ error: 'Requirement not found for update' });
+        }
+
+        const normalizedFileName = attached ? fileName : '';
         const request = pool.request();
         request.input('permitNo', sql.VarChar(100), permitNo);
         request.input('description', sql.VarChar(255), description);
-        request.input('fileName', sql.VarChar(255), fileName);
+        request.input('fileName', sql.VarChar(255), normalizedFileName);
         request.input('attached', sql.Bit, attached ? 1 : 0);
 
         const result = await request.query(`
@@ -2750,7 +2777,7 @@ app.post('/api/newapplication/requirements/attachment', async (req, res) => {
       WHERE pr_permitno = @permitNo AND pr_desc = @description
     `);
 
-        if (result.rowsAffected?.[0] === 0) {
+        if (result.rowsAffected[0] === 0) {
             return res.status(404).json({ error: 'Requirement not found for update' });
         }
 
@@ -2758,78 +2785,14 @@ app.post('/api/newapplication/requirements/attachment', async (req, res) => {
             action: 'UPDATE',
             tableName: 'tbl_permitreqnewapp',
             recordId: `${permitNo}:${description}`,
+            oldValues,
             newValues: {
                 pr_permitno: permitNo,
                 pr_desc: description,
-                pr_source: fileName,
+                pr_source: normalizedFileName,
                 pr_wsource: attached ? 1 : 0,
             },
         });
-
-        if (oldValues) {
-            await logActivity(pool, req, {
-                action: 'DELETE',
-                tableName: 'tbl_clientpermit',
-                recordId: id,
-                oldValues,
-            });
-        }
-        if (oldValues) {
-            await logActivity(pool, req, {
-                action: 'DELETE',
-                tableName: 'tbl_clientpermit',
-                recordId: id,
-                oldValues,
-            });
-        }
-        if (oldValues) {
-            await logActivity(pool, req, {
-                action: 'DELETE',
-                tableName: 'tbl_clientpermit',
-                recordId: id,
-                oldValues,
-            });
-        }
-        if (oldValues) {
-            await logActivity(pool, req, {
-                action: 'DELETE',
-                tableName: 'tbl_clientpermit',
-                recordId: id,
-                oldValues,
-            });
-        }
-        if (oldValues) {
-            await logActivity(pool, req, {
-                action: 'DELETE',
-                tableName: 'tbl_clientpermit',
-                recordId: id,
-                oldValues,
-            });
-        }
-        if (oldValues) {
-            await logActivity(pool, req, {
-                action: 'DELETE',
-                tableName: 'tbl_clientpermit',
-                recordId: id,
-                oldValues,
-            });
-        }
-        if (oldValues) {
-            await logActivity(pool, req, {
-                action: 'DELETE',
-                tableName: 'tbl_clientpermit',
-                recordId: id,
-                oldValues,
-            });
-        }
-        if (oldValues) {
-            await logActivity(pool, req, {
-                action: 'DELETE',
-                tableName: 'tbl_clientpermit',
-                recordId: id,
-                oldValues,
-            });
-        }
         res.json({ success: true });
     } catch (err) {
         console.error('Error updating requirement attachment:', err);
@@ -2846,7 +2809,12 @@ app.post('/api/newapplication/process-applicant', async (req, res) => {
         const normalizedRequirementType = String(requirementType || '').trim();
         const normalizedApplicantName = String(applicantName || '').trim();
 
-        if (!clientId || !normalizedApplicantName || !normalizedPermitNo || !normalizedRequirementType) {
+        if (
+            !clientId ||
+            !normalizedApplicantName ||
+            !normalizedPermitNo ||
+            !normalizedRequirementType
+        ) {
             return res.status(400).json({
                 error: 'clientId, applicantName, tempPermitNo, and requirementType are required',
             });
@@ -4138,7 +4106,7 @@ app.post('/api/docreceiving', async (req, res) => {
         });
 
         console.log(`✅ Created document receiving record: ${dms_control}`);
-        res.json({ success: true, message: 'Record created successfully' });
+        res.json({ success: true, message: 'Record created successfully', dms_date: result?.recordset?.[0]?.dms_date });
     } catch (err) {
         console.error('❌ Create Document Receiving Error:', err.message);
         res.status(500).json({ error: 'Failed to create record: ' + err.message });
@@ -4312,8 +4280,9 @@ app.post('/api/docoutgoing', async (req, res) => {
         request.input('dms_purpose', sql.VarChar, dms_purpose);
         request.input('dms_desc', sql.VarChar, dms_desc);
 
-        await request.query(`
+        const result = await request.query(`
       INSERT INTO tbl_dmsoutgoing (dms_control, dms_destination, dms_empid, dms_type, dms_purpose, dms_desc, dms_date)
+      OUTPUT INSERTED.dms_date
       VALUES (
         @dms_control,
         @dms_destination,
@@ -4598,7 +4567,9 @@ app.get('/api/dashboard/stats', async (req, res) => {
         grossCollectionRequest.input('year1', sql.Int, currentYear);
         grossCollectionRequest.input('year2', sql.Int, lastYear);
 
-        const grossCollectionResult = await grossCollectionRequest.query(`
+        let grossCollectionResult;
+        try {
+            grossCollectionResult = await grossCollectionRequest.query(`
       WITH YearlyTotals AS (
         SELECT yr, SUM(total) AS yearTotal
         FROM View_gross
@@ -4611,12 +4582,18 @@ app.get('/api/dashboard/stats', async (req, res) => {
         @year1 AS latestYear,
         @year2 AS previousYear
     `);
+        } catch (err) {
+            console.warn('View_gross missing, using fallback for gross collection');
+            grossCollectionResult = { recordset: [{ grossCollectionThisYear: 0, grossCollectionLastYear: 0, latestYear: currentYear, previousYear: lastYear }] };
+        }
 
         const netCollectionRequest = pool.request();
         netCollectionRequest.input('year1', sql.Int, currentYear);
         netCollectionRequest.input('year2', sql.Int, lastYear);
 
-        const netCollectionResult = await netCollectionRequest.query(`
+        let netCollectionResult;
+        try {
+            netCollectionResult = await netCollectionRequest.query(`
       WITH YearlyTotals AS (
         SELECT [Year] AS reportYear, SUM(ISNULL(Net_Share, 0)) AS yearTotal
         FROM View_collectionreport
@@ -4627,6 +4604,10 @@ app.get('/api/dashboard/stats', async (req, res) => {
         (SELECT ISNULL(yearTotal, 0) FROM YearlyTotals WHERE reportYear = @year1) AS netCollectionThisYear,
         (SELECT ISNULL(yearTotal, 0) FROM YearlyTotals WHERE reportYear = @year2) AS netCollectionLastYear
     `);
+        } catch (err) {
+            console.warn('View_collectionreport missing, using fallback for net collection');
+            netCollectionResult = { recordset: [{ netCollectionThisYear: 0, netCollectionLastYear: 0 }] };
+        }
 
         // Get pending applications count from View_applicants
         const pendingRequest = pool.request();
@@ -4792,7 +4773,6 @@ app.get('/api/dashboard/stats', async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch dashboard stats: ' + err.message });
     }
 });
-
 
 // ==================== REPORTS ENDPOINTS ====================
 
@@ -5158,10 +5138,10 @@ app.get('/api/reports/brgyshare-year-total', async (req, res) => {
             const fallbackRequest = pool.request();
             fallbackRequest.input('year', sql.Int, parseInt(year));
             const fallbackResult = await fallbackRequest.query(`
-          SELECT DISTINCT CAST(SUBSTRING(aop_dt, 1, 4) AS INT) AS RptYear, 0 AS TotalBrgyShare
-          FROM tbl_assessmentofpayment
-          WHERE CAST(SUBSTRING(aop_dt, 1, 4) AS INT) = @year
-          GROUP BY CAST(SUBSTRING(aop_dt, 1, 4) AS INT)
+          SELECT DISTINCT CAST(SUBSTRING(CAST(aop_date AS VARCHAR), 1, 4) AS INT) AS RptYear, 0 AS TotalBrgyShare
+          FROM tbl_assessmenthdr
+          WHERE CAST(SUBSTRING(CAST(aop_date AS VARCHAR), 1, 4) AS INT) = @year
+          GROUP BY CAST(SUBSTRING(CAST(aop_date AS VARCHAR), 1, 4) AS INT)
             `);
             result = fallbackResult;
         }
@@ -5205,10 +5185,10 @@ app.get('/api/reports/munshare-year-total', async (req, res) => {
             const fallbackRequest = pool.request();
             fallbackRequest.input('year', sql.Int, parseInt(year));
             const fallbackResult = await fallbackRequest.query(`
-          SELECT DISTINCT CAST(SUBSTRING(aop_dt, 1, 4) AS INT) AS RptYear, 0 AS TotalMunShare
-          FROM tbl_assessmentofpayment
-          WHERE CAST(SUBSTRING(aop_dt, 1, 4) AS INT) = @year
-          GROUP BY CAST(SUBSTRING(aop_dt, 1, 4) AS INT)
+          SELECT DISTINCT CAST(SUBSTRING(CAST(aop_date AS VARCHAR), 1, 4) AS INT) AS RptYear, 0 AS TotalMunShare
+          FROM tbl_assessmenthdr
+          WHERE CAST(SUBSTRING(CAST(aop_date AS VARCHAR), 1, 4) AS INT) = @year
+          GROUP BY CAST(SUBSTRING(CAST(aop_date AS VARCHAR), 1, 4) AS INT)
             `);
             result = fallbackResult;
         }
@@ -5393,9 +5373,6 @@ app.get('/api/reports/monthly-environmental-load-monitoring', async (req, res) =
 
 // ==================== ORDINANCE BOT ENDPOINTS ====================
 
-const { Mistral } = require('@mistralai/mistralai');
-const { getOrdinanceContent, ordinanceExists } = require('./utils/ordinanceParser');
-
 // Initialize Mistral client (lazy - will be created on first request)
 let mistralClient = null;
 
@@ -5406,8 +5383,230 @@ function getMistralClient() {
     return mistralClient;
 }
 
-// POST /api/ordinance-bot/chat - Chat with the Ordinance Bot
+function getOrdinanceBotProvider() {
+    const configuredProvider = (process.env.ORDINANCE_BOT_PROVIDER || 'auto').trim().toLowerCase();
+
+    if (configuredProvider === 'groq' || configuredProvider === 'mistral') {
+        return configuredProvider;
+    }
+
+    if (process.env.GROQ_API_KEY) {
+        return 'groq';
+    }
+
+    return 'mistral';
+}
+
+function getOrdinanceBotModel(provider) {
+    const configuredModel = process.env.ORDINANCE_BOT_MODEL?.trim();
+    if (configuredModel) {
+        return configuredModel;
+    }
+
+    return provider === 'groq' ? 'llama-3.1-8b-instant' : 'mistral-small-latest';
+}
+
+function isGreetingMessage(message) {
+    const normalized = message.trim().toLowerCase();
+    return /^(hi|hello|hey|good morning|good afternoon|good evening|hola|kamusta|kumusta)([!. ,].*)?$/i.test(
+        normalized
+    );
+}
+
+async function callGroqChat({ model, systemPrompt, userMessage }) {
+    const payload = {
+        model,
+        temperature: 0.2,
+        max_tokens: 450,
+        messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage },
+        ],
+    };
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            const botResponse = data.choices?.[0]?.message?.content?.trim();
+            if (!botResponse) {
+                throw new Error('No response received from Groq');
+            }
+
+            return botResponse;
+        }
+
+        const message = data.error?.message || `Groq request failed with status ${response.status}`;
+        const retryMatch = message.match(/Please try again in (\d+)ms/i);
+        const retryDelayMs = retryMatch ? Number.parseInt(retryMatch[1], 10) : 750;
+
+        if (response.status === 429 && attempt === 0) {
+            await new Promise((resolve) => setTimeout(resolve, retryDelayMs + 150));
+            continue;
+        }
+
+        throw new Error(message);
+    }
+
+    throw new Error('Groq request failed after retry');
+}
+
+async function callMistralChat({ model, systemPrompt, userMessage }) {
+    const client = getMistralClient();
+    if (!client) {
+        throw new Error('Failed to initialize Mistral client');
+    }
+
+    const chatResponse = await client.chat.complete({
+        model,
+        messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage },
+        ],
+        temperature: 0.2,
+        maxTokens: 700,
+    });
+
+    const botResponse = chatResponse.choices?.[0]?.message?.content?.trim();
+    if (!botResponse) {
+        throw new Error('No response received from Mistral AI');
+    }
+
+    return botResponse;
+}
+
+// POST /api/ordinance-bot/chat - Fast ordinance bot path with Groq/Mistral provider selection
 app.post('/api/ordinance-bot/chat', async (req, res) => {
+    try {
+        const { message } = req.body;
+
+        if (!message || typeof message !== 'string' || message.trim().length === 0) {
+            return res.status(400).json({ error: 'Message is required' });
+        }
+
+        const provider = getOrdinanceBotProvider();
+        const hasApiKey =
+            provider === 'groq' ? !!process.env.GROQ_API_KEY : !!process.env.MISTRAL_API_KEY;
+
+        if (!hasApiKey) {
+            return res.status(500).json({
+                error:
+                    provider === 'groq'
+                        ? 'Groq API key not configured. Please add GROQ_API_KEY to your .env file.'
+                        : 'Mistral API key not configured. Please add MISTRAL_API_KEY to your .env file.',
+            });
+        }
+
+        if (!ordinanceExists()) {
+            return res.status(500).json({
+                error: 'Ordinance document not found. Please ensure PLENRO_ORDINANCE.docx is in the reference folder.',
+            });
+        }
+
+        const userMessage = message.trim();
+
+        if (isGreetingMessage(userMessage)) {
+            return res.json({
+                response:
+                    'Hello. I can help answer questions about the PLENRO Ordinance. Ask me about sections, requirements, fees, permits, or penalties.',
+                provider: 'local',
+                model: 'greeting-handler',
+            });
+        }
+
+        const model = getOrdinanceBotModel(provider);
+        const ordinanceContext = await getRelevantOrdinanceContext(userMessage, {
+            maxChunks: provider === 'groq' ? 4 : 5,
+        });
+        const systemPrompt = `You are a legal assistant for the PLENRO Ordinance.
+
+RULES YOU MUST FOLLOW:
+1. ONLY answer questions that are directly related to the ordinance excerpts provided
+2. If the user sends only a simple greeting, respond with a short polite welcome and invite an ordinance-related question.
+3. If a question is NOT about the ordinance, politely decline and say: "I can only answer questions about the PLENRO Ordinance. Please ask something related to the ordinance."
+4. When answering, cite the relevant section or article numbers when applicable
+5. Be concise but accurate in your responses
+6. If the answer is not found in the ordinance, say so honestly
+7. Do NOT make up information that is not in the ordinance
+8. Format your responses clearly with proper paragraphs
+
+ACRONYMS AND TECHNICAL TERMS:
+- You may use general knowledge only to explain acronyms, abbreviations, and technical terms that appear in the ordinance excerpts but are not explicitly defined there
+- Examples include: PLENRO, DENR, MGB, LGU, DAO, ECC, EIA, and other government/environmental/legal acronyms
+- When explaining such terms, clearly indicate that the definition is from general knowledge, not from the ordinance itself
+- Always relate the explanation back to how the term is used in the context of the ordinance
+
+ORDINANCE EXCERPTS:
+---
+${ordinanceContext}
+---
+
+Remember: The excerpts may be partial. If the answer is unclear from them, say that clearly instead of inventing details.`;
+
+        console.log(`Ordinance Bot: Processing question with ${provider}/${model}...`);
+
+        const botResponse =
+            provider === 'groq'
+                ? await callGroqChat({ model, systemPrompt, userMessage })
+                : await callMistralChat({ model, systemPrompt, userMessage });
+
+        console.log(`Ordinance Bot: Response generated successfully with ${provider}/${model}`);
+        res.json({ response: botResponse, provider, model });
+    } catch (err) {
+        console.error('Ordinance Bot Error:', err.message);
+
+        if (err.message?.includes('401') || err.message?.includes('Unauthorized')) {
+            return res.status(401).json({
+                error: 'Invalid provider API key. Check GROQ_API_KEY or MISTRAL_API_KEY.',
+            });
+        }
+        if (err.message?.includes('429') || err.message?.includes('rate limit')) {
+            return res.status(429).json({ error: 'Rate limit exceeded. Please try again later.' });
+        }
+
+        res.status(500).json({ error: 'Failed to process your question: ' + err.message });
+    }
+});
+
+// GET /api/ordinance-bot/status - Fast ordinance bot status
+app.get('/api/ordinance-bot/status', async (req, res) => {
+    try {
+        const provider = getOrdinanceBotProvider();
+        const model = getOrdinanceBotModel(provider);
+        const hasApiKey =
+            provider === 'groq' ? !!process.env.GROQ_API_KEY : !!process.env.MISTRAL_API_KEY;
+        const hasDocument = ordinanceExists();
+
+        res.json({
+            ready: hasApiKey && hasDocument,
+            hasApiKey,
+            hasDocument,
+            provider,
+            model,
+            message: !hasApiKey
+                ? provider === 'groq'
+                    ? 'Groq API key not configured'
+                    : 'Mistral API key not configured'
+                : !hasDocument
+                  ? 'Ordinance document not found'
+                  : 'Bot is ready',
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Legacy ordinance bot route retained for reference
+app.post('/api/ordinance-bot/chat-legacy', async (req, res) => {
     try {
         const { message } = req.body;
 
@@ -5501,8 +5700,8 @@ Remember: Stay focused on ordinance-related topics. You may provide context for 
     }
 });
 
-// GET /api/ordinance-bot/status - Check bot status
-app.get('/api/ordinance-bot/status', async (req, res) => {
+// Legacy ordinance bot status retained for reference
+app.get('/api/ordinance-bot/status-legacy', async (req, res) => {
     try {
         const hasApiKey = !!process.env.MISTRAL_API_KEY;
         const hasDocument = ordinanceExists();

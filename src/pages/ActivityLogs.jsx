@@ -502,6 +502,7 @@ const ActivityLogs = () => {
                 <Dialog.Portal>
                     <Dialog.Overlay className="dialog-overlay" />
                     <Dialog.Content
+                        aria-describedby={undefined}
                         className="dialog-content"
                         style={{ maxWidth: '90vw', width: '900px' }}
                     >

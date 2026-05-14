@@ -125,7 +125,10 @@ const ClientModal = ({ isOpen, onClose, onSave, client }) => {
         <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>
             <Dialog.Portal>
                 <Dialog.Overlay className="dialog-overlay" />
-                <Dialog.Content className="dialog-content dialog-content-lg">
+                <Dialog.Content
+                    className="dialog-content dialog-content-lg"
+                    aria-describedby={undefined}
+                >
                     <form onSubmit={handleSubmit}>
                         {/* Header */}
                         <div className="dialog-header">

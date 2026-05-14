@@ -199,7 +199,10 @@ const DocReceivingModal = ({ isOpen, onClose, onSave, record }) => {
         <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>
             <Dialog.Portal>
                 <Dialog.Overlay className="dialog-overlay" />
-                <Dialog.Content className="dialog-content dialog-content-lg">
+                <Dialog.Content
+                    className="dialog-content dialog-content-lg"
+                    aria-describedby={undefined}
+                >
                     <form onSubmit={handleSubmit}>
                         <div className="dialog-header">
                             <Dialog.Title className="dialog-title">
