@@ -2,6 +2,7 @@ import React from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { FiX, FiPrinter } from 'react-icons/fi';
 import QRCode from 'react-qr-code';
+import CryptoJS from 'crypto-js';
 import { formatDateTimePHT } from '../../utils/dateUtils';
 import './Modal.css';
 
@@ -12,11 +13,25 @@ const DocOutgoingPrintModal = ({ isOpen, onClose, printData }) => {
 
     if (!printData) return null;
 
-    const qrValue = `Control No: ${printData.dms_control || ''}
-Date: ${formatDateTimePHT(printData.dms_date) || new Date().toLocaleDateString()}
-Destination: ${printData.dms_destination || ''}
-Released By: ${printData.emp_name || ''}
-Desc: ${printData.dms_desc || ''}`;
+    const params = new URLSearchParams({
+        control: printData.dms_control || '',
+        date: formatDateTimePHT(printData.dms_date) || new Date().toLocaleDateString(),
+        dest: printData.dms_destination || '',
+        rel: printData.emp_name || '',
+        desc: printData.dms_desc || ''
+    });
+
+    // Generate cryptographic signature
+    const secretKey = import.meta.env.VITE_QR_SECRET_KEY || 'default_plenro_secret_key_123!';
+    const dataToSign = params.toString();
+    const signature = CryptoJS.HmacSHA256(dataToSign, secretKey).toString(CryptoJS.enc.Hex);
+    
+    params.append('sig', signature);
+
+    // You can set VITE_PUBLIC_VERIFY_URL in your .env file to point to your hosted HTML page
+    // Example: VITE_PUBLIC_VERIFY_URL=https://my-plenro.vercel.app/verify-doc.html
+    const baseUrl = import.meta.env.VITE_PUBLIC_VERIFY_URL || 'https://your-public-site.com/verify-doc.html';
+    const qrValue = `${baseUrl}?${params.toString()}`;
 
     return (
         <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>

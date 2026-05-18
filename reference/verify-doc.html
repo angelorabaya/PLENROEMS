@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PLENRO Document Verification</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #f4f4f5;
+            --card-bg: #ffffff;
+            --text-main: #111111;
+            --text-muted: #666666;
+            --success: #22c55e;
+            --danger: #ef4444;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 2rem 1rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+            box-sizing: border-box;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 1rem;
+        }
+
+        .header h1 {
+            margin: 0;
+            color: var(--text-main);
+            font-size: 1.25rem;
+        }
+
+        .field-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .field-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.25rem;
+        }
+
+        .field-value {
+            font-size: 1rem;
+            color: var(--text-main);
+            font-weight: 500;
+            word-break: break-word;
+            white-space: pre-wrap;
+        }
+
+        .status-badge {
+            margin-top: 2rem;
+            text-align: center;
+            font-size: 0.875rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.75rem;
+            border-radius: 8px;
+        }
+
+        .status-badge.success {
+            background-color: #dcfce7;
+            color: var(--success);
+        }
+
+        .status-badge.danger {
+            background-color: #fee2e2;
+            color: var(--danger);
+        }
+
+        .icon {
+            width: 16px;
+            height: 16px;
+            color: white;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+        }
+        .icon-check { background-color: var(--success); }
+        .icon-cross { background-color: var(--danger); }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <div class="header">
+            <h1>Document Information</h1>
+        </div>
+        
+        <div id="data-container">
+            <!-- Data will be injected here by JavaScript -->
+        </div>
+
+        <div id="status-container">
+            <!-- Status badge will be injected here -->
+        </div>
+    </div>
+
+    <script>
+        // Extract query parameters from the URL
+        const urlParams = new URLSearchParams(window.location.search);
+        
+        // 1. Extract the provided signature
+        const providedSignature = urlParams.get('sig');
+        
+        // 2. Reconstruct the original data parameters EXACTLY as they were created in React
+        const dataParams = new URLSearchParams();
+        const control = urlParams.get('control') || '';
+        const date = urlParams.get('date') || '';
+        const dest = urlParams.get('dest') || '';
+        const rel = urlParams.get('rel') || '';
+        const desc = urlParams.get('desc') || '';
+        
+        dataParams.append('control', control);
+        dataParams.append('date', date);
+        dataParams.append('dest', dest);
+        dataParams.append('rel', rel);
+        dataParams.append('desc', desc);
+
+        const dataToSign = dataParams.toString();
+
+        // 3. Recalculate the signature using the exact same Secret Key
+        const secretKey = 'plenro_sec_9f8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d';
+        const expectedSignature = CryptoJS.HmacSHA256(dataToSign, secretKey).toString(CryptoJS.enc.Hex);
+
+        const isValid = providedSignature === expectedSignature && providedSignature !== null;
+
+        // Display Data
+        const dataMap = {
+            'Control No.': control || 'N/A',
+            'Date': date || 'N/A',
+            'Destination': dest || 'N/A',
+            'Released By': rel || 'N/A',
+            'Description': desc || 'N/A'
+        };
+
+        const container = document.getElementById('data-container');
+        for (const [label, value] of Object.entries(dataMap)) {
+            const group = document.createElement('div');
+            group.className = 'field-group';
+
+            const labelEl = document.createElement('div');
+            labelEl.className = 'field-label';
+            labelEl.textContent = label;
+
+            const valueEl = document.createElement('div');
+            valueEl.className = 'field-value';
+            valueEl.textContent = value;
+
+            group.appendChild(labelEl);
+            group.appendChild(valueEl);
+            container.appendChild(group);
+        }
+
+        // Display Status
+        const statusContainer = document.getElementById('status-container');
+        if (isValid) {
+            statusContainer.innerHTML = `
+                <div class="status-badge success">
+                    <span class="icon icon-check">✓</span> AUTHENTIC DOCUMENT
+                </div>
+            `;
+        } else {
+            statusContainer.innerHTML = `
+                <div class="status-badge danger">
+                    <span class="icon icon-cross">✕</span> INVALID / FORGED
+                </div>
+            `;
+        }
+    </script>
+
+</body>
+</html>

@@ -197,8 +197,8 @@ const UserManagement = () => {
             return;
         }
 
-        if (payload.password && payload.password.length < 8) {
-            setError('Password must be at least 8 characters long.');
+        if (payload.password && payload.password.length < 4) {
+            setError('Temporary password must be at least 4 characters long.');
             return;
         }
 
@@ -383,9 +383,7 @@ const UserManagement = () => {
                             {editingUser ? `Edit ${editingUser.log_user}` : 'Create User'}
                         </h2>
                         <p className="user-form-copy">
-                            Passwords are stored in <code>log_passhash</code> using bcrypt. When
-                            editing a user, leaving the password blank keeps the current password
-                            and preserves the existing <code>log_pass</code> value.
+                            Passwords set by an admin are treated as temporary. They are stored in <code>log_pass</code> in plain text, requiring the user to change their password on their next login. When editing a user, leaving the password blank keeps their current password.
                         </p>
                     </div>
 
@@ -489,7 +487,7 @@ const UserManagement = () => {
 
                         <div className="form-group">
                             <label className="form-label">
-                                {editingUser ? 'New Password' : 'Password'}
+                                {editingUser ? 'New Temporary Password' : 'Temporary Password'}
                             </label>
                             <input
                                 type="password"

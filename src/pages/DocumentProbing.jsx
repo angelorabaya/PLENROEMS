@@ -44,10 +44,7 @@ const PURPOSE_OPTIONS = [
 ];
 
 const formatPlainDateTimeParts = (year, month, day, hour, minute, second) => {
-    const hourNumber = Number(hour);
-    const displayHour = hourNumber % 12 || 12;
-    const meridiem = hourNumber >= 12 ? 'PM' : 'AM';
-    return `${month}/${day}/${year}, ${pad2(displayHour)}:${minute}:${second} ${meridiem}`;
+    return `${month}/${day}/${year}, ${pad2(hour)}:${pad2(minute)}:${pad2(second)}`;
 };
 
 const formatSqlLikeDateTime = (value) => {
@@ -77,7 +74,7 @@ const formatDateTime = (value) => {
             hour: '2-digit',
             minute: '2-digit',
             second: '2-digit',
-            hour12: true,
+            hour12: false,
         }) || String(value)
     );
 };

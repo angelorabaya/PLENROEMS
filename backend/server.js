@@ -466,12 +466,12 @@ app.post('/api/users', async (req, res) => {
             return res.status(400).json({ error: 'User, name, and role are required' });
         }
 
-        if (password.length < 8) {
-            return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+        if (password.length < 4) {
+            return res.status(400).json({ error: 'Temporary password must be at least 4 characters long' });
         }
 
         const roleFlags = getManagedUserFlags(normalizedRole);
-        const passwordHash = await bcrypt.hash(password, 10);
+        const passwordHash = null; // Stored as plain text temporary password to force change on login
 
         const duplicateRequest = pool.request();
         duplicateRequest.input('log_user', sql.NVarChar(255), normalizedUser);
@@ -487,7 +487,7 @@ app.post('/api/users', async (req, res) => {
 
         const insertRequest = pool.request();
         insertRequest.input('log_user', sql.NVarChar(255), normalizedUser);
-        insertRequest.input('log_pass', sql.NVarChar(255), '');
+        insertRequest.input('log_pass', sql.NVarChar(255), password);
         insertRequest.input('log_access', sql.Int, roleFlags.log_access);
         insertRequest.input('log_cname', sql.NVarChar(255), displayName);
         insertRequest.input('log_empid', sql.Int, null);
@@ -563,8 +563,8 @@ app.put('/api/users/:id', async (req, res) => {
             return res.status(400).json({ error: 'User, name, and role are required' });
         }
 
-        if (password && password.length < 8) {
-            return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+        if (password && password.length < 4) {
+            return res.status(400).json({ error: 'Temporary password must be at least 4 characters long' });
         }
 
         const existingRequest = pool.request();
@@ -630,8 +630,8 @@ app.put('/api/users/:id', async (req, res) => {
         }
 
         const roleFlags = getManagedUserFlags(normalizedRole);
-        const passwordHash = password ? await bcrypt.hash(password, 10) : existingUser.log_passhash;
-        const legacyPassword = password ? '' : existingUser.log_pass;
+        const passwordHash = password ? null : existingUser.log_passhash;
+        const legacyPassword = password ? password : existingUser.log_pass;
 
         const updateRequest = pool.request();
         updateRequest.input('log_ctrlno', sql.Int, Number(id));
@@ -4084,8 +4084,9 @@ app.post('/api/docreceiving', async (req, res) => {
         request.input('dms_purpose', sql.VarChar, dms_purpose);
         request.input('dms_desc', sql.VarChar, dms_desc);
 
-        await request.query(`
+        const result = await request.query(`
       INSERT INTO tbl_dmsreceiving (dms_control, dms_source, dms_empid, dms_type, dms_purpose, dms_desc, dms_date)
+      OUTPUT inserted.dms_date
       VALUES (
         @dms_control,
         @dms_source,
@@ -4439,16 +4440,14 @@ app.get('/api/docprobing/search', async (req, res) => {
 
             if (dateFrom) {
                 const pName = `dateFrom${paramIndex++}`;
-                request.input(pName, sql.DateTime, new Date(dateFrom));
-                conditions.push(`${tablePrefix}.dms_date >= @${pName}`);
+                request.input(pName, sql.VarChar, `${dateFrom} 00:00:00.000`);
+                conditions.push(`${tablePrefix}.dms_date >= CAST(@${pName} AS datetime2)`);
             }
 
             if (dateTo) {
                 const pName = `dateTo${paramIndex++}`;
-                const endDate = new Date(dateTo);
-                endDate.setHours(23, 59, 59, 999);
-                request.input(pName, sql.DateTime, endDate);
-                conditions.push(`${tablePrefix}.dms_date <= @${pName}`);
+                request.input(pName, sql.VarChar, `${dateTo} 23:59:59.999`);
+                conditions.push(`${tablePrefix}.dms_date <= CAST(@${pName} AS datetime2)`);
             }
 
             if (empId) {
@@ -5386,8 +5385,12 @@ function getMistralClient() {
 function getOrdinanceBotProvider() {
     const configuredProvider = (process.env.ORDINANCE_BOT_PROVIDER || 'auto').trim().toLowerCase();
 
-    if (configuredProvider === 'groq' || configuredProvider === 'mistral') {
+    if (configuredProvider === 'gemini' || configuredProvider === 'groq' || configuredProvider === 'mistral') {
         return configuredProvider;
+    }
+
+    if (process.env.GEMINI_API_KEY) {
+        return 'gemini';
     }
 
     if (process.env.GROQ_API_KEY) {
@@ -5402,7 +5405,8 @@ function getOrdinanceBotModel(provider) {
     if (configuredModel) {
         return configuredModel;
     }
-
+    
+    if (provider === 'gemini') return 'gemini-3.1-flash-lite';
     return provider === 'groq' ? 'llama-3.1-8b-instant' : 'mistral-small-latest';
 }
 
@@ -5411,6 +5415,41 @@ function isGreetingMessage(message) {
     return /^(hi|hello|hey|good morning|good afternoon|good evening|hola|kamusta|kumusta)([!. ,].*)?$/i.test(
         normalized
     );
+}
+
+
+async function callGeminiChat({ model, systemPrompt, userMessage }) {
+    const payload = {
+        system_instruction: { parts: { text: systemPrompt } },
+        contents: [
+            { role: 'user', parts: [{ text: userMessage }] }
+        ],
+        generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 800,
+        }
+    };
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+        const botResponse = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (!botResponse) {
+            throw new Error('No response received from Gemini');
+        }
+        return botResponse;
+    }
+
+    const message = data.error?.message || `Gemini request failed with status ${response.status}`;
+    throw new Error(message);
 }
 
 async function callGroqChat({ model, systemPrompt, userMessage }) {
@@ -5495,11 +5534,13 @@ app.post('/api/ordinance-bot/chat', async (req, res) => {
 
         const provider = getOrdinanceBotProvider();
         const hasApiKey =
+            provider === 'gemini' ? !!process.env.GEMINI_API_KEY :
             provider === 'groq' ? !!process.env.GROQ_API_KEY : !!process.env.MISTRAL_API_KEY;
 
         if (!hasApiKey) {
             return res.status(500).json({
                 error:
+                    provider === 'gemini' ? 'Gemini API key not configured. Please add GEMINI_API_KEY to your .env file.' :
                     provider === 'groq'
                         ? 'Groq API key not configured. Please add GROQ_API_KEY to your .env file.'
                         : 'Mistral API key not configured. Please add MISTRAL_API_KEY to your .env file.',
@@ -5524,9 +5565,9 @@ app.post('/api/ordinance-bot/chat', async (req, res) => {
         }
 
         const model = getOrdinanceBotModel(provider);
-        const ordinanceContext = await getRelevantOrdinanceContext(userMessage, {
-            maxChunks: provider === 'groq' ? 4 : 5,
-        });
+        const ordinanceContext = provider === 'gemini' 
+            ? await getOrdinanceContent() 
+            : await getRelevantOrdinanceContext(userMessage, { maxChunks: provider === 'groq' ? 4 : 5 });
         const systemPrompt = `You are a legal assistant for the PLENRO Ordinance.
 
 RULES YOU MUST FOLLOW:
@@ -5555,7 +5596,9 @@ Remember: The excerpts may be partial. If the answer is unclear from them, say t
         console.log(`Ordinance Bot: Processing question with ${provider}/${model}...`);
 
         const botResponse =
-            provider === 'groq'
+            provider === 'gemini'
+                ? await callGeminiChat({ model, systemPrompt, userMessage })
+                : provider === 'groq'
                 ? await callGroqChat({ model, systemPrompt, userMessage })
                 : await callMistralChat({ model, systemPrompt, userMessage });
 
@@ -5566,7 +5609,7 @@ Remember: The excerpts may be partial. If the answer is unclear from them, say t
 
         if (err.message?.includes('401') || err.message?.includes('Unauthorized')) {
             return res.status(401).json({
-                error: 'Invalid provider API key. Check GROQ_API_KEY or MISTRAL_API_KEY.',
+                error: 'Invalid provider API key. Check GEMINI_API_KEY, GROQ_API_KEY or MISTRAL_API_KEY.',
             });
         }
         if (err.message?.includes('429') || err.message?.includes('rate limit')) {
@@ -5583,6 +5626,7 @@ app.get('/api/ordinance-bot/status', async (req, res) => {
         const provider = getOrdinanceBotProvider();
         const model = getOrdinanceBotModel(provider);
         const hasApiKey =
+            provider === 'gemini' ? !!process.env.GEMINI_API_KEY :
             provider === 'groq' ? !!process.env.GROQ_API_KEY : !!process.env.MISTRAL_API_KEY;
         const hasDocument = ordinanceExists();
 
@@ -5593,7 +5637,8 @@ app.get('/api/ordinance-bot/status', async (req, res) => {
             provider,
             model,
             message: !hasApiKey
-                ? provider === 'groq'
+                ? provider === 'gemini' ? 'Gemini API key not configured'
+                : provider === 'groq'
                     ? 'Groq API key not configured'
                     : 'Mistral API key not configured'
                 : !hasDocument
