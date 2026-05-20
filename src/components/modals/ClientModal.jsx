@@ -114,10 +114,12 @@ const ClientModal = ({ isOpen, onClose, onSave, client }) => {
     };
 
     const clientTypes = [
+        { value: 'Hauler', label: 'Hauler' },
+        { value: 'MGB Permittee', label: 'MGB Permittee' },
+        { value: 'New Applicant', label: 'New Applicant' },
         { value: 'Permit Holder', label: 'Permit Holder' },
         { value: 'Permit Holder - Applicant', label: 'Permit Holder - Applicant' },
-        { value: 'New Applicant', label: 'New Applicant' },
-        { value: 'Hauler', label: 'Hauler' },
+        { value: 'Permit Holder/MGB', label: 'Permit Holder/MGB' },
         { value: 'Trader', label: 'Trader' },
     ];
 

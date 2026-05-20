@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { FiUpload, FiTrash2, FiX } from 'react-icons/fi';
 import { api } from '../../services/api';
+import { getEffectiveNow } from '../../utils/dateUtils';
 import './Modal.css';
 
 const TYPE_OPTIONS = [
@@ -30,7 +31,7 @@ const PURPOSE_OPTIONS = [
     'For Other Appropriate Actions',
 ];
 
-const DocOutgoingModal = ({ isOpen, onClose, onSave, record }) => {
+const DocOutgoingModal = ({ isOpen, onClose, onSave, onPrint, record }) => {
     const uploadInputRef = useRef(null);
     const [formData, setFormData] = useState({
         dms_control: '',
@@ -179,12 +180,33 @@ const DocOutgoingModal = ({ isOpen, onClose, onSave, record }) => {
         setFormData((prev) => ({ ...prev, [name]: value }));
     };
 
+    const handlePrintClick = () => {
+        if (!onPrint) return;
+        const selectedEmp = employees.find(
+            (emp) => String(emp.emp_ctrlno) === String(formData.dms_empid)
+        );
+        const printData = {
+            dms_control: formData.dms_control,
+            dms_destination: (formData.dms_destination || '').toUpperCase(),
+            emp_name: selectedEmp ? selectedEmp.emp_name : '',
+            dms_desc: (formData.dms_desc || '').toUpperCase(),
+            dms_date: record
+                ? record.dms_date instanceof Date
+                    ? record.dms_date
+                    : new Date(record.dms_date)
+                : getEffectiveNow(),
+        };
+        onPrint(printData);
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
         try {
             // Convert destination and description to uppercase
-            const selectedEmp = employees.find((emp) => String(emp.emp_ctrlno) === String(formData.dms_empid));
+            const selectedEmp = employees.find(
+                (emp) => String(emp.emp_ctrlno) === String(formData.dms_empid)
+            );
             const dataToSave = {
                 ...formData,
                 dms_destination: (formData.dms_destination || '').toUpperCase(),
@@ -365,6 +387,22 @@ const DocOutgoingModal = ({ isOpen, onClose, onSave, record }) => {
                         </div>
 
                         <div className="dialog-footer">
+                            <button
+                                type="button"
+                                className="btn-secondary"
+                                onClick={handlePrintClick}
+                                disabled={
+                                    !formData.dms_control ||
+                                    !formData.dms_destination ||
+                                    !formData.dms_empid ||
+                                    !formData.dms_type ||
+                                    !formData.dms_purpose ||
+                                    loading
+                                }
+                            >
+                                Print QR
+                            </button>
+                            <div style={{ flex: 1 }}></div>
                             <button
                                 type="button"
                                 className="btn-secondary"

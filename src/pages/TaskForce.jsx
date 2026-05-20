@@ -1241,19 +1241,19 @@ const TaskForce = () => {
                                             />
                                         </td>
                                         <td className="table-cell" style={{ textAlign: 'center' }}>
-                                                <div className="actions-container">
-                                                    {permissions.canCreate && (
-                                                        <button
-                                                            className="btn-edit"
-                                                            onClick={handleSaveNew}
-                                                            title="Save"
-                                                        >
-                                                            <FiCheck className="icon-sm" />
-                                                        </button>
-                                                    )}
+                                            <div className="actions-container">
+                                                {permissions.canCreate && (
                                                     <button
-                                                        className="btn-delete"
-                                                        onClick={handleCancelNew}
+                                                        className="btn-edit"
+                                                        onClick={handleSaveNew}
+                                                        title="Save"
+                                                    >
+                                                        <FiCheck className="icon-sm" />
+                                                    </button>
+                                                )}
+                                                <button
+                                                    className="btn-delete"
+                                                    onClick={handleCancelNew}
                                                     title="Cancel"
                                                 >
                                                     <FiX className="icon-sm" />
@@ -1449,7 +1449,9 @@ const TaskForce = () => {
                                                     {permissions.canDelete && (
                                                         <button
                                                             className="btn-delete"
-                                                            onClick={() => handleDeleteClick(record)}
+                                                            onClick={() =>
+                                                                handleDeleteClick(record)
+                                                            }
                                                             title="Delete"
                                                         >
                                                             <FiTrash2 className="icon-sm" />

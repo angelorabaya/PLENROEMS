@@ -12,19 +12,20 @@ import { formatDateTimePHT } from '../utils/dateUtils';
 const formatDateTime = (value) => {
     if (!value) return '';
 
-    const match = String(value).match(
-        /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/
-    );
-
-    if (match) {
-        const [, year, month, day, hour, minute, second = '00'] = match;
-        const hourNumber = Number(hour);
-        const meridiem = hourNumber >= 12 ? 'PM' : 'AM';
-        const displayHour = String(hourNumber % 12 || 12).padStart(2, '0');
-        return `${month}/${day}/${year}, ${displayHour}:${minute}:${second} ${meridiem}`;
+    let processedValue = value;
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}/.test(value)) {
+        processedValue = value.replace(' ', 'T');
+        if (processedValue.endsWith('Z')) {
+            processedValue = processedValue.replace('Z', '+08:00');
+        } else if (!/[\+\-]\d{2}:\d{2}$/.test(processedValue)) {
+            processedValue = processedValue + '+08:00';
+        }
     }
 
-    return formatDateTimePHT(value) || String(value);
+    const formatted = formatDateTimePHT(processedValue);
+    if (formatted) return formatted;
+
+    return String(value);
 };
 
 const DEFAULT_ATTACHMENTS_BASE_PATH = '\\\\Enro-server\\servershare\\attachments\\';

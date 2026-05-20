@@ -41,7 +41,8 @@ const NewApplication = () => {
     const [currentUser, setCurrentUser] = useState(null);
     const requirementUploadInputRef = useRef(null);
     const pendingUploadRef = useRef(null);
-    const isAdmin = (currentUser?.role || currentUser?.log_role || '').toLowerCase().trim() === 'admin';
+    const isAdmin =
+        (currentUser?.role || currentUser?.log_role || '').toLowerCase().trim() === 'admin';
 
     useEffect(() => {
         const savedUser = localStorage.getItem('currentUser');

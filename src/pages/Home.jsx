@@ -363,7 +363,8 @@ const Home = () => {
     };
 
     const calculateNetCollectionTrend = () => {
-        if (!stats || !stats.netCollectionLastYear || stats.netCollectionLastYear === 0) return null;
+        if (!stats || !stats.netCollectionLastYear || stats.netCollectionLastYear === 0)
+            return null;
         return (
             ((stats.netCollectionThisYear - stats.netCollectionLastYear) /
                 stats.netCollectionLastYear) *

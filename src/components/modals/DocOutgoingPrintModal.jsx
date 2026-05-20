@@ -15,22 +15,23 @@ const DocOutgoingPrintModal = ({ isOpen, onClose, printData }) => {
 
     const params = new URLSearchParams({
         control: printData.dms_control || '',
-        date: formatDateTimePHT(printData.dms_date) || new Date().toLocaleDateString(),
+        date: printData.dms_date || formatDateTimePHT(new Date()),
         dest: printData.dms_destination || '',
         rel: printData.emp_name || '',
-        desc: printData.dms_desc || ''
+        desc: printData.dms_desc || '',
     });
 
     // Generate cryptographic signature
     const secretKey = import.meta.env.VITE_QR_SECRET_KEY || 'default_plenro_secret_key_123!';
     const dataToSign = params.toString();
     const signature = CryptoJS.HmacSHA256(dataToSign, secretKey).toString(CryptoJS.enc.Hex);
-    
+
     params.append('sig', signature);
 
     // You can set VITE_PUBLIC_VERIFY_URL in your .env file to point to your hosted HTML page
     // Example: VITE_PUBLIC_VERIFY_URL=https://my-plenro.vercel.app/verify-doc.html
-    const baseUrl = import.meta.env.VITE_PUBLIC_VERIFY_URL || 'https://your-public-site.com/verify-doc.html';
+    const baseUrl =
+        import.meta.env.VITE_PUBLIC_VERIFY_URL || 'https://your-public-site.com/verify-doc.html';
     const qrValue = `${baseUrl}?${params.toString()}`;
 
     return (
@@ -42,9 +43,7 @@ const DocOutgoingPrintModal = ({ isOpen, onClose, printData }) => {
                     aria-describedby={undefined}
                 >
                     <div className="dialog-header">
-                        <Dialog.Title className="dialog-title">
-                            Print QR Code
-                        </Dialog.Title>
+                        <Dialog.Title className="dialog-title">Print QR Code</Dialog.Title>
                         <Dialog.Close asChild>
                             <button type="button" className="dialog-close" aria-label="Close">
                                 <FiX size={16} />
@@ -52,14 +51,45 @@ const DocOutgoingPrintModal = ({ isOpen, onClose, printData }) => {
                         </Dialog.Close>
                     </div>
 
-                    <div className="dialog-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem', padding: '2rem 1rem' }}>
-                        <div style={{ padding: '1rem', border: '1px solid var(--border)', background: 'var(--card)', borderRadius: 'var(--radius-md)' }}>
-                            <div style={{ background: '#fff', padding: '8px', borderRadius: '4px', display: 'inline-block' }}>
+                    <div
+                        className="dialog-body"
+                        style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '1.5rem',
+                            padding: '2rem 1rem',
+                        }}
+                    >
+                        <div
+                            style={{
+                                padding: '1rem',
+                                border: '1px solid var(--border)',
+                                background: 'var(--card)',
+                                borderRadius: 'var(--radius-md)',
+                            }}
+                        >
+                            <div
+                                style={{
+                                    background: '#fff',
+                                    padding: '8px',
+                                    borderRadius: '4px',
+                                    display: 'inline-block',
+                                }}
+                            >
                                 <QRCode value={qrValue} size={150} />
                             </div>
                         </div>
-                        <p style={{ fontSize: '0.875rem', color: 'var(--muted-foreground)', textAlign: 'center', maxWidth: '350px' }}>
-                            Click Print to open the browser's print dialog. The QR code containing all document details will be printed on the bottom right of the page.
+                        <p
+                            style={{
+                                fontSize: '0.875rem',
+                                color: 'var(--muted-foreground)',
+                                textAlign: 'center',
+                                maxWidth: '350px',
+                            }}
+                        >
+                            Click Print to open the browser's print dialog. The QR code containing
+                            all document details will be printed on the bottom right of the page.
                         </p>
                     </div>
 

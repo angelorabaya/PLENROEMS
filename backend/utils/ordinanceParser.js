@@ -30,7 +30,7 @@ async function getOrdinanceContent() {
     }
 
     const docPath = getOrdinancePath();
-    
+
     // Check if file exists
     if (!fs.existsSync(docPath)) {
         throw new Error(`Ordinance document not found at: ${docPath}`);
@@ -40,9 +40,9 @@ async function getOrdinanceContent() {
         const result = await mammoth.extractRawText({ path: docPath });
         cachedContent = result.value;
         cachedChunks = null;
-        
+
         console.log(`📄 Ordinance document loaded: ${cachedContent.length} characters`);
-        
+
         return cachedContent;
     } catch (error) {
         console.error('❌ Failed to parse ordinance document:', error.message);
@@ -67,7 +67,11 @@ function ordinanceExists() {
 }
 
 function normalizeText(value) {
-    return value.replace(/\r/g, '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+    return value
+        .replace(/\r/g, '')
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
 }
 
 function splitIntoChunks(content, maxChunkLength = 1800) {
@@ -121,13 +125,7 @@ async function getOrdinanceChunks() {
 }
 
 function tokenizeQuery(query) {
-    return Array.from(
-        new Set(
-            query
-                .toLowerCase()
-                .match(/[a-z0-9]{3,}/g) || []
-        )
-    );
+    return Array.from(new Set(query.toLowerCase().match(/[a-z0-9]{3,}/g) || []));
 }
 
 function expandQueryTerms(query) {
@@ -199,7 +197,10 @@ async function getRelevantOrdinanceContext(query, options = {}) {
                 score += 3;
             }
 
-            if (/section|article|penalt|violat|permit|requirement|applic|fee|quarry/i.test(query) && /(section|article)/i.test(chunk)) {
+            if (
+                /section|article|penalt|violat|permit|requirement|applic|fee|quarry/i.test(query) &&
+                /(section|article)/i.test(chunk)
+            ) {
                 score += 2;
             }
 
@@ -207,7 +208,10 @@ async function getRelevantOrdinanceContext(query, options = {}) {
                 score += 4;
             }
 
-            if (/permit|applic|requirement|license|clearance/i.test(query) && /(permit|applic|requirement|license|clearance)/i.test(chunk)) {
+            if (
+                /permit|applic|requirement|license|clearance/i.test(query) &&
+                /(permit|applic|requirement|license|clearance)/i.test(chunk)
+            ) {
                 score += 4;
             }
 
@@ -233,5 +237,5 @@ module.exports = {
     getOrdinanceChunks,
     getRelevantOrdinanceContext,
     clearCache,
-    ordinanceExists
+    ordinanceExists,
 };

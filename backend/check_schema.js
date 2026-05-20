@@ -8,8 +8,8 @@ const config = {
     database: process.env.DB_NAME || 'ENRODB',
     options: {
         encrypt: false,
-        trustServerCertificate: true
-    }
+        trustServerCertificate: true,
+    },
 };
 
 async function checkSchema() {

@@ -13,19 +13,27 @@ import { formatDateTimePHT } from '../utils/dateUtils';
 const formatDateTime = (value) => {
     if (!value) return '';
 
-    const match = String(value).match(
-        /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/
-    );
+    let processedValue = value;
 
-    if (match) {
-        const [, year, month, day, hour, minute, second = '00'] = match;
-        const hourNumber = Number(hour);
-        const meridiem = hourNumber >= 12 ? 'PM' : 'AM';
-        const displayHour = String(hourNumber % 12 || 12).padStart(2, '0');
-        return `${month}/${day}/${year}, ${displayHour}:${minute}:${second} ${meridiem}`;
+    // The database stores dates in Manila time (PHT) in naive columns.
+    // When fetched, the backend/mssql serializes these as UTC (appending 'Z'),
+    // which causes an 8-hour shift in the client. We fix this by forcing
+    // the interpretation of these strings as Manila time (+08:00).
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}/.test(value)) {
+        processedValue = value.replace(' ', 'T');
+        if (processedValue.endsWith('Z')) {
+            processedValue = processedValue.replace('Z', '+08:00');
+        } else if (!/[\+\-]\d{2}:\d{2}$/.test(processedValue)) {
+            processedValue = processedValue + '+08:00';
+        }
     }
 
-    return formatDateTimePHT(value) || String(value);
+    // Always prioritize formatDateTimePHT which handles Manila timezone (PHT)
+    const formatted = formatDateTimePHT(processedValue);
+    if (formatted) return formatted;
+
+    // Fallback for non-standard formats
+    return String(value);
 };
 
 const DEFAULT_ATTACHMENTS_BASE_PATH = '\\\\Enro-server\\servershare\\attachments\\';
@@ -106,34 +114,27 @@ const DocumentOutgoing = () => {
         setError('');
         setSuccess('');
         try {
-            let savedDate = editingRecord ? editingRecord.dms_date : new Date().toISOString();
-
             if (editingRecord) {
                 await api.updateDocumentOutgoing(editingRecord.dms_ctrlno, formData);
                 setSuccess('Record updated successfully');
             } else {
-                const result = await api.createDocumentOutgoing(formData);
+                await api.createDocumentOutgoing(formData);
                 setSuccess('Record created successfully');
-                if (result.dms_date) {
-                    savedDate = result.dms_date;
-                }
             }
             handleModalClose();
             fetchRecords();
             setTimeout(() => setSuccess(''), 3000);
-
-            // Open print modal with the saved data
-            setPrintData({
-                dms_control: formData.dms_control,
-                dms_destination: formData.dms_destination,
-                emp_name: formData.emp_name,
-                dms_desc: formData.dms_desc,
-                dms_date: savedDate
-            });
-            setIsPrintModalOpen(true);
         } catch (err) {
             setError(err.message || 'Failed to save record');
         }
+    };
+
+    const handlePrintQR = (data) => {
+        setPrintData({
+            ...data,
+            dms_date: formatDateTime(data.dms_date),
+        });
+        setIsPrintModalOpen(true);
     };
 
     const handlePrintModalClose = () => {
@@ -317,6 +318,7 @@ const DocumentOutgoing = () => {
                 isOpen={isModalOpen}
                 onClose={handleModalClose}
                 onSave={handleSave}
+                onPrint={handlePrintQR}
                 record={editingRecord}
             />
 

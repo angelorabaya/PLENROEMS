@@ -47,7 +47,7 @@ const loadCachedServerSnapshot = () => {
 
 let serverTimeSnapshot = loadCachedServerSnapshot();
 
-const getEffectiveNow = () => {
+export const getEffectiveNow = () => {
     if (!serverTimeSnapshot) {
         return new Date();
     }

@@ -52,10 +52,10 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
             setAttachmentMessage('');
             return;
         }
-        
+
         const filename = `${no}.pdf`;
         let isMounted = true;
-        
+
         const check = async () => {
             try {
                 await api.checkNewApplicationAttachment(filename);
@@ -64,7 +64,7 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                 if (isMounted) setAttachmentExists(false);
             }
         };
-        
+
         const timer = setTimeout(check, 500);
         return () => {
             isMounted = false;
@@ -298,7 +298,10 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                         >
                                             <Select.Viewport className="select-viewport">
                                                 {municipalities.map((mun, idx) => {
-                                                    const val = typeof mun === 'string' ? mun : mun.mun_name;
+                                                    const val =
+                                                        typeof mun === 'string'
+                                                            ? mun
+                                                            : mun.mun_name;
                                                     return (
                                                         <Select.Item
                                                             key={idx}
@@ -326,7 +329,9 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                     </label>
                                     <Select.Root
                                         value={formData.barangay1}
-                                        onValueChange={(val) => handleSelectChange('barangay1', val)}
+                                        onValueChange={(val) =>
+                                            handleSelectChange('barangay1', val)
+                                        }
                                         required
                                         disabled={!formData.municipality}
                                     >
@@ -344,7 +349,10 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                             >
                                                 <Select.Viewport className="select-viewport">
                                                     {barangays.map((brgy, idx) => {
-                                                        const val = typeof brgy === 'string' ? brgy : brgy.mun_brgy;
+                                                        const val =
+                                                            typeof brgy === 'string'
+                                                                ? brgy
+                                                                : brgy.mun_brgy;
                                                         return (
                                                             <Select.Item
                                                                 key={idx}
@@ -354,7 +362,9 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                                                 <Select.ItemIndicator className="select-item-indicator">
                                                                     <FiCheck size={12} />
                                                                 </Select.ItemIndicator>
-                                                                <Select.ItemText>{val}</Select.ItemText>
+                                                                <Select.ItemText>
+                                                                    {val}
+                                                                </Select.ItemText>
                                                             </Select.Item>
                                                         );
                                                     })}
@@ -367,7 +377,9 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                     <label className="form-label">Barangay 2</label>
                                     <Select.Root
                                         value={formData.barangay2}
-                                        onValueChange={(val) => handleSelectChange('barangay2', val)}
+                                        onValueChange={(val) =>
+                                            handleSelectChange('barangay2', val)
+                                        }
                                         disabled={!formData.municipality}
                                     >
                                         <Select.Trigger className="select-trigger">
@@ -384,7 +396,10 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                             >
                                                 <Select.Viewport className="select-viewport">
                                                     {barangays.map((brgy, idx) => {
-                                                        const val = typeof brgy === 'string' ? brgy : brgy.mun_brgy;
+                                                        const val =
+                                                            typeof brgy === 'string'
+                                                                ? brgy
+                                                                : brgy.mun_brgy;
                                                         return (
                                                             <Select.Item
                                                                 key={idx}
@@ -394,7 +409,9 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                                                 <Select.ItemIndicator className="select-item-indicator">
                                                                     <FiCheck size={12} />
                                                                 </Select.ItemIndicator>
-                                                                <Select.ItemText>{val}</Select.ItemText>
+                                                                <Select.ItemText>
+                                                                    {val}
+                                                                </Select.ItemText>
                                                             </Select.Item>
                                                         );
                                                     })}
@@ -486,7 +503,7 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                     </div>
                                 </div>
                             </div>
-                            
+
                             {/* PDF Attachment */}
                             <div className="form-group" style={{ marginTop: '16px' }}>
                                 <label className="form-label">PDF Attachment</label>
@@ -499,9 +516,7 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                         <span
                                             className={`attachment-status ${attachmentExists ? 'is-success' : 'is-muted'}`}
                                         >
-                                            {attachmentExists
-                                                ? 'Attached'
-                                                : 'No PDF uploaded'}
+                                            {attachmentExists ? 'Attached' : 'No PDF uploaded'}
                                         </span>
                                     </div>
                                     <div className="attachment-actions">
@@ -530,9 +545,7 @@ const PermitApprovedModal = ({ isOpen, onClose, onSave, clientId, currentPermitN
                                     </div>
                                 </div>
                                 {attachmentMessage ? (
-                                    <div className="attachment-message">
-                                        {attachmentMessage}
-                                    </div>
+                                    <div className="attachment-message">{attachmentMessage}</div>
                                 ) : null}
                             </div>
                         </div>

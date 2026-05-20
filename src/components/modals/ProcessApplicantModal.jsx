@@ -147,7 +147,9 @@ const ProcessApplicantModal = ({ isOpen, onClose, onSave }) => {
                                     <Select.Trigger className="select-trigger" disabled={loading}>
                                         <Select.Value
                                             placeholder={
-                                                loading ? 'Loading applicants...' : 'Select applicant'
+                                                loading
+                                                    ? 'Loading applicants...'
+                                                    : 'Select applicant'
                                             }
                                         />
                                         <Select.Icon className="select-icon">
@@ -183,17 +185,32 @@ const ProcessApplicantModal = ({ isOpen, onClose, onSave }) => {
 
                             <div className="form-group">
                                 <label className="form-label">Address</label>
-                                <input type="text" className="form-input" value={formData.address} readOnly />
+                                <input
+                                    type="text"
+                                    className="form-input"
+                                    value={formData.address}
+                                    readOnly
+                                />
                             </div>
 
                             <div className="form-grid form-grid-2">
                                 <div className="form-group">
                                     <label className="form-label">TIN</label>
-                                    <input type="text" className="form-input" value={formData.tin} readOnly />
+                                    <input
+                                        type="text"
+                                        className="form-input"
+                                        value={formData.tin}
+                                        readOnly
+                                    />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Contact</label>
-                                    <input type="text" className="form-input" value={formData.contact} readOnly />
+                                    <input
+                                        type="text"
+                                        className="form-input"
+                                        value={formData.contact}
+                                        readOnly
+                                    />
                                 </div>
                             </div>
 

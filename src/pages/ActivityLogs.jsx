@@ -54,10 +54,20 @@ const clampRowsByBreakpoint = (rows, viewportWidth) => {
 const formatDateTime = (value) => {
     if (!value) return '';
 
-    const sqlLikeFormatted = formatSqlLikeDateTime(value);
-    if (sqlLikeFormatted) return sqlLikeFormatted;
+    let processedValue = value;
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}/.test(value)) {
+        processedValue = value.replace(' ', 'T');
+        if (processedValue.endsWith('Z')) {
+            processedValue = processedValue.replace('Z', '+08:00');
+        } else if (!/[\+\-]\d{2}:\d{2}$/.test(processedValue)) {
+            processedValue = processedValue + '+08:00';
+        }
+    }
 
-    return formatDateTimePHT(value);
+    const formatted = formatDateTimePHT(processedValue);
+    if (formatted) return formatted;
+
+    return String(value);
 };
 
 const ActivityLogs = () => {

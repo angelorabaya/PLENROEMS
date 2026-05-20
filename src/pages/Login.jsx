@@ -186,8 +186,8 @@ const Login = ({ onLogin }) => {
                                 color: 'var(--muted-foreground)',
                             }}
                         >
-                            Your account is still using a legacy password. You must change it
-                            before continuing.
+                            Your account is still using a legacy password. You must change it before
+                            continuing.
                         </Dialog.Description>
 
                         <form onSubmit={handleChangePasswordSubmit}>

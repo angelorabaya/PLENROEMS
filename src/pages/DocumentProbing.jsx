@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import {
     FiSearch,
     FiEye,
@@ -9,11 +9,18 @@ import {
     FiChevronDown,
     FiChevronUp,
     FiFilter,
+    FiEdit2,
+    FiTrash2,
 } from 'react-icons/fi';
 import { api } from '../services/api';
 import plenroLogo from '../plenro.png';
+import DocReceivingModal from '../components/modals/DocReceivingModal';
+import DocOutgoingModal from '../components/modals/DocOutgoingModal';
+import DocOutgoingPrintModal from '../components/modals/DocOutgoingPrintModal';
+import DeleteModal from '../components/modals/DeleteModal';
 import '../styles/global.css';
 import { formatDateTimePHT } from '../utils/dateUtils';
+import { getUserPermissions } from '../utils/permissions';
 
 const pad2 = (value) => String(value).padStart(2, '0');
 
@@ -43,40 +50,23 @@ const PURPOSE_OPTIONS = [
     'For Other Appropriate Actions',
 ];
 
-const formatPlainDateTimeParts = (year, month, day, hour, minute, second) => {
-    return `${month}/${day}/${year}, ${pad2(hour)}:${pad2(minute)}:${pad2(second)}`;
-};
-
-const formatSqlLikeDateTime = (value) => {
-    if (typeof value !== 'string') return null;
-
-    const match = value.match(
-        /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z)?$/
-    );
-
-    if (!match) return null;
-
-    const [, year, month, day, hour, minute, second] = match;
-    return formatPlainDateTimeParts(year, month, day, hour, minute, second);
-};
-
 const formatDateTime = (value) => {
     if (!value) return '';
 
-    const sqlLikeFormatted = formatSqlLikeDateTime(value);
-    if (sqlLikeFormatted) return sqlLikeFormatted;
+    let processedValue = value;
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}/.test(value)) {
+        processedValue = value.replace(' ', 'T');
+        if (processedValue.endsWith('Z')) {
+            processedValue = processedValue.replace('Z', '+08:00');
+        } else if (!/[\+\-]\d{2}:\d{2}$/.test(processedValue)) {
+            processedValue = processedValue + '+08:00';
+        }
+    }
 
-    return (
-        formatDateTimePHT(value, 'en-US', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false,
-        }) || String(value)
-    );
+    const formatted = formatDateTimePHT(processedValue);
+    if (formatted) return formatted;
+
+    return String(value);
 };
 
 const DEFAULT_ATTACHMENTS_BASE_PATH = '\\\\Enro-server\\servershare\\attachments\\';
@@ -92,12 +82,10 @@ const ATTACHMENTS_BASE_PATH = normalizeAttachmentBasePath(
 const STORAGE_KEY = 'documentProbingState';
 
 const DocumentProbing = () => {
-    // Probing is primarily a search/view page.
-    // If you want to restrict viewing details, we could use canCreate (as read?) or just rely on sidebar access.
-    // For now, I'll add the hook but not enforce specific button hiding as there are no Add/Edit/Delete buttons.
     const navigate = useNavigate();
+    const { currentUser } = useOutletContext();
+    const permissions = useMemo(() => getUserPermissions(currentUser), [currentUser]);
 
-    // Load saved state from sessionStorage on mount
     const getSavedState = () => {
         try {
             const saved = sessionStorage.getItem(STORAGE_KEY);
@@ -115,13 +103,22 @@ const DocumentProbing = () => {
     const [results, setResults] = useState(savedState?.results || []);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
     const [employees, setEmployees] = useState([]);
     const [hasSearched, setHasSearched] = useState(savedState?.hasSearched || false);
     const [isFiltersExpanded, setIsFiltersExpanded] = useState(
         savedState?.isFiltersExpanded ?? true
     );
 
-    // Search filters
+    const [isReceivingModalOpen, setIsReceivingModalOpen] = useState(false);
+    const [isOutgoingModalOpen, setIsOutgoingModalOpen] = useState(false);
+    const [editingRecord, setEditingRecord] = useState(null);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [recordToDelete, setRecordToDelete] = useState(null);
+
+    const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+    const [printData, setPrintData] = useState(null);
+
     const [filters, setFilters] = useState(
         savedState?.filters || {
             control: '',
@@ -136,7 +133,6 @@ const DocumentProbing = () => {
         }
     );
 
-    // Save state to sessionStorage whenever it changes
     useEffect(() => {
         const stateToSave = {
             filters,
@@ -152,11 +148,14 @@ const DocumentProbing = () => {
     }, []);
 
     useEffect(() => {
-        if (!error) return undefined;
+        if (!error && !success) return undefined;
 
-        const timer = setTimeout(() => setError(''), 3000);
+        const timer = setTimeout(() => {
+            setError('');
+            setSuccess('');
+        }, 3000);
         return () => clearTimeout(timer);
-    }, [error]);
+    }, [error, success]);
 
     const loadEmployees = async () => {
         try {
@@ -177,7 +176,7 @@ const DocumentProbing = () => {
         setLoading(true);
         setError('');
         setHasSearched(true);
-        setIsFiltersExpanded(false); // Collapse filters after search
+        setIsFiltersExpanded(false);
         try {
             const data = await api.searchDocuments(filters);
             setResults(data || []);
@@ -204,8 +203,8 @@ const DocumentProbing = () => {
         setResults([]);
         setHasSearched(false);
         setError('');
-        setIsFiltersExpanded(true); // Expand filters when cleared
-        sessionStorage.removeItem(STORAGE_KEY); // Clear saved state
+        setIsFiltersExpanded(true);
+        sessionStorage.removeItem(STORAGE_KEY);
     };
 
     const handlePreviewClick = async (record) => {
@@ -236,6 +235,110 @@ const DocumentProbing = () => {
         }
     };
 
+    const handleEditClick = (record) => {
+        // Map the combined 'source_or_dest' back to the expected modal field
+        const mappedRecord = {
+            ...record,
+            dms_source: record.doc_type === 'receiving' ? record.source_or_dest : record.dms_source,
+            dms_destination:
+                record.doc_type === 'outgoing' ? record.source_or_dest : record.dms_destination,
+        };
+        setEditingRecord(mappedRecord);
+        if (record.doc_type === 'receiving') {
+            setIsReceivingModalOpen(true);
+        } else if (record.doc_type === 'outgoing') {
+            setIsOutgoingModalOpen(true);
+        }
+    };
+
+    const handleDeleteClick = (record) => {
+        setRecordToDelete(record);
+        setIsDeleteModalOpen(true);
+    };
+
+    const handleReceivingModalClose = () => {
+        setIsReceivingModalOpen(false);
+        setEditingRecord(null);
+    };
+
+    const handleOutgoingModalClose = () => {
+        setIsOutgoingModalOpen(false);
+        setEditingRecord(null);
+    };
+
+    const handleReceivingSave = async (formData) => {
+        setError('');
+        setSuccess('');
+        try {
+            if (editingRecord) {
+                await api.updateDocumentReceiving(editingRecord.dms_ctrlno, formData);
+                setSuccess('Record updated successfully');
+            } else {
+                await api.createDocumentReceiving(formData);
+                setSuccess('Record created successfully');
+            }
+            handleReceivingModalClose();
+            if (hasSearched) handleSearch();
+        } catch (err) {
+            setError(err.message || 'Failed to save record');
+        }
+    };
+
+    const handleOutgoingSave = async (formData) => {
+        setError('');
+        setSuccess('');
+        try {
+            if (editingRecord) {
+                await api.updateDocumentOutgoing(editingRecord.dms_ctrlno, formData);
+                setSuccess('Record updated successfully');
+            } else {
+                await api.createDocumentOutgoing(formData);
+                setSuccess('Record created successfully');
+            }
+            handleOutgoingModalClose();
+            if (hasSearched) handleSearch();
+        } catch (err) {
+            setError(err.message || 'Failed to save record');
+        }
+    };
+
+    const handlePrintQR = (data) => {
+        setPrintData({
+            ...data,
+            dms_date: formatDateTime(data.dms_date),
+        });
+        setIsPrintModalOpen(true);
+    };
+
+    const handlePrintModalClose = () => {
+        setIsPrintModalOpen(false);
+        setPrintData(null);
+    };
+
+    const handleDeleteConfirm = async () => {
+        if (!recordToDelete) return;
+        setError('');
+        setSuccess('');
+        try {
+            if (recordToDelete.doc_type === 'receiving') {
+                await api.deleteDocumentReceiving(recordToDelete.dms_ctrlno);
+            } else if (recordToDelete.doc_type === 'outgoing') {
+                await api.deleteDocumentOutgoing(recordToDelete.dms_ctrlno);
+            }
+            setSuccess('Record deleted successfully');
+            setIsDeleteModalOpen(false);
+            setRecordToDelete(null);
+            if (hasSearched) handleSearch();
+        } catch (err) {
+            setError(err.message || 'Failed to delete record');
+        }
+    };
+
+    const handleDeleteCancel = () => {
+        setIsDeleteModalOpen(false);
+        setRecordToDelete(null);
+    };
+
     return (
         <div className="transactions-page">
             <div className="page-header">
@@ -251,10 +354,9 @@ const DocumentProbing = () => {
             </div>
 
             {error && <div className="error-alert">{error}</div>}
+            {success && <div className="success-message">{success}</div>}
 
-            {/* Search Filters - Collapsible Section */}
             <div style={{ marginBottom: '1rem' }}>
-                {/* Collapsible Header - Always visible */}
                 <div
                     className="table-container"
                     style={{
@@ -263,7 +365,6 @@ const DocumentProbing = () => {
                         overflow: 'hidden',
                     }}
                 >
-                    {/* Collapsible Header */}
                     <div
                         style={{
                             display: 'flex',
@@ -337,7 +438,6 @@ const DocumentProbing = () => {
                         </button>
                     </div>
 
-                    {/* Collapsible Content */}
                     {isFiltersExpanded && (
                         <form onSubmit={handleSearch} style={{ padding: '1rem' }}>
                             <div
@@ -500,7 +600,6 @@ const DocumentProbing = () => {
                 </div>
             </div>
 
-            {/* Results - Separate section */}
             <div className="table-container">
                 {loading ? (
                     <div style={{ padding: '24px', textAlign: 'center' }}>
@@ -529,7 +628,11 @@ const DocumentProbing = () => {
                                     <th style={{ width: '17%' }}>Description</th>
                                     <th style={{ width: '12%' }}>Type</th>
                                     <th style={{ width: '13%' }}>Purpose</th>
-                                    <th style={{ width: '5%' }}></th>
+                                    <th
+                                        style={{
+                                            width: permissions.isAdministrator ? '10%' : '5%',
+                                        }}
+                                    ></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -622,13 +725,41 @@ const DocumentProbing = () => {
                                             </span>
                                         </td>
                                         <td>
-                                            <button
-                                                className="btn-icon btn-icon-sm"
-                                                onClick={() => handlePreviewClick(record)}
-                                                title="Preview Attachment"
+                                            <div
+                                                className="action-buttons"
+                                                style={{
+                                                    gap: '0.125rem',
+                                                    justifyContent: 'center',
+                                                }}
                                             >
-                                                <FiEye size={14} />
-                                            </button>
+                                                <button
+                                                    className="btn-icon btn-icon-sm"
+                                                    onClick={() => handlePreviewClick(record)}
+                                                    title="Preview Attachment"
+                                                >
+                                                    <FiEye size={14} />
+                                                </button>
+                                                {permissions.isAdministrator && (
+                                                    <>
+                                                        <button
+                                                            className="btn-icon btn-icon-sm"
+                                                            onClick={() => handleEditClick(record)}
+                                                            title="Edit"
+                                                        >
+                                                            <FiEdit2 size={14} />
+                                                        </button>
+                                                        <button
+                                                            className="btn-icon btn-icon-sm btn-icon-danger"
+                                                            onClick={() =>
+                                                                handleDeleteClick(record)
+                                                            }
+                                                            title="Delete"
+                                                        >
+                                                            <FiTrash2 size={14} />
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
@@ -646,6 +777,35 @@ const DocumentProbing = () => {
                     </div>
                 )}
             </div>
+
+            <DocReceivingModal
+                isOpen={isReceivingModalOpen}
+                onClose={handleReceivingModalClose}
+                onSave={handleReceivingSave}
+                record={editingRecord?.doc_type === 'receiving' ? editingRecord : null}
+            />
+
+            <DocOutgoingModal
+                isOpen={isOutgoingModalOpen}
+                onClose={handleOutgoingModalClose}
+                onSave={handleOutgoingSave}
+                onPrint={handlePrintQR}
+                record={editingRecord}
+            />
+
+            {/* Print QR Code Modal */}
+            <DocOutgoingPrintModal
+                isOpen={isPrintModalOpen}
+                onClose={handlePrintModalClose}
+                printData={printData}
+            />
+
+            <DeleteModal
+                isOpen={isDeleteModalOpen}
+                onClose={handleDeleteCancel}
+                onConfirm={handleDeleteConfirm}
+                itemName={recordToDelete?.dms_control || 'this record'}
+            />
         </div>
     );
 };

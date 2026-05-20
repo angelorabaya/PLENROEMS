@@ -467,7 +467,9 @@ app.post('/api/users', async (req, res) => {
         }
 
         if (password.length < 4) {
-            return res.status(400).json({ error: 'Temporary password must be at least 4 characters long' });
+            return res
+                .status(400)
+                .json({ error: 'Temporary password must be at least 4 characters long' });
         }
 
         const roleFlags = getManagedUserFlags(normalizedRole);
@@ -564,7 +566,9 @@ app.put('/api/users/:id', async (req, res) => {
         }
 
         if (password && password.length < 4) {
-            return res.status(400).json({ error: 'Temporary password must be at least 4 characters long' });
+            return res
+                .status(400)
+                .json({ error: 'Temporary password must be at least 4 characters long' });
         }
 
         const existingRequest = pool.request();
@@ -4107,7 +4111,11 @@ app.post('/api/docreceiving', async (req, res) => {
         });
 
         console.log(`✅ Created document receiving record: ${dms_control}`);
-        res.json({ success: true, message: 'Record created successfully', dms_date: result?.recordset?.[0]?.dms_date });
+        res.json({
+            success: true,
+            message: 'Record created successfully',
+            dms_date: result?.recordset?.[0]?.dms_date,
+        });
     } catch (err) {
         console.error('❌ Create Document Receiving Error:', err.message);
         res.status(500).json({ error: 'Failed to create record: ' + err.message });
@@ -4304,7 +4312,11 @@ app.post('/api/docoutgoing', async (req, res) => {
         });
 
         console.log(`✅ Created document outgoing record: ${dms_control}`);
-        res.json({ success: true, message: 'Record created successfully' });
+        res.json({
+            success: true,
+            message: 'Record created successfully',
+            dms_date: result?.recordset?.[0]?.dms_date,
+        });
     } catch (err) {
         console.error('❌ Create Document Outgoing Error:', err.message);
         res.status(500).json({ error: 'Failed to create record: ' + err.message });
@@ -4583,7 +4595,16 @@ app.get('/api/dashboard/stats', async (req, res) => {
     `);
         } catch (err) {
             console.warn('View_gross missing, using fallback for gross collection');
-            grossCollectionResult = { recordset: [{ grossCollectionThisYear: 0, grossCollectionLastYear: 0, latestYear: currentYear, previousYear: lastYear }] };
+            grossCollectionResult = {
+                recordset: [
+                    {
+                        grossCollectionThisYear: 0,
+                        grossCollectionLastYear: 0,
+                        latestYear: currentYear,
+                        previousYear: lastYear,
+                    },
+                ],
+            };
         }
 
         const netCollectionRequest = pool.request();
@@ -4605,7 +4626,9 @@ app.get('/api/dashboard/stats', async (req, res) => {
     `);
         } catch (err) {
             console.warn('View_collectionreport missing, using fallback for net collection');
-            netCollectionResult = { recordset: [{ netCollectionThisYear: 0, netCollectionLastYear: 0 }] };
+            netCollectionResult = {
+                recordset: [{ netCollectionThisYear: 0, netCollectionLastYear: 0 }],
+            };
         }
 
         // Get pending applications count from View_applicants
@@ -5130,10 +5153,7 @@ app.get('/api/reports/brgyshare-year-total', async (req, res) => {
           GROUP BY RptYear
         `);
         } catch (viewErr) {
-            console.error(
-                `❌ Barangay share year view query failed for ${year}:`,
-                viewErr.message
-            );
+            console.error(`❌ Barangay share year view query failed for ${year}:`, viewErr.message);
             const fallbackRequest = pool.request();
             fallbackRequest.input('year', sql.Int, parseInt(year));
             const fallbackResult = await fallbackRequest.query(`
@@ -5145,7 +5165,9 @@ app.get('/api/reports/brgyshare-year-total', async (req, res) => {
             result = fallbackResult;
         }
 
-        console.log(`✅ [API] Found barangay share total: ${result.recordset[0]?.TotalBrgyShare || 0}`);
+        console.log(
+            `✅ [API] Found barangay share total: ${result.recordset[0]?.TotalBrgyShare || 0}`
+        );
         res.json(result.recordset || []);
     } catch (err) {
         console.error('❌ Get Brgy Share Year Total Error:', err.message);
@@ -5192,7 +5214,9 @@ app.get('/api/reports/munshare-year-total', async (req, res) => {
             result = fallbackResult;
         }
 
-        console.log(`✅ [API] Found municipal share total: ${result.recordset[0]?.TotalMunShare || 0}`);
+        console.log(
+            `✅ [API] Found municipal share total: ${result.recordset[0]?.TotalMunShare || 0}`
+        );
         res.json(result.recordset || []);
     } catch (err) {
         console.error('❌ Get Mun Share Year Total Error:', err.message);
@@ -5385,7 +5409,11 @@ function getMistralClient() {
 function getOrdinanceBotProvider() {
     const configuredProvider = (process.env.ORDINANCE_BOT_PROVIDER || 'auto').trim().toLowerCase();
 
-    if (configuredProvider === 'gemini' || configuredProvider === 'groq' || configuredProvider === 'mistral') {
+    if (
+        configuredProvider === 'gemini' ||
+        configuredProvider === 'groq' ||
+        configuredProvider === 'mistral'
+    ) {
         return configuredProvider;
     }
 
@@ -5405,7 +5433,7 @@ function getOrdinanceBotModel(provider) {
     if (configuredModel) {
         return configuredModel;
     }
-    
+
     if (provider === 'gemini') return 'gemini-3.1-flash-lite';
     return provider === 'groq' ? 'llama-3.1-8b-instant' : 'mistral-small-latest';
 }
@@ -5417,26 +5445,26 @@ function isGreetingMessage(message) {
     );
 }
 
-
 async function callGeminiChat({ model, systemPrompt, userMessage }) {
     const payload = {
         system_instruction: { parts: { text: systemPrompt } },
-        contents: [
-            { role: 'user', parts: [{ text: userMessage }] }
-        ],
+        contents: [{ role: 'user', parts: [{ text: userMessage }] }],
         generationConfig: {
             temperature: 0.2,
             maxOutputTokens: 800,
-        }
+        },
     };
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-    });
+    const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+        }
+    );
 
     const data = await response.json();
 
@@ -5534,16 +5562,20 @@ app.post('/api/ordinance-bot/chat', async (req, res) => {
 
         const provider = getOrdinanceBotProvider();
         const hasApiKey =
-            provider === 'gemini' ? !!process.env.GEMINI_API_KEY :
-            provider === 'groq' ? !!process.env.GROQ_API_KEY : !!process.env.MISTRAL_API_KEY;
+            provider === 'gemini'
+                ? !!process.env.GEMINI_API_KEY
+                : provider === 'groq'
+                  ? !!process.env.GROQ_API_KEY
+                  : !!process.env.MISTRAL_API_KEY;
 
         if (!hasApiKey) {
             return res.status(500).json({
                 error:
-                    provider === 'gemini' ? 'Gemini API key not configured. Please add GEMINI_API_KEY to your .env file.' :
-                    provider === 'groq'
-                        ? 'Groq API key not configured. Please add GROQ_API_KEY to your .env file.'
-                        : 'Mistral API key not configured. Please add MISTRAL_API_KEY to your .env file.',
+                    provider === 'gemini'
+                        ? 'Gemini API key not configured. Please add GEMINI_API_KEY to your .env file.'
+                        : provider === 'groq'
+                          ? 'Groq API key not configured. Please add GROQ_API_KEY to your .env file.'
+                          : 'Mistral API key not configured. Please add MISTRAL_API_KEY to your .env file.',
             });
         }
 
@@ -5565,9 +5597,12 @@ app.post('/api/ordinance-bot/chat', async (req, res) => {
         }
 
         const model = getOrdinanceBotModel(provider);
-        const ordinanceContext = provider === 'gemini' 
-            ? await getOrdinanceContent() 
-            : await getRelevantOrdinanceContext(userMessage, { maxChunks: provider === 'groq' ? 4 : 5 });
+        const ordinanceContext =
+            provider === 'gemini'
+                ? await getOrdinanceContent()
+                : await getRelevantOrdinanceContext(userMessage, {
+                      maxChunks: provider === 'groq' ? 4 : 5,
+                  });
         const systemPrompt = `You are a legal assistant for the PLENRO Ordinance.
 
 RULES YOU MUST FOLLOW:
@@ -5599,8 +5634,8 @@ Remember: The excerpts may be partial. If the answer is unclear from them, say t
             provider === 'gemini'
                 ? await callGeminiChat({ model, systemPrompt, userMessage })
                 : provider === 'groq'
-                ? await callGroqChat({ model, systemPrompt, userMessage })
-                : await callMistralChat({ model, systemPrompt, userMessage });
+                  ? await callGroqChat({ model, systemPrompt, userMessage })
+                  : await callMistralChat({ model, systemPrompt, userMessage });
 
         console.log(`Ordinance Bot: Response generated successfully with ${provider}/${model}`);
         res.json({ response: botResponse, provider, model });
@@ -5626,8 +5661,11 @@ app.get('/api/ordinance-bot/status', async (req, res) => {
         const provider = getOrdinanceBotProvider();
         const model = getOrdinanceBotModel(provider);
         const hasApiKey =
-            provider === 'gemini' ? !!process.env.GEMINI_API_KEY :
-            provider === 'groq' ? !!process.env.GROQ_API_KEY : !!process.env.MISTRAL_API_KEY;
+            provider === 'gemini'
+                ? !!process.env.GEMINI_API_KEY
+                : provider === 'groq'
+                  ? !!process.env.GROQ_API_KEY
+                  : !!process.env.MISTRAL_API_KEY;
         const hasDocument = ordinanceExists();
 
         res.json({
@@ -5637,10 +5675,11 @@ app.get('/api/ordinance-bot/status', async (req, res) => {
             provider,
             model,
             message: !hasApiKey
-                ? provider === 'gemini' ? 'Gemini API key not configured'
-                : provider === 'groq'
-                    ? 'Groq API key not configured'
-                    : 'Mistral API key not configured'
+                ? provider === 'gemini'
+                    ? 'Gemini API key not configured'
+                    : provider === 'groq'
+                      ? 'Groq API key not configured'
+                      : 'Mistral API key not configured'
                 : !hasDocument
                   ? 'Ordinance document not found'
                   : 'Bot is ready',

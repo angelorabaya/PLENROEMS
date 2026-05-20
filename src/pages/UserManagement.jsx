@@ -383,7 +383,10 @@ const UserManagement = () => {
                             {editingUser ? `Edit ${editingUser.log_user}` : 'Create User'}
                         </h2>
                         <p className="user-form-copy">
-                            Passwords set by an admin are treated as temporary. They are stored in <code>log_pass</code> in plain text, requiring the user to change their password on their next login. When editing a user, leaving the password blank keeps their current password.
+                            Passwords set by an admin are treated as temporary. They are stored in{' '}
+                            <code>log_pass</code> in plain text, requiring the user to change their
+                            password on their next login. When editing a user, leaving the password
+                            blank keeps their current password.
                         </p>
                     </div>
 
