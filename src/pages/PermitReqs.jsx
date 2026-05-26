@@ -457,6 +457,20 @@ const PermitReqs = () => {
                     <FiFileText size={16} />
                     Renewal Requirements
                 </button>
+                <button
+                    className="btn btn-outline"
+                    onClick={() => handleViewRequirements('swdp.pdf')}
+                >
+                    <FiFileText size={16} />
+                    SWDP Requirements
+                </button>
+                <button
+                    className="btn btn-outline"
+                    onClick={() => handleViewRequirements('ggp.pdf')}
+                >
+                    <FiFileText size={16} />
+                    Gratuitous Permit Requirements
+                </button>
             </div>
 
             <PermitReqModal

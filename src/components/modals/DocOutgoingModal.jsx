@@ -220,20 +220,23 @@ const DocOutgoingModal = ({ isOpen, onClose, onSave, onPrint, record }) => {
     };
 
     return (
-        <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>
+        <Dialog.Root open={isOpen}>
             <Dialog.Portal>
                 <Dialog.Overlay className="dialog-overlay" />
-                <Dialog.Content className="dialog-content dialog-content-lg">
+                <Dialog.Content
+                    className="dialog-content dialog-content-lg"
+                    onPointerDownOutside={(e) => e.preventDefault()}
+                    onInteractOutside={(e) => e.preventDefault()}
+                    onEscapeKeyDown={(e) => e.preventDefault()}
+                >
                     <form onSubmit={handleSubmit}>
                         <div className="dialog-header">
                             <Dialog.Title className="dialog-title">
                                 {record ? 'Edit Outgoing Document' : 'Add Outgoing Document'}
                             </Dialog.Title>
-                            <Dialog.Close asChild>
-                                <button type="button" className="dialog-close" aria-label="Close">
-                                    <FiX size={16} />
-                                </button>
-                            </Dialog.Close>
+                            <button type="button" className="dialog-close" aria-label="Close" onClick={onClose}>
+                                <FiX size={16} />
+                            </button>
                         </div>
 
                         <div className="dialog-body">

@@ -196,23 +196,24 @@ const DocReceivingModal = ({ isOpen, onClose, onSave, record }) => {
     };
 
     return (
-        <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>
+        <Dialog.Root open={isOpen}>
             <Dialog.Portal>
                 <Dialog.Overlay className="dialog-overlay" />
                 <Dialog.Content
                     className="dialog-content dialog-content-lg"
                     aria-describedby={undefined}
+                    onPointerDownOutside={(e) => e.preventDefault()}
+                    onInteractOutside={(e) => e.preventDefault()}
+                    onEscapeKeyDown={(e) => e.preventDefault()}
                 >
                     <form onSubmit={handleSubmit}>
                         <div className="dialog-header">
                             <Dialog.Title className="dialog-title">
                                 {record ? 'Edit Document' : 'Add Document'}
                             </Dialog.Title>
-                            <Dialog.Close asChild>
-                                <button type="button" className="dialog-close" aria-label="Close">
-                                    <FiX size={16} />
-                                </button>
-                            </Dialog.Close>
+                            <button type="button" className="dialog-close" aria-label="Close" onClick={onClose}>
+                                <FiX size={16} />
+                            </button>
                         </div>
 
                         <div className="dialog-body">

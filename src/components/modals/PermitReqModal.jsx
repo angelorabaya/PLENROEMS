@@ -6,19 +6,19 @@ import './Modal.css';
 const PermitReqModal = ({ isOpen, onClose, onSave, permitReq }) => {
     const [formData, setFormData] = useState({
         pr_desc: '',
-        pr_status: 'Active',
+        pr_status: '',
     });
 
     useEffect(() => {
         if (permitReq) {
             setFormData({
                 pr_desc: permitReq.pr_desc || '',
-                pr_status: permitReq.pr_status || 'Active',
+                pr_status: permitReq.pr_status || '',
             });
         } else {
             setFormData({
                 pr_desc: '',
-                pr_status: 'Active',
+                pr_status: '',
             });
         }
     }, [permitReq, isOpen]);
@@ -55,6 +55,18 @@ const PermitReqModal = ({ isOpen, onClose, onSave, permitReq }) => {
 
                         <div className="dialog-body">
                             <div className="form-group">
+                                <label className="form-label">Status</label>
+                                <input
+                                    type="text"
+                                    name="pr_status"
+                                    className="form-input"
+                                    value={formData.pr_status}
+                                    onChange={handleChange}
+                                    autoFocus
+                                />
+                            </div>
+
+                            <div className="form-group">
                                 <label className="form-label form-label-required">
                                     Description
                                 </label>
@@ -66,19 +78,6 @@ const PermitReqModal = ({ isOpen, onClose, onSave, permitReq }) => {
                                     required
                                     rows={3}
                                 />
-                            </div>
-
-                            <div className="form-group">
-                                <label className="form-label">Status</label>
-                                <select
-                                    name="pr_status"
-                                    className="form-select"
-                                    value={formData.pr_status}
-                                    onChange={handleChange}
-                                >
-                                    <option value="Active">Active</option>
-                                    <option value="Inactive">Inactive</option>
-                                </select>
                             </div>
                         </div>
 
