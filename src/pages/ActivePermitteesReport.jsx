@@ -51,6 +51,7 @@ const ActivePermitteesReport = () => {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [exporting, setExporting] = useState(false);
 
     useEffect(() => {
         loadReportData();
@@ -76,6 +77,26 @@ const ActivePermitteesReport = () => {
         window.print();
     };
 
+    const handleExportExcel = async () => {
+        setExporting(true);
+        try {
+            const blob = await api.exportActivePermittees();
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'active_permittees.xlsx';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error('Export active permittees failed:', err);
+            alert('Failed to export active permittees.');
+        } finally {
+            setExporting(false);
+        }
+    };
+
     const shouldShowReport = !loading && !error && data.length > 0;
 
     return (
@@ -92,6 +113,13 @@ const ActivePermitteesReport = () => {
                         disabled={!shouldShowReport}
                     >
                         Print
+                    </button>
+                    <button
+                        className="btn btn-export-excel"
+                        onClick={handleExportExcel}
+                        disabled={!shouldShowReport || exporting}
+                    >
+                        {exporting ? 'Exporting...' : 'Export to Excel'}
                     </button>
                 </div>
                 <div className="toolbar-meta">Active Permittees Report — {data.length} records</div>

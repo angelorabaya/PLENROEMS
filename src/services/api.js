@@ -880,6 +880,14 @@ export const api = {
         return response.json();
     },
 
+    exportComparativeIncome: async (year) => {
+        const response = await fetch(
+            `${API_BASE}/api/reports/comparative-income/export?year=${year}`
+        );
+        if (!response.ok) throw new Error('Failed to export comparative income report');
+        return response.blob();
+    },
+
     getRevenueCollection: async (year, month) => {
         const response = await fetch(
             `${API_BASE}/api/reports/revenue-collection?year=${year}&month=${encodeURIComponent(month)}`
@@ -949,6 +957,12 @@ export const api = {
         if (!response.ok)
             throw new Error('Failed to fetch active permittees by municipality report');
         return response.json();
+    },
+
+    exportActivePermittees: async () => {
+        const response = await fetch(`${API_BASE}/api/reports/active-permittees/export`);
+        if (!response.ok) throw new Error('Failed to export active permittees');
+        return response.blob();
     },
 
     exportActiveRegisteredVehicleRecords: async () => {
@@ -1305,6 +1319,23 @@ export const api = {
             `${API_BASE}/api/personnel-travel-logs/details/${encodeURIComponent(name)}`
         );
         if (!response.ok) throw new Error('Failed to fetch personnel travel log details');
+        return response.json();
+    },
+
+    // Sticker Issuance & Traffic Apprehension
+    getIssuedStickersSummary: async (fromDate, toDate) => {
+        const response = await fetch(
+            `${API_BASE}/api/reports/issued-stickers-summary?fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDate)}`
+        );
+        if (!response.ok) throw new Error('Failed to fetch issued stickers summary');
+        return response.json();
+    },
+
+    getApprehendedVehiclesSummary: async (fromDate, toDate) => {
+        const response = await fetch(
+            `${API_BASE}/api/reports/apprehended-vehicles-summary?fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDate)}`
+        );
+        if (!response.ok) throw new Error('Failed to fetch apprehended vehicles summary');
         return response.json();
     },
 };

@@ -216,6 +216,20 @@
     border-color: #3f3f46;
 }
 
+.btn-export-excel {
+    background-color: #217346;
+    color: #ffffff;
+}
+
+.btn-export-excel:hover {
+    background-color: #1a5c38;
+}
+
+.btn-export-excel:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .btn-sm {
     height: 2rem;
     padding: 0 0.75rem;

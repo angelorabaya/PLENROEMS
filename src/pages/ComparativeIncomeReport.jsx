@@ -48,6 +48,7 @@ const ComparativeIncomeReport = () => {
     const [error, setError] = useState(null);
     const [selectedYear, setSelectedYear] = useState(Number(initialYear));
     const [availableYears, setAvailableYears] = useState([]);
+    const [exporting, setExporting] = useState(false);
 
     useEffect(() => {
         loadAvailableYears();
@@ -130,6 +131,26 @@ const ComparativeIncomeReport = () => {
         window.print();
     };
 
+    const handleExportExcel = async () => {
+        setExporting(true);
+        try {
+            const blob = await api.exportComparativeIncome(selectedYear);
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `comparative_income_${selectedYear}.xlsx`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error('Export comparative income failed:', err);
+            alert('Failed to export comparative income report.');
+        } finally {
+            setExporting(false);
+        }
+    };
+
     const handleYearChange = (e) => {
         const year = Number(e.target.value);
         setSelectedYear(year);
@@ -145,6 +166,13 @@ const ComparativeIncomeReport = () => {
                     </button>
                     <button className="btn btn-primary" onClick={handlePrint}>
                         Print
+                    </button>
+                    <button
+                        className="btn btn-export-excel"
+                        onClick={handleExportExcel}
+                        disabled={loading || !!error || data.length === 0 || exporting}
+                    >
+                        {exporting ? 'Exporting...' : 'Export to Excel'}
                     </button>
                 </div>
                 <div className="toolbar-meta">

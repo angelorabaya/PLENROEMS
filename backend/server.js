@@ -4850,6 +4850,70 @@ app.get('/api/reports/available-years', async (req, res) => {
     }
 });
 
+// GET /api/reports/issued-stickers-summary - Get issued stickers summary for date range
+app.get('/api/reports/issued-stickers-summary', async (req, res) => {
+    try {
+        const { fromDate, toDate } = req.query;
+        if (!fromDate || !toDate) {
+            return res.status(400).json({ error: 'fromDate and toDate are required' });
+        }
+        const request = pool.request();
+        request.input('fromDate', sql.Date, fromDate);
+        request.input('toDate', sql.Date, toDate);
+        const result = await request.query(`
+            SELECT 
+                ISNULL(SUM(d.aop_total), 0) AS TotalAmount, 
+                ISNULL(SUM(d.aop_volume), 0) AS TotalVolume
+            FROM 
+                tbl_assessmenthdr AS h
+            INNER JOIN 
+                tbl_assessmentdtl AS d ON h.aop_control = d.aop_control
+            WHERE 
+                h.aop_orno IS NOT NULL 
+                AND h.aop_ordate >= @fromDate 
+                AND h.aop_ordate <= @toDate
+                AND d.aop_item LIKE '%sticker%'
+        `);
+        const row = result.recordset[0] || { TotalAmount: 0, TotalVolume: 0 };
+        console.log(`✅ Fetched issued stickers summary: Volume=${row.TotalVolume}, Amount=${row.TotalAmount}`);
+        res.json(row);
+    } catch (err) {
+        console.error('❌ Get Issued Stickers Summary Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch issued stickers summary: ' + err.message });
+    }
+});
+
+// GET /api/reports/apprehended-vehicles-summary - Get apprehended vehicles summary for date range
+app.get('/api/reports/apprehended-vehicles-summary', async (req, res) => {
+    try {
+        const { fromDate, toDate } = req.query;
+        if (!fromDate || !toDate) {
+            return res.status(400).json({ error: 'fromDate and toDate are required' });
+        }
+        const request = pool.request();
+        request.input('fromDate', sql.Date, fromDate);
+        request.input('toDate', sql.Date, toDate);
+        const result = await request.query(`
+            SELECT 
+                ISNULL(COUNT(aop_ctrlno), 0) AS TotalControlCount, 
+                ISNULL(SUM(aop_total), 0) AS TotalFinesAmount
+            FROM 
+                tbl_assessmenthdr
+            WHERE 
+                aop_orno IS NOT NULL 
+                AND aop_ordate >= @fromDate 
+                AND aop_ordate <= @toDate
+                AND aop_nature LIKE '%Fines And Penalties%'
+        `);
+        const row = result.recordset[0] || { TotalControlCount: 0, TotalFinesAmount: 0 };
+        console.log(`✅ Fetched apprehended vehicles summary: Count=${row.TotalControlCount}, Fines=${row.TotalFinesAmount}`);
+        res.json(row);
+    } catch (err) {
+        console.error('❌ Get Apprehended Vehicles Summary Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch apprehended vehicles summary: ' + err.message });
+    }
+});
+
 // ==================== HEALTH CHECK ====================
 
 app.get('/api/health', (req, res) => {
@@ -4933,6 +4997,432 @@ app.get('/api/reports/comparative-income', async (req, res) => {
     } catch (err) {
         console.error('❌ Get Comparative Income Error:', err.message);
         res.status(500).json({ error: 'Failed to fetch comparative income: ' + err.message });
+    }
+});
+
+// ==================== COMPARATIVE INCOME EXPORT ====================
+
+app.get('/api/reports/comparative-income/export', async (req, res) => {
+    try {
+        const { year } = req.query;
+
+        if (!year) {
+            return res.status(400).json({ error: 'Year parameter is required' });
+        }
+
+        console.log(`[API] Exporting comparative income for year ${year}`);
+
+        const request = pool.request();
+        request.input('year', sql.Int, parseInt(year, 10));
+
+        const result = await request.query(`
+      SELECT [Year]
+            ,[Month_Name]
+            ,[Month_No]
+            ,[Share_Prov_30]
+            ,[Share_Mun_30]
+            ,[Share_Brgy_40]
+            ,[Share_Volume]
+            ,[MGB_Prov_30]
+            ,[MGB_Volume]
+            ,[Outbound_Fee]
+            ,[Inbound_Fee]
+            ,[Admin_Fee]
+            ,[Ecosystem_Fee]
+            ,[Admin_Ecosystem_Fee]
+            ,[Other_Misc_Fee]
+            ,[Sticker_Fee]
+            ,[Reg_Conveyances_Fee]
+            ,[Penalties_Fee]
+            ,[Net_Share]
+            ,[Gross_Total]
+      FROM [View_collectionreport]
+      WHERE [Year] = @year
+      ORDER BY [Month_No] DESC
+    `);
+
+        const rows = result.recordset || [];
+
+        // Signatory defaults (same as frontend)
+        const preparedByName = process.env.NOTED_BY_NAME || 'GERAN JOHN T. FLORES';
+        const preparedByTitle = process.env.NOTED_BY_TITLE || 'PLENRO';
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Comparative Income');
+
+        const totalCols = 18; // MONTH + 17 data columns
+
+        // Set column widths
+        const colWidths = [14, 16, 16, 16, 14, 16, 14, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 18];
+        colWidths.forEach((w, i) => {
+            worksheet.getColumn(i + 1).width = w;
+        });
+
+        const thinBorder = {
+            top: { style: 'thin', color: { argb: 'FF000000' } },
+            left: { style: 'thin', color: { argb: 'FF000000' } },
+            bottom: { style: 'thin', color: { argb: 'FF000000' } },
+            right: { style: 'thin', color: { argb: 'FF000000' } },
+        };
+
+        const headerFill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FF2D5A27' },
+        };
+
+        const headerFont = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
+        const centerAlign = { horizontal: 'center', vertical: 'middle', wrapText: true };
+
+        // Helper: merge cells and set value with style
+        const addMergedRow = (rowNum, value, style = {}) => {
+            worksheet.mergeCells(rowNum, 1, rowNum, totalCols);
+            const row = worksheet.getRow(rowNum);
+            const cell = row.getCell(1);
+            cell.value = value;
+            cell.font = style.font || {};
+            cell.alignment = style.alignment || { horizontal: 'left', vertical: 'middle' };
+            row.commit();
+        };
+
+        // Format date string
+        const currentDate = new Date().toLocaleDateString('en-US', {
+            timeZone: 'Asia/Manila',
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+        });
+
+        let currentRow = 1;
+
+        // ===== HEADER SECTION =====
+        // Row 1: Date
+        addMergedRow(currentRow, currentDate, {
+            font: { size: 10 },
+        });
+        currentRow++;
+
+        // Row 2: Empty
+        addMergedRow(currentRow, '');
+        currentRow++;
+
+        // Row 3: TO:
+        addMergedRow(currentRow, 'TO: HONORABLE JULIETTE T. UY', {
+            font: { bold: true, size: 10 },
+        });
+        currentRow++;
+
+        // Row 4: Provincial Governor
+        addMergedRow(currentRow, '      Provincial Governor', {
+            font: { size: 10 },
+        });
+        currentRow++;
+
+        // Row 5: Empty
+        addMergedRow(currentRow, '');
+        currentRow++;
+
+        // Row 6: Title
+        addMergedRow(currentRow, `COMPARATIVE INCOME - PLENRO    ${year}`, {
+            font: { bold: true, size: 14, color: { argb: 'FF2D5A27' } },
+        });
+        currentRow++;
+
+        // Row 7: Empty spacer
+        addMergedRow(currentRow, '');
+        currentRow++;
+
+        // ===== TABLE HEADER ROW 1 (Group Headers) =====
+        const groupRow1 = currentRow;
+        const groupRow2 = currentRow + 1;
+
+        // Column layout for group headers:
+        // Col 1: MONTH (rowspan 2)
+        // Col 2-5: SHARE (colspan 4)
+        // Col 6-7: MGB (colspan 2)
+        // Col 8-9: (ENRO) (colspan 2)
+        // Col 10-11: (MISOR) (colspan 2)
+        // Col 12-13: (ENRO) (colspan 2)
+        // Col 14-15: (ENRO) (colspan 2)
+        // Col 16: (MISOR) Penalties (rowspan 2)
+        // Col 17: Net Share (rowspan 2)
+        // Col 18: GROSS TOTAL (rowspan 2)
+
+        // MONTH - merge rows
+        worksheet.mergeCells(groupRow1, 1, groupRow2, 1);
+        const monthHeaderCell = worksheet.getRow(groupRow1).getCell(1);
+        monthHeaderCell.value = `${year}\nMONTH`;
+        monthHeaderCell.font = headerFont;
+        monthHeaderCell.alignment = centerAlign;
+        monthHeaderCell.fill = headerFill;
+        monthHeaderCell.border = thinBorder;
+
+        // SHARE - cols 2-5
+        worksheet.mergeCells(groupRow1, 2, groupRow1, 5);
+        const shareCell = worksheet.getRow(groupRow1).getCell(2);
+        shareCell.value = 'SHARE';
+        shareCell.font = headerFont;
+        shareCell.alignment = centerAlign;
+        shareCell.fill = headerFill;
+        shareCell.border = thinBorder;
+
+        // MGB - cols 6-7
+        worksheet.mergeCells(groupRow1, 6, groupRow1, 7);
+        const mgbCell = worksheet.getRow(groupRow1).getCell(6);
+        mgbCell.value = 'MGB';
+        mgbCell.font = headerFont;
+        mgbCell.alignment = centerAlign;
+        mgbCell.fill = headerFill;
+        mgbCell.border = thinBorder;
+
+        // (ENRO) - cols 8-9
+        worksheet.mergeCells(groupRow1, 8, groupRow1, 9);
+        const enro1Cell = worksheet.getRow(groupRow1).getCell(8);
+        enro1Cell.value = '(ENRO)';
+        enro1Cell.font = headerFont;
+        enro1Cell.alignment = centerAlign;
+        enro1Cell.fill = headerFill;
+        enro1Cell.border = thinBorder;
+
+        // (MISOR) - cols 10-11
+        worksheet.mergeCells(groupRow1, 10, groupRow1, 11);
+        const misor1Cell = worksheet.getRow(groupRow1).getCell(10);
+        misor1Cell.value = '(MISOR)';
+        misor1Cell.font = headerFont;
+        misor1Cell.alignment = centerAlign;
+        misor1Cell.fill = headerFill;
+        misor1Cell.border = thinBorder;
+
+        // (ENRO) - cols 12-13
+        worksheet.mergeCells(groupRow1, 12, groupRow1, 13);
+        const enro2Cell = worksheet.getRow(groupRow1).getCell(12);
+        enro2Cell.value = '(ENRO)';
+        enro2Cell.font = headerFont;
+        enro2Cell.alignment = centerAlign;
+        enro2Cell.fill = headerFill;
+        enro2Cell.border = thinBorder;
+
+        // (ENRO) - cols 14-15
+        worksheet.mergeCells(groupRow1, 14, groupRow1, 15);
+        const enro3Cell = worksheet.getRow(groupRow1).getCell(14);
+        enro3Cell.value = '(ENRO)';
+        enro3Cell.font = headerFont;
+        enro3Cell.alignment = centerAlign;
+        enro3Cell.fill = headerFill;
+        enro3Cell.border = thinBorder;
+
+        // (MISOR) Penalties - col 16 (rowspan 2)
+        worksheet.mergeCells(groupRow1, 16, groupRow2, 16);
+        const penaltiesCell = worksheet.getRow(groupRow1).getCell(16);
+        penaltiesCell.value = '(MISOR)\nPenalties';
+        penaltiesCell.font = headerFont;
+        penaltiesCell.alignment = centerAlign;
+        penaltiesCell.fill = headerFill;
+        penaltiesCell.border = thinBorder;
+
+        // Net Share - col 17 (rowspan 2)
+        worksheet.mergeCells(groupRow1, 17, groupRow2, 17);
+        const netShareCell = worksheet.getRow(groupRow1).getCell(17);
+        netShareCell.value = 'Net Share';
+        netShareCell.font = headerFont;
+        netShareCell.alignment = centerAlign;
+        netShareCell.fill = headerFill;
+        netShareCell.border = thinBorder;
+
+        // GROSS TOTAL - col 18 (rowspan 2)
+        worksheet.mergeCells(groupRow1, 18, groupRow2, 18);
+        const grossTotalCell = worksheet.getRow(groupRow1).getCell(18);
+        grossTotalCell.value = 'GROSS TOTAL';
+        grossTotalCell.font = headerFont;
+        grossTotalCell.alignment = centerAlign;
+        grossTotalCell.fill = headerFill;
+        grossTotalCell.border = thinBorder;
+
+        worksheet.getRow(groupRow1).height = 22;
+        worksheet.getRow(groupRow1).commit();
+
+        // ===== TABLE HEADER ROW 2 (Sub Headers) =====
+        const subHeaders = [
+            null, // col 1 already merged
+            '30% (PROVINCE)', '30% (MUNIC.)', '40% (BRGY)', 'Volume',
+            '30% (PROV)', 'Volume',
+            'Outbound Fee', 'Inbound Fee',
+            'ADMIN Fee', 'Ecosystem Fee',
+            'Admin & Eco Fee', 'Other Misc.',
+            'STICKER', 'Reg. Conv.',
+            null, null, null // cols 16-18 already merged
+        ];
+
+        const subRow = worksheet.getRow(groupRow2);
+        subHeaders.forEach((h, idx) => {
+            if (h !== null) {
+                const cell = subRow.getCell(idx + 1);
+                cell.value = h;
+                cell.font = headerFont;
+                cell.alignment = centerAlign;
+                cell.fill = headerFill;
+                cell.border = thinBorder;
+            }
+        });
+        subRow.height = 22;
+        subRow.commit();
+
+        currentRow = groupRow2 + 1;
+
+        // ===== DATA ROWS =====
+        const numFmt = '#,##0.00';
+
+        rows.forEach((row) => {
+            const dataRow = worksheet.getRow(currentRow);
+            const values = [
+                row.Month_Name,
+                Number(row.Share_Prov_30) || 0,
+                Number(row.Share_Mun_30) || 0,
+                Number(row.Share_Brgy_40) || 0,
+                Number(row.Share_Volume) || 0,
+                Number(row.MGB_Prov_30) || 0,
+                Number(row.MGB_Volume) || 0,
+                Number(row.Outbound_Fee) || 0,
+                Number(row.Inbound_Fee) || 0,
+                Number(row.Admin_Fee) || 0,
+                Number(row.Ecosystem_Fee) || 0,
+                Number(row.Admin_Ecosystem_Fee) || 0,
+                Number(row.Other_Misc_Fee) || 0,
+                Number(row.Sticker_Fee) || 0,
+                Number(row.Reg_Conveyances_Fee) || 0,
+                Number(row.Penalties_Fee) || 0,
+                Number(row.Net_Share) || 0,
+                Number(row.Gross_Total) || 0,
+            ];
+
+            values.forEach((v, idx) => {
+                const cell = dataRow.getCell(idx + 1);
+                cell.value = v;
+                cell.border = thinBorder;
+                if (idx === 0) {
+                    // Month name - left align, bold
+                    cell.font = { bold: true, size: 9 };
+                    cell.alignment = { vertical: 'middle' };
+                } else {
+                    cell.numFmt = numFmt;
+                    cell.alignment = { horizontal: 'right', vertical: 'middle' };
+                    cell.font = { size: 9 };
+                }
+            });
+
+            // Bold the Gross Total column
+            dataRow.getCell(18).font = { bold: true, size: 9 };
+
+            dataRow.commit();
+            currentRow++;
+        });
+
+        // ===== TOTALS ROW =====
+        const totalsFields = [
+            'Share_Prov_30', 'Share_Mun_30', 'Share_Brgy_40', 'Share_Volume',
+            'MGB_Prov_30', 'MGB_Volume',
+            'Outbound_Fee', 'Inbound_Fee',
+            'Admin_Fee', 'Ecosystem_Fee',
+            'Admin_Ecosystem_Fee', 'Other_Misc_Fee',
+            'Sticker_Fee', 'Reg_Conveyances_Fee',
+            'Penalties_Fee', 'Net_Share', 'Gross_Total',
+        ];
+
+        const totals = {};
+        totalsFields.forEach((f) => { totals[f] = 0; });
+        rows.forEach((row) => {
+            totalsFields.forEach((f) => {
+                totals[f] += Number(row[f]) || 0;
+            });
+        });
+
+        const totalsRow = worksheet.getRow(currentRow);
+        const totalsFill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FF2D5A27' },
+        };
+
+        // TOTAL label
+        const totalLabelCell = totalsRow.getCell(1);
+        totalLabelCell.value = 'TOTAL';
+        totalLabelCell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+        totalLabelCell.alignment = { vertical: 'middle' };
+        totalLabelCell.fill = totalsFill;
+        totalLabelCell.border = thinBorder;
+
+        // Total values
+        totalsFields.forEach((f, idx) => {
+            const cell = totalsRow.getCell(idx + 2);
+            cell.value = totals[f];
+            cell.numFmt = numFmt;
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
+            cell.alignment = { horizontal: 'right', vertical: 'middle' };
+            cell.fill = totalsFill;
+            cell.border = thinBorder;
+        });
+
+        totalsRow.commit();
+        currentRow++;
+
+        // ===== NOTES SECTION =====
+        currentRow += 1;
+        addMergedRow(currentRow, 'Note: Old Rate: Extraction Fee: 40.00, Ecosystem Fee: 5.00', {
+            font: { bold: true, size: 9 },
+        });
+        currentRow++;
+
+        addMergedRow(currentRow, 'New Rate: Extraction Fee: 50.00, Admin Fee: 50.00, Ecosystem Fee: 50.00, Admin/Ecosystem Fee: 50.00 (Filling Materials) and Inbound Fee: 8.50 per cu.', {
+            font: { bold: true, size: 9 },
+        });
+        currentRow++;
+
+        // ===== SIGNATORY SECTION =====
+        currentRow += 1;
+
+        // "Prepared by:"
+        worksheet.mergeCells(currentRow, 1, currentRow, 3);
+        const prepLabel = worksheet.getRow(currentRow).getCell(1);
+        prepLabel.value = 'Prepared by:';
+        prepLabel.font = { size: 10 };
+        prepLabel.alignment = { vertical: 'middle' };
+        worksheet.getRow(currentRow).commit();
+        currentRow += 2;
+
+        // Name
+        worksheet.mergeCells(currentRow, 1, currentRow, 3);
+        const nameCell = worksheet.getRow(currentRow).getCell(1);
+        nameCell.value = preparedByName;
+        nameCell.font = { bold: true, size: 10, underline: true };
+        nameCell.alignment = { vertical: 'middle' };
+        worksheet.getRow(currentRow).commit();
+        currentRow++;
+
+        // Title
+        worksheet.mergeCells(currentRow, 1, currentRow, 3);
+        const titleCell = worksheet.getRow(currentRow).getCell(1);
+        titleCell.value = preparedByTitle;
+        titleCell.font = { size: 10, color: { argb: 'FF555555' } };
+        titleCell.alignment = { vertical: 'middle' };
+        worksheet.getRow(currentRow).commit();
+
+        // ===== SEND RESPONSE =====
+        const filename = `comparative_income_${year}.xlsx`;
+        const buffer = await workbook.xlsx.writeBuffer();
+
+        res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+        res.setHeader(
+            'Content-Type',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        );
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(Buffer.from(buffer));
+    } catch (err) {
+        console.error('❌ Export Comparative Income Error:', err.message);
+        res.status(500).json({
+            error: 'Failed to export comparative income: ' + err.message,
+        });
     }
 });
 
@@ -5280,6 +5770,222 @@ app.get('/api/reports/active-permittees-by-municipality', async (req, res) => {
         console.error('❌ Get Active Permittees By Municipality Error:', err.message);
         res.status(500).json({
             error: 'Failed to fetch active permittees by municipality: ' + err.message,
+        });
+    }
+});
+
+app.get('/api/reports/active-permittees/export', async (req, res) => {
+    try {
+        console.log('[API] Exporting active permittees');
+
+        const request = pool.request();
+        const result = await request.query(`
+      SELECT [num_row]
+            ,[ph_cname]
+            ,[ph_mun]
+            ,[ph_brgy]
+            ,[ph_volume]
+            ,[ph_dfrom]
+            ,[ph_dto]
+            ,[ph_permitno]
+      FROM [View_activepermit]
+      ORDER BY [ph_mun], [ph_brgy], [ph_cname]
+    `);
+
+        const rows = result.recordset || [];
+
+        // Signatory defaults (same as frontend)
+        const preparedByName = process.env.NOTED_BY_NAME || 'GERAN JOHN T. FLORES';
+        const preparedByTitle = process.env.NOTED_BY_TITLE || 'PLENRO';
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Active Permittees');
+
+        // Define column widths (6 columns matching the report)
+        worksheet.columns = [
+            { key: 'A', width: 35 },  // NAME
+            { key: 'B', width: 22 },  // MUNICIPALITY
+            { key: 'C', width: 22 },  // BARANGAY
+            { key: 'D', width: 14 },  // VOLUME
+            { key: 'E', width: 36 },  // VALIDITY
+            { key: 'F', width: 22 },  // PERMIT NO.
+        ];
+
+        const totalCols = 6; // A through F
+        const thinBorder = {
+            top: { style: 'thin', color: { argb: 'FF000000' } },
+            left: { style: 'thin', color: { argb: 'FF000000' } },
+            bottom: { style: 'thin', color: { argb: 'FF000000' } },
+            right: { style: 'thin', color: { argb: 'FF000000' } },
+        };
+
+        // Helper: merge cells and set value with style
+        const addMergedRow = (rowNum, value, style = {}) => {
+            worksheet.mergeCells(rowNum, 1, rowNum, totalCols);
+            const row = worksheet.getRow(rowNum);
+            const cell = row.getCell(1);
+            cell.value = value;
+            cell.font = style.font || {};
+            cell.alignment = style.alignment || { horizontal: 'center', vertical: 'middle' };
+            if (style.fill) cell.fill = style.fill;
+            row.commit();
+        };
+
+        // Helper: format date to "Month Day, Year" (Manila time)
+        const formatDateStr = (dateVal) => {
+            if (!dateVal) return '';
+            const d = new Date(dateVal);
+            return d.toLocaleDateString('en-US', {
+                timeZone: 'Asia/Manila',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+            });
+        };
+
+        // ===== HEADER SECTION =====
+        let currentRow = 1;
+
+        // Row 1: REPUBLIC OF THE PHILIPPINES
+        addMergedRow(currentRow, 'REPUBLIC OF THE PHILIPPINES', {
+            font: { bold: true, size: 12 },
+        });
+        currentRow++;
+
+        // Row 2: Province of Misamis Oriental
+        addMergedRow(currentRow, 'Province of Misamis Oriental', {
+            font: { size: 11 },
+        });
+        currentRow++;
+
+        // Row 3: Office name
+        addMergedRow(currentRow, 'PROVINCIAL LOCAL ENVIRONMENT AND NATURAL RESOURCES OFFICE', {
+            font: { bold: true, size: 10, color: { argb: 'FF2D5A27' } },
+        });
+        currentRow++;
+
+        // Row 4: Address
+        addMergedRow(currentRow, 'Misortel Building, A. Luna St., Cagayan de Oro City', {
+            font: { italic: true, size: 9, color: { argb: 'FF555555' } },
+        });
+        currentRow++;
+
+        // Row 5: Empty spacer
+        addMergedRow(currentRow, '');
+        currentRow++;
+
+        // ===== TITLE SECTION =====
+        // Row 6: ACTIVE PERMITTEES
+        addMergedRow(currentRow, 'ACTIVE PERMITTEES', {
+            font: { bold: true, size: 14, color: { argb: 'FF2D5A27' } },
+        });
+        currentRow++;
+
+        // Row 7: Total count
+        addMergedRow(currentRow, `Total: ${rows.length} permit holders`, {
+            font: { size: 10, color: { argb: 'FF555555' } },
+        });
+        currentRow++;
+
+        // Row 8: Empty spacer
+        addMergedRow(currentRow, '');
+        currentRow++;
+
+        // ===== TABLE HEADER =====
+        const headerRowNum = currentRow;
+        const headers = ['NAME', 'MUNICIPALITY', 'BARANGAY', 'VOLUME', 'VALIDITY', 'PERMIT NO.'];
+        const headerRow = worksheet.getRow(headerRowNum);
+        headers.forEach((h, idx) => {
+            const cell = headerRow.getCell(idx + 1);
+            cell.value = h;
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FF2D5A27' },
+            };
+            cell.border = thinBorder;
+        });
+        headerRow.height = 22;
+        headerRow.commit();
+        currentRow++;
+
+        // ===== DATA ROWS =====
+        rows.forEach((row) => {
+            const fromStr = formatDateStr(row.ph_dfrom);
+            const toStr = formatDateStr(row.ph_dto);
+            let validity = '';
+            if (fromStr && toStr) validity = `${fromStr} - ${toStr}`;
+            else if (fromStr) validity = fromStr;
+
+            const dataRow = worksheet.getRow(currentRow);
+            dataRow.getCell(1).value = row.ph_cname || '';
+            dataRow.getCell(2).value = row.ph_mun || '';
+            dataRow.getCell(3).value = row.ph_brgy || '';
+            dataRow.getCell(4).value = row.ph_volume != null ? row.ph_volume : '';
+            dataRow.getCell(5).value = validity;
+            dataRow.getCell(6).value = row.ph_permitno || '';
+
+            // Center-align all except NAME
+            dataRow.getCell(1).alignment = { vertical: 'middle' };
+            for (let c = 2; c <= totalCols; c++) {
+                dataRow.getCell(c).alignment = { horizontal: 'center', vertical: 'middle' };
+            }
+
+            // Borders on all cells
+            for (let c = 1; c <= totalCols; c++) {
+                dataRow.getCell(c).border = thinBorder;
+            }
+
+            dataRow.commit();
+            currentRow++;
+        });
+
+        // ===== SIGNATORY SECTION =====
+        currentRow += 2; // 2 blank rows
+
+        // "Prepared by:"
+        worksheet.mergeCells(currentRow, 1, currentRow, 2);
+        const prepLabel = worksheet.getRow(currentRow).getCell(1);
+        prepLabel.value = 'Prepared by:';
+        prepLabel.font = { size: 10 };
+        prepLabel.alignment = { vertical: 'middle' };
+        worksheet.getRow(currentRow).commit();
+        currentRow += 2; // space for signature
+
+        // Name (bold, underlined)
+        worksheet.mergeCells(currentRow, 1, currentRow, 2);
+        const nameCell = worksheet.getRow(currentRow).getCell(1);
+        nameCell.value = preparedByName;
+        nameCell.font = { bold: true, size: 10, underline: true };
+        nameCell.alignment = { vertical: 'middle' };
+        worksheet.getRow(currentRow).commit();
+        currentRow++;
+
+        // Title
+        worksheet.mergeCells(currentRow, 1, currentRow, 2);
+        const titleCell = worksheet.getRow(currentRow).getCell(1);
+        titleCell.value = preparedByTitle;
+        titleCell.font = { size: 10, color: { argb: 'FF555555' } };
+        titleCell.alignment = { vertical: 'middle' };
+        worksheet.getRow(currentRow).commit();
+
+        // ===== SEND RESPONSE =====
+        const filename = 'active_permittees.xlsx';
+        const buffer = await workbook.xlsx.writeBuffer();
+
+        res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+        res.setHeader(
+            'Content-Type',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        );
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(Buffer.from(buffer));
+    } catch (err) {
+        console.error('❌ Export Active Permittees Error:', err.message);
+        res.status(500).json({
+            error: 'Failed to export active permittees: ' + err.message,
         });
     }
 });
