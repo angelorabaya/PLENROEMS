@@ -248,14 +248,14 @@ const TaskForceActivityLog = () => {
 
                                         return (
                                             <tr key={index}>
-                                                <td>{dateStr}</td>
-                                                <td>{row['AREA']}</td>
-                                                <td>{row['DELIVERY RECEIPT']}</td>
-                                                <td>{row['DESTINATION']}</td>
-                                                <td>{row['PLATE NO.']}</td>
-                                                <td>{row['DESCRIPTION']}</td>
-                                                <td>{row['VOLUME']}</td>
-                                                <td>{row['REMARKS']}</td>
+                                                <td className="text-muted">{dateStr}</td>
+                                                <td className="text-muted">{row['AREA']}</td>
+                                                <td className="text-muted">{row['DELIVERY RECEIPT']}</td>
+                                                <td className="text-muted">{row['DESTINATION']}</td>
+                                                <td className="text-muted">{row['PLATE NO.']}</td>
+                                                <td className="text-muted">{row['DESCRIPTION']}</td>
+                                                <td className="text-muted">{row['VOLUME']}</td>
+                                                <td className="text-muted">{row['REMARKS']}</td>
                                             </tr>
                                         );
                                     })}
