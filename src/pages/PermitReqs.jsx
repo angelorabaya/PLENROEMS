@@ -471,6 +471,13 @@ const PermitReqs = () => {
                     <FiFileText size={16} />
                     Gratuitous Permit Requirements
                 </button>
+                <button
+                    className="btn btn-outline"
+                    onClick={() => handleViewRequirements('sp.pdf')}
+                >
+                    <FiFileText size={16} />
+                    SP Requirements
+                </button>
             </div>
 
             <PermitReqModal
