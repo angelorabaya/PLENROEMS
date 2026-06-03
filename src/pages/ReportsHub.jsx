@@ -54,6 +54,12 @@ const CategorySection = ({ category, onReportClick, yearSelector, isDark }) => {
             border: 'border-cyan-500/20',
             glow: 'bg-cyan-500',
         },
+        rose: {
+            gradient: 'from-rose-500 to-rose-600',
+            bg: 'from-rose-500/10 to-rose-500/5',
+            border: 'border-rose-500/20',
+            glow: 'bg-rose-500',
+        },
     };
 
     const colors = colorMap[category.accentColor] || colorMap.blue;
@@ -84,48 +90,89 @@ const CategorySection = ({ category, onReportClick, yearSelector, isDark }) => {
 
             {/* Report Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {category.reports.map((report) => (
-                    <button
-                        key={report.id}
-                        onClick={() => onReportClick(report.path)}
-                        className={`group relative overflow-hidden rounded-2xl bg-gradient-to-br ${colors.bg}
-              border ${colors.border} backdrop-blur-sm p-5 text-left
-              transition-all duration-300 hover:scale-[1.02] hover:shadow-xl ${isDark ? 'hover:shadow-black/20' : 'hover:shadow-gray-300/50'}
-              focus:outline-none focus:ring-2 focus:ring-offset-2 ${isDark ? 'focus:ring-offset-gray-950' : 'focus:ring-offset-white'}`}
-                    >
-                        <div className="flex items-start gap-4">
-                            <div
-                                className={`bg-gradient-to-br ${colors.gradient} p-2.5 rounded-lg shadow-md ${isDark ? 'shadow-black/20' : 'shadow-gray-300/50'}`}
-                            >
-                                <report.icon className="text-white h-5 w-5" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <div className="flex items-center justify-between mb-1">
+                {category.reports.map((report) =>
+                    report.isDisplayCard ? (
+                        <div
+                            key={report.id}
+                            className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${colors.bg}
+                                border ${colors.border} backdrop-blur-sm p-5 text-left`}
+                        >
+                            <div className="flex items-start gap-4">
+                                <div
+                                    className={`bg-gradient-to-br ${colors.gradient} p-2.5 rounded-lg shadow-md ${isDark ? 'shadow-black/20' : 'shadow-gray-300/50'}`}
+                                >
+                                    <report.icon className="text-white h-5 w-5" />
+                                </div>
+                                <div className="flex-1 min-w-0">
                                     <h3
-                                        className={`font-semibold text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}
+                                        className={`font-semibold text-sm mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}
                                     >
                                         {report.name}
                                     </h3>
-                                    <FiArrowRight
-                                        className={`h-4 w-4 transform transition-transform 
-                    group-hover:translate-x-1 ${isDark ? 'text-gray-500 group-hover:text-white' : 'text-gray-400 group-hover:text-gray-900'}`}
-                                    />
+                                    <p
+                                        className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}
+                                    >
+                                        {report.value !== undefined && report.value !== null
+                                            ? report.value
+                                            : '—'}
+                                    </p>
+                                    <p
+                                        className={`text-xs leading-relaxed mt-1 ${isDark ? 'text-gray-500' : 'text-gray-600'}`}
+                                    >
+                                        {report.description}
+                                    </p>
                                 </div>
-                                <p
-                                    className={`text-xs leading-relaxed ${isDark ? 'text-gray-500' : 'text-gray-600'}`}
-                                >
-                                    {report.description}
-                                </p>
                             </div>
-                        </div>
 
-                        {/* Subtle glow effect */}
-                        <div
-                            className={`absolute -top-8 -right-8 w-24 h-24 rounded-full blur-3xl opacity-20
-              ${colors.glow} group-hover:opacity-40 transition-opacity`}
-                        />
-                    </button>
-                ))}
+                            {/* Subtle glow effect */}
+                            <div
+                                className={`absolute -top-8 -right-8 w-24 h-24 rounded-full blur-3xl opacity-20
+                                    ${colors.glow} transition-opacity`}
+                            />
+                        </div>
+                    ) : (
+                        <button
+                            key={report.id}
+                            onClick={() => onReportClick(report.path)}
+                            className={`group relative overflow-hidden rounded-2xl bg-gradient-to-br ${colors.bg}
+                                border ${colors.border} backdrop-blur-sm p-5 text-left
+                                transition-all duration-300 hover:scale-[1.02] hover:shadow-xl ${isDark ? 'hover:shadow-black/20' : 'hover:shadow-gray-300/50'}
+                                focus:outline-none focus:ring-2 focus:ring-offset-2 ${isDark ? 'focus:ring-offset-gray-950' : 'focus:ring-offset-white'}`}
+                        >
+                            <div className="flex items-start gap-4">
+                                <div
+                                    className={`bg-gradient-to-br ${colors.gradient} p-2.5 rounded-lg shadow-md ${isDark ? 'shadow-black/20' : 'shadow-gray-300/50'}`}
+                                >
+                                    <report.icon className="text-white h-5 w-5" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <h3
+                                            className={`font-semibold text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}
+                                        >
+                                            {report.name}
+                                        </h3>
+                                        <FiArrowRight
+                                            className={`h-4 w-4 transform transition-transform 
+                                                group-hover:translate-x-1 ${isDark ? 'text-gray-500 group-hover:text-white' : 'text-gray-400 group-hover:text-gray-900'}`}
+                                        />
+                                    </div>
+                                    <p
+                                        className={`text-xs leading-relaxed ${isDark ? 'text-gray-500' : 'text-gray-600'}`}
+                                    >
+                                        {report.description}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Subtle glow effect */}
+                            <div
+                                className={`absolute -top-8 -right-8 w-24 h-24 rounded-full blur-3xl opacity-20
+                                    ${colors.glow} group-hover:opacity-40 transition-opacity`}
+                            />
+                        </button>
+                    )
+                )}
             </div>
         </div>
     );
@@ -154,6 +201,34 @@ const ReportsHub = () => {
     });
     const [loadingMunicipalities, setLoadingMunicipalities] = useState(false);
     const [loadingBarangays, setLoadingBarangays] = useState(false);
+
+    // Sticker & Apprehension date range state
+    const [stickerDateFrom, setStickerDateFrom] = useState('');
+    const [stickerDateTo, setStickerDateTo] = useState('');
+    const [issuedStickersData, setIssuedStickersData] = useState(null);
+    const [apprehendedVehiclesData, setApprehendedVehiclesData] = useState(null);
+    const [loadingStickers, setLoadingStickers] = useState(false);
+
+    const handleGenerateStickers = async () => {
+        if (!stickerDateFrom || !stickerDateTo) {
+            alert('Please select both From and To dates.');
+            return;
+        }
+        setLoadingStickers(true);
+        try {
+            const [stickersData, apprehendedData] = await Promise.all([
+                api.getIssuedStickersSummary(stickerDateFrom, stickerDateTo),
+                api.getApprehendedVehiclesSummary(stickerDateFrom, stickerDateTo),
+            ]);
+            setIssuedStickersData(stickersData);
+            setApprehendedVehiclesData(apprehendedData);
+        } catch (err) {
+            console.error('Failed to fetch sticker/apprehension summary:', err);
+            alert('Failed to fetch summary data.');
+        } finally {
+            setLoadingStickers(false);
+        }
+    };
 
     // Persist selections to localStorage
     useEffect(() => {
@@ -360,6 +435,40 @@ const ReportsHub = () => {
                 },
             ],
         },
+        {
+            id: 'sticker-apprehension',
+            title: 'Sticker Issuance and Traffic Apprehension Summary',
+            description: 'Sticker issuance tracking and traffic apprehension analytics',
+            icon: FiTruck,
+            accentColor: 'rose',
+            hasStickerDateSelector: true,
+            reports: [
+                {
+                    id: 'issued-stickers',
+                    name: 'Issued Stickers',
+                    description: 'Summary of all issued vehicle stickers',
+                    icon: FiCheckCircle,
+                    isDisplayCard: true,
+                    value: loadingStickers
+                        ? 'Loading...'
+                        : issuedStickersData
+                          ? `${issuedStickersData.TotalVolume.toLocaleString()} pcs  •  ₱${issuedStickersData.TotalAmount.toLocaleString()}`
+                          : null,
+                },
+                {
+                    id: 'apprehended-vehicles',
+                    name: 'Apprehended Vehicles',
+                    description: 'Summary of apprehended vehicles and violations',
+                    icon: FiXCircle,
+                    isDisplayCard: true,
+                    value: loadingStickers
+                        ? 'Loading...'
+                        : apprehendedVehiclesData
+                          ? `${apprehendedVehiclesData.TotalControlCount.toLocaleString()}  •  ₱${apprehendedVehiclesData.TotalFinesAmount.toLocaleString()}`
+                          : null,
+                },
+            ],
+        },
     ];
 
     const handleReportClick = async (path) => {
@@ -519,6 +628,41 @@ const ReportsHub = () => {
         </div>
     );
 
+    // Filter selector component for Sticker & Apprehension Reports - date range
+    const StickerDateFilters = () => (
+        <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+                <label className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                    From:
+                </label>
+                <input
+                    type="date"
+                    className={`form-input text-sm rounded-lg px-3 py-1.5 ${isDark ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                    value={stickerDateFrom}
+                    onChange={(e) => setStickerDateFrom(e.target.value)}
+                />
+            </div>
+            <div className="flex items-center gap-2">
+                <label className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                    To:
+                </label>
+                <input
+                    type="date"
+                    className={`form-input text-sm rounded-lg px-3 py-1.5 ${isDark ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                    value={stickerDateTo}
+                    onChange={(e) => setStickerDateTo(e.target.value)}
+                />
+            </div>
+            <button
+                onClick={handleGenerateStickers}
+                disabled={loadingStickers}
+                className={`bg-gradient-to-br from-rose-500 to-rose-600 text-white text-sm font-medium px-4 py-1.5 rounded-lg shadow-md hover:shadow-lg hover:from-rose-600 hover:to-rose-700 transition-all duration-200 ${loadingStickers ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+                {loadingStickers ? 'Loading...' : 'Generate'}
+            </button>
+        </div>
+    );
+
     return (
         <div className={`min-h-full p-8 ${isDark ? 'bg-gray-950' : 'bg-gray-50'}`}>
             <div className="max-w-7xl mx-auto space-y-10">
@@ -557,6 +701,8 @@ const ReportsHub = () => {
                                     <IncomeFilters />
                                 ) : category.hasSharesSelector ? (
                                     <SharesFilters />
+                                ) : category.hasStickerDateSelector ? (
+                                    <StickerDateFilters />
                                 ) : null
                             }
                             isDark={isDark}

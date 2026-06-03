@@ -18,6 +18,7 @@
     "@radix-ui/react-switch": "^1.2.6",
     "@tanstack/react-table": "^8.21.3",
     "@tremor/react": "^3.18.7",
+    "caniuse-lite": "^1.0.30001793",
     "crypto-js": "^4.2.0",
     "docx": "^9.6.0",
     "file-saver": "^2.0.5",
