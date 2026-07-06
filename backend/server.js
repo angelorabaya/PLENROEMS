@@ -4875,7 +4875,9 @@ app.get('/api/reports/issued-stickers-summary', async (req, res) => {
                 AND d.aop_item LIKE '%sticker%'
         `);
         const row = result.recordset[0] || { TotalAmount: 0, TotalVolume: 0 };
-        console.log(`✅ Fetched issued stickers summary: Volume=${row.TotalVolume}, Amount=${row.TotalAmount}`);
+        console.log(
+            `✅ Fetched issued stickers summary: Volume=${row.TotalVolume}, Amount=${row.TotalAmount}`
+        );
         res.json(row);
     } catch (err) {
         console.error('❌ Get Issued Stickers Summary Error:', err.message);
@@ -4906,11 +4908,15 @@ app.get('/api/reports/apprehended-vehicles-summary', async (req, res) => {
                 AND aop_nature LIKE '%Fines And Penalties%'
         `);
         const row = result.recordset[0] || { TotalControlCount: 0, TotalFinesAmount: 0 };
-        console.log(`✅ Fetched apprehended vehicles summary: Count=${row.TotalControlCount}, Fines=${row.TotalFinesAmount}`);
+        console.log(
+            `✅ Fetched apprehended vehicles summary: Count=${row.TotalControlCount}, Fines=${row.TotalFinesAmount}`
+        );
         res.json(row);
     } catch (err) {
         console.error('❌ Get Apprehended Vehicles Summary Error:', err.message);
-        res.status(500).json({ error: 'Failed to fetch apprehended vehicles summary: ' + err.message });
+        res.status(500).json({
+            error: 'Failed to fetch apprehended vehicles summary: ' + err.message,
+        });
     }
 });
 
@@ -5245,13 +5251,23 @@ app.get('/api/reports/comparative-income/export', async (req, res) => {
         // ===== TABLE HEADER ROW 2 (Sub Headers) =====
         const subHeaders = [
             null, // col 1 already merged
-            '30% (PROVINCE)', '30% (MUNIC.)', '40% (BRGY)', 'Volume',
-            '30% (PROV)', 'Volume',
-            'Outbound Fee', 'Inbound Fee',
-            'ADMIN Fee', 'Ecosystem Fee',
-            'Admin & Eco Fee', 'Other Misc.',
-            'STICKER', 'Reg. Conv.',
-            null, null, null // cols 16-18 already merged
+            '30% (PROVINCE)',
+            '30% (MUNIC.)',
+            '40% (BRGY)',
+            'Volume',
+            '30% (PROV)',
+            'Volume',
+            'Outbound Fee',
+            'Inbound Fee',
+            'ADMIN Fee',
+            'Ecosystem Fee',
+            'Admin & Eco Fee',
+            'Other Misc.',
+            'STICKER',
+            'Reg. Conv.',
+            null,
+            null,
+            null, // cols 16-18 already merged
         ];
 
         const subRow = worksheet.getRow(groupRow2);
@@ -5320,17 +5336,29 @@ app.get('/api/reports/comparative-income/export', async (req, res) => {
 
         // ===== TOTALS ROW =====
         const totalsFields = [
-            'Share_Prov_30', 'Share_Mun_30', 'Share_Brgy_40', 'Share_Volume',
-            'MGB_Prov_30', 'MGB_Volume',
-            'Outbound_Fee', 'Inbound_Fee',
-            'Admin_Fee', 'Ecosystem_Fee',
-            'Admin_Ecosystem_Fee', 'Other_Misc_Fee',
-            'Sticker_Fee', 'Reg_Conveyances_Fee',
-            'Penalties_Fee', 'Net_Share', 'Gross_Total',
+            'Share_Prov_30',
+            'Share_Mun_30',
+            'Share_Brgy_40',
+            'Share_Volume',
+            'MGB_Prov_30',
+            'MGB_Volume',
+            'Outbound_Fee',
+            'Inbound_Fee',
+            'Admin_Fee',
+            'Ecosystem_Fee',
+            'Admin_Ecosystem_Fee',
+            'Other_Misc_Fee',
+            'Sticker_Fee',
+            'Reg_Conveyances_Fee',
+            'Penalties_Fee',
+            'Net_Share',
+            'Gross_Total',
         ];
 
         const totals = {};
-        totalsFields.forEach((f) => { totals[f] = 0; });
+        totalsFields.forEach((f) => {
+            totals[f] = 0;
+        });
         rows.forEach((row) => {
             totalsFields.forEach((f) => {
                 totals[f] += Number(row[f]) || 0;
@@ -5373,9 +5401,13 @@ app.get('/api/reports/comparative-income/export', async (req, res) => {
         });
         currentRow++;
 
-        addMergedRow(currentRow, 'New Rate: Extraction Fee: 50.00, Admin Fee: 50.00, Ecosystem Fee: 50.00, Admin/Ecosystem Fee: 50.00 (Filling Materials) and Inbound Fee: 8.50 per cu.', {
-            font: { bold: true, size: 9 },
-        });
+        addMergedRow(
+            currentRow,
+            'New Rate: Extraction Fee: 50.00, Admin Fee: 50.00, Ecosystem Fee: 50.00, Admin/Ecosystem Fee: 50.00 (Filling Materials) and Inbound Fee: 8.50 per cu.',
+            {
+                font: { bold: true, size: 9 },
+            }
+        );
         currentRow++;
 
         // ===== SIGNATORY SECTION =====
@@ -5803,12 +5835,12 @@ app.get('/api/reports/active-permittees/export', async (req, res) => {
 
         // Define column widths (6 columns matching the report)
         worksheet.columns = [
-            { key: 'A', width: 35 },  // NAME
-            { key: 'B', width: 22 },  // MUNICIPALITY
-            { key: 'C', width: 22 },  // BARANGAY
-            { key: 'D', width: 14 },  // VOLUME
-            { key: 'E', width: 36 },  // VALIDITY
-            { key: 'F', width: 22 },  // PERMIT NO.
+            { key: 'A', width: 35 }, // NAME
+            { key: 'B', width: 22 }, // MUNICIPALITY
+            { key: 'C', width: 22 }, // BARANGAY
+            { key: 'D', width: 14 }, // VOLUME
+            { key: 'E', width: 36 }, // VALIDITY
+            { key: 'F', width: 22 }, // PERMIT NO.
         ];
 
         const totalCols = 6; // A through F

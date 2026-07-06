@@ -234,7 +234,12 @@ const DocOutgoingModal = ({ isOpen, onClose, onSave, onPrint, record }) => {
                             <Dialog.Title className="dialog-title">
                                 {record ? 'Edit Outgoing Document' : 'Add Outgoing Document'}
                             </Dialog.Title>
-                            <button type="button" className="dialog-close" aria-label="Close" onClick={onClose}>
+                            <button
+                                type="button"
+                                className="dialog-close"
+                                aria-label="Close"
+                                onClick={onClose}
+                            >
                                 <FiX size={16} />
                             </button>
                         </div>

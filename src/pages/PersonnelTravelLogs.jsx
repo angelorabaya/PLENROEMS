@@ -301,11 +301,21 @@ const PersonnelTravelLogs = () => {
                                                         : 'transparent',
                                                 }}
                                             >
-                                                <td style={{ color: 'var(--muted-foreground)' }}>{row['T.O. NUMBER'] || ''}</td>
-                                                <td style={{ color: 'var(--muted-foreground)' }}>{formatDate(row['DATE PREPARED'])}</td>
-                                                <td style={{ color: 'var(--muted-foreground)' }}>{row['DESTINATION'] || ''}</td>
-                                                <td style={{ color: 'var(--muted-foreground)' }}>{formatDate(row['START DATE'])}</td>
-                                                <td style={{ color: 'var(--muted-foreground)' }}>{formatDate(row['END DATE'])}</td>
+                                                <td style={{ color: 'var(--muted-foreground)' }}>
+                                                    {row['T.O. NUMBER'] || ''}
+                                                </td>
+                                                <td style={{ color: 'var(--muted-foreground)' }}>
+                                                    {formatDate(row['DATE PREPARED'])}
+                                                </td>
+                                                <td style={{ color: 'var(--muted-foreground)' }}>
+                                                    {row['DESTINATION'] || ''}
+                                                </td>
+                                                <td style={{ color: 'var(--muted-foreground)' }}>
+                                                    {formatDate(row['START DATE'])}
+                                                </td>
+                                                <td style={{ color: 'var(--muted-foreground)' }}>
+                                                    {formatDate(row['END DATE'])}
+                                                </td>
                                                 <td>
                                                     <span
                                                         style={{
@@ -322,7 +332,9 @@ const PersonnelTravelLogs = () => {
                                                         {row['PURPOSE'] || ''}
                                                     </span>
                                                 </td>
-                                                <td style={{ color: 'var(--muted-foreground)' }}>{row['DURATION'] || ''}</td>
+                                                <td style={{ color: 'var(--muted-foreground)' }}>
+                                                    {row['DURATION'] || ''}
+                                                </td>
                                                 <td style={{ color: 'var(--muted-foreground)' }}>
                                                     {row['CONTROL'] || ''}
                                                     {isCancelled && (

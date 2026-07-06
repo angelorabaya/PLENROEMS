@@ -250,7 +250,9 @@ const TaskForceActivityLog = () => {
                                             <tr key={index}>
                                                 <td className="text-muted">{dateStr}</td>
                                                 <td className="text-muted">{row['AREA']}</td>
-                                                <td className="text-muted">{row['DELIVERY RECEIPT']}</td>
+                                                <td className="text-muted">
+                                                    {row['DELIVERY RECEIPT']}
+                                                </td>
                                                 <td className="text-muted">{row['DESTINATION']}</td>
                                                 <td className="text-muted">{row['PLATE NO.']}</td>
                                                 <td className="text-muted">{row['DESCRIPTION']}</td>
