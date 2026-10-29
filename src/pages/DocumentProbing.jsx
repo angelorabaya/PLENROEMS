@@ -613,9 +613,23 @@ const DocumentProbing = () => {
                                 borderBottom: '1px solid var(--border-color)',
                                 color: 'var(--text-secondary)',
                                 fontSize: '0.875rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '1.25rem',
+                                flexWrap: 'wrap',
                             }}
                         >
-                            Found {results.length} record{results.length !== 1 ? 's' : ''}
+                            <span>
+                                Found {results.length} record{results.length !== 1 ? 's' : ''}
+                            </span>
+                            <span style={{ color: '#3b82f6', fontWeight: 500 }}>
+                                Received Documents:{' '}
+                                {results.filter((r) => r.doc_type === 'receiving').length}
+                            </span>
+                            <span style={{ color: '#10b981', fontWeight: 500 }}>
+                                Outgoing Documents:{' '}
+                                {results.filter((r) => r.doc_type === 'outgoing').length}
+                            </span>
                         </div>
                         <table style={{ width: '100%', tableLayout: 'fixed' }}>
                             <thead>

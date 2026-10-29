@@ -30,6 +30,7 @@ import {
     FiBriefcase,
     FiNavigation,
     FiCalendar,
+    FiGrid,
 } from 'react-icons/fi';
 import '../styles/layout.css';
 import { getUserPermissions } from '../utils/permissions';
@@ -157,6 +158,9 @@ const Sidebar = ({ onLogout, isCollapsed, onToggleCollapse, userRole, user }) =>
                     <NavItem to="/nature-of-payment" icon={FiCreditCard}>
                         Nature of Payment
                     </NavItem>
+                    <NavItem to="/divisions" icon={FiGrid}>
+                        Divisions
+                    </NavItem>
                 </NavSection>
 
                 <NavSection title="Mining Management" id="mining" icon={FiDatabase}>
@@ -222,6 +226,9 @@ const Sidebar = ({ onLogout, isCollapsed, onToggleCollapse, userRole, user }) =>
                     </NavItem>
                     <NavItem to="/taskforce-activity-log" icon={FiClipboard}>
                         Task Force Activity Log
+                    </NavItem>
+                    <NavItem to="/accomplishment-report" icon={FiFileText}>
+                        Accomplishment Report
                     </NavItem>
                 </NavSection>
 

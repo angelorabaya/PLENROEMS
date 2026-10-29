@@ -87,6 +87,15 @@ const normalizeAttachmentBasePath = (value) => {
 const ATTACHMENTS_BASE_PATH = normalizeAttachmentBasePath(
     process.env.ATTACHMENTS_BASE_PATH || process.env.VITE_ATTACHMENTS_BASE_PATH
 );
+const DEFAULT_IMAGES_BASE_PATH = '\\\\Enro-server\\servershare\\images\\';
+const normalizeImagesBasePath = (value) => {
+    const base = value && value.trim() ? value.trim() : DEFAULT_IMAGES_BASE_PATH;
+    const sanitized = base.replace(/[\\/]*$/, '');
+    return `${sanitized}\\`;
+};
+const IMAGES_BASE_PATH = normalizeImagesBasePath(
+    process.env.IMAGES_BASE_PATH || process.env.VITE_IMAGES_BASE_PATH
+);
 const SQL_MANILA_TIME_ZONE = 'Singapore Standard Time';
 const SQL_MANILA_NOW_EXPR = `CAST(SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE '${SQL_MANILA_TIME_ZONE}' AS datetime2(3))`;
 const SQL_MANILA_TODAY_EXPR = `CAST(${SQL_MANILA_NOW_EXPR} AS date)`;
@@ -1208,6 +1217,148 @@ app.delete('/api/employee-directory/:id', async (req, res) => {
         }
 
         res.status(500).json({ error: 'Failed to delete employee: ' + err.message });
+    }
+});
+
+// ==================== DIVISIONS ENDPOINTS ====================
+
+app.get('/api/divisions', async (req, res) => {
+    try {
+        const request = pool.request();
+        const result = await request.query(`
+      SELECT div_ctrlno ,div_name
+      FROM tbl_divisions
+      ORDER BY div_name
+    `);
+
+        console.log(`Fetched ${result.recordset.length} division records`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('Get Divisions Error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch divisions: ' + err.message });
+    }
+});
+
+app.post('/api/divisions', async (req, res) => {
+    try {
+        const div_name = (req.body.div_name || '').trim();
+
+        if (!div_name) {
+            return res.status(400).json({ error: 'Division name is required' });
+        }
+
+        const request = pool.request();
+        request.input('div_name', sql.VarChar(200), div_name);
+
+        const result = await request.query(`
+      INSERT INTO tbl_divisions (div_name)
+      OUTPUT inserted.div_ctrlno
+      VALUES (@div_name)
+    `);
+
+        const insertedId = result.recordset[0]?.div_ctrlno;
+
+        await logActivity(pool, req, {
+            action: 'CREATE',
+            tableName: 'tbl_divisions',
+            recordId: insertedId || div_name,
+            newValues: { div_name },
+        });
+
+        console.log(`Created division record: ${insertedId}`);
+        res.json({ success: true, message: 'Division added successfully', div_ctrlno: insertedId });
+    } catch (err) {
+        console.error('Create Division Error:', err.message);
+        res.status(500).json({ error: 'Failed to add division: ' + err.message });
+    }
+});
+
+app.put('/api/divisions/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const div_name = (req.body.div_name || '').trim();
+
+        if (!div_name) {
+            return res.status(400).json({ error: 'Division name is required' });
+        }
+
+        const getReq = pool.request();
+        getReq.input('id', sql.Int, id);
+        const existing = await getReq.query(`
+      SELECT div_ctrlno ,div_name
+      FROM tbl_divisions
+      WHERE div_ctrlno = @id
+    `);
+
+        if (!existing.recordset.length) {
+            return res.status(404).json({ error: 'Division not found' });
+        }
+
+        const request = pool.request();
+        request.input('id', sql.Int, id);
+        request.input('div_name', sql.VarChar(200), div_name);
+
+        await request.query(`
+      UPDATE tbl_divisions
+      SET div_name = @div_name
+      WHERE div_ctrlno = @id
+    `);
+
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_divisions',
+            recordId: id,
+            oldValues: existing.recordset[0],
+            newValues: { div_name },
+        });
+
+        console.log(`Updated division record: ${id}`);
+        res.json({ success: true, message: 'Division updated successfully' });
+    } catch (err) {
+        console.error('Update Division Error:', err.message);
+        res.status(500).json({ error: 'Failed to update division: ' + err.message });
+    }
+});
+
+app.delete('/api/divisions/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const getReq = pool.request();
+        getReq.input('id', sql.Int, id);
+        const existing = await getReq.query(`
+      SELECT div_ctrlno ,div_name
+      FROM tbl_divisions
+      WHERE div_ctrlno = @id
+    `);
+
+        if (!existing.recordset.length) {
+            return res.status(404).json({ error: 'Division not found' });
+        }
+
+        const request = pool.request();
+        request.input('id', sql.Int, id);
+        await request.query('DELETE FROM tbl_divisions WHERE div_ctrlno = @id');
+
+        await logActivity(pool, req, {
+            action: 'DELETE',
+            tableName: 'tbl_divisions',
+            recordId: id,
+            oldValues: existing.recordset[0],
+        });
+
+        console.log(`Deleted division record: ${id}`);
+        res.json({ success: true, message: 'Division deleted successfully' });
+    } catch (err) {
+        console.error('Delete Division Error:', err.message);
+
+        if (err.number === 547) {
+            return res.status(400).json({
+                error: 'Cannot delete division because it is being used in other records.',
+            });
+        }
+
+        res.status(500).json({ error: 'Failed to delete division: ' + err.message });
     }
 });
 
@@ -7751,6 +7902,646 @@ app.get('/api/personnel-travel-logs/details/:name', async (req, res) => {
         res.status(500).json({
             error: 'Failed to fetch personnel travel log details: ' + err.message,
         });
+    }
+});
+
+// ==================== ACCOMPLISHMENT REPORT ENDPOINTS ====================
+
+// GET /api/accomplishments/:divId/export - Export accomplishments to Excel
+app.get('/api/accomplishments/:divId/export', async (req, res) => {
+    try {
+        const { divId } = req.params;
+        const fromDateLiteral = toSqlDateLiteral(req.query.fromDate);
+        const toDateLiteral = toSqlDateLiteral(req.query.toDate);
+
+        const divReq = pool.request();
+        divReq.input('div_ctrlno', sql.Int, divId);
+        const divRes = await divReq.query(
+            'SELECT div_name FROM tbl_divisions WHERE div_ctrlno = @div_ctrlno'
+        );
+        const divisionName = divRes.recordset?.[0]?.div_name || 'Division';
+
+        const request = pool.request();
+        request.input('ar_divid', sql.Int, divId);
+
+        let whereClause = 'WHERE ar_divid = @ar_divid';
+        if (fromDateLiteral) {
+            request.input('fromDate', sql.NVarChar(10), fromDateLiteral);
+            whereClause += ' AND ar_datefrom >= CAST(@fromDate AS date)';
+        }
+        if (toDateLiteral) {
+            request.input('toDate', sql.NVarChar(10), toDateLiteral);
+            whereClause += ' AND ar_datefrom <= CAST(@toDate AS date)';
+        }
+
+        const result = await request.query(`
+      SELECT ar_ctrlno
+            ,ar_divid
+            ,ar_datefrom
+            ,ar_dateto
+            ,ar_place
+            ,ar_program
+            ,ar_target
+            ,ar_remarks
+      FROM tbl_accomplishment
+      ${whereClause}
+      ORDER BY ar_datefrom DESC, ar_ctrlno DESC
+    `);
+
+        const rows = result.recordset || [];
+        const preparedByName = process.env.NOTED_BY_NAME || 'GERAN JOHN T. FLORES';
+        const preparedByTitle = process.env.NOTED_BY_TITLE || 'PLENRO';
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Accomplishment Report');
+
+        worksheet.columns = [
+            { key: 'A', width: 16 }, // DATE FROM
+            { key: 'B', width: 16 }, // DATE TO
+            { key: 'C', width: 28 }, // PLACE
+            { key: 'D', width: 36 }, // PROGRAM
+            { key: 'E', width: 32 }, // TARGET
+            { key: 'F', width: 42 }, // REMARKS
+        ];
+
+        const totalCols = 6;
+        const thinBorder = {
+            top: { style: 'thin', color: { argb: 'FF000000' } },
+            left: { style: 'thin', color: { argb: 'FF000000' } },
+            bottom: { style: 'thin', color: { argb: 'FF000000' } },
+            right: { style: 'thin', color: { argb: 'FF000000' } },
+        };
+
+        const addMergedRow = (rowNum, value, style = {}) => {
+            worksheet.mergeCells(rowNum, 1, rowNum, totalCols);
+            const row = worksheet.getRow(rowNum);
+            const cell = row.getCell(1);
+            cell.value = value;
+            cell.font = style.font || {};
+            cell.alignment = style.alignment || { horizontal: 'center', vertical: 'middle' };
+            if (style.fill) cell.fill = style.fill;
+            row.commit();
+        };
+
+        const formatDateStr = (dateVal) => {
+            if (!dateVal) return '';
+            const d = new Date(dateVal);
+            return d.toLocaleDateString('en-US', {
+                timeZone: 'Asia/Manila',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+            });
+        };
+
+        let currentRow = 1;
+
+        addMergedRow(currentRow, 'REPUBLIC OF THE PHILIPPINES', {
+            font: { bold: true, size: 12 },
+        });
+        currentRow++;
+
+        addMergedRow(currentRow, 'Province of Misamis Oriental', {
+            font: { size: 11 },
+        });
+        currentRow++;
+
+        addMergedRow(currentRow, 'PROVINCIAL LOCAL ENVIRONMENT AND NATURAL RESOURCES OFFICE', {
+            font: { bold: true, size: 10, color: { argb: 'FF2D5A27' } },
+        });
+        currentRow++;
+
+        addMergedRow(currentRow, 'Misortel Building, A. Luna St., Cagayan de Oro City', {
+            font: { italic: true, size: 9, color: { argb: 'FF555555' } },
+        });
+        currentRow++;
+
+        addMergedRow(currentRow, '');
+        currentRow++;
+
+        addMergedRow(currentRow, `ACCOMPLISHMENT REPORT — ${divisionName.toUpperCase()}`, {
+            font: { bold: true, size: 13, color: { argb: 'FF2D5A27' } },
+        });
+        currentRow++;
+
+        const dateRangeText =
+            fromDateLiteral || toDateLiteral
+                ? `Date Filter: ${fromDateLiteral || 'Start'} to ${toDateLiteral || 'Present'} | Total: ${rows.length} records`
+                : `Total: ${rows.length} records`;
+
+        addMergedRow(currentRow, dateRangeText, {
+            font: { size: 10, color: { argb: 'FF555555' } },
+        });
+        currentRow++;
+
+        addMergedRow(currentRow, '');
+        currentRow++;
+
+        const headers = ['DATE FROM', 'DATE TO', 'PLACE', 'PROGRAM', 'TARGET', 'REMARKS'];
+        const headerRow = worksheet.getRow(currentRow);
+        headers.forEach((h, idx) => {
+            const cell = headerRow.getCell(idx + 1);
+            cell.value = h;
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FF2D5A27' },
+            };
+            cell.border = thinBorder;
+        });
+        headerRow.height = 22;
+        headerRow.commit();
+        currentRow++;
+
+        rows.forEach((row) => {
+            const dataRow = worksheet.getRow(currentRow);
+            dataRow.getCell(1).value = formatDateStr(row.ar_datefrom);
+            dataRow.getCell(2).value = formatDateStr(row.ar_dateto);
+            dataRow.getCell(3).value = row.ar_place || '';
+            dataRow.getCell(4).value = row.ar_program || '';
+            dataRow.getCell(5).value = row.ar_target || '';
+            dataRow.getCell(6).value = row.ar_remarks || '';
+
+            dataRow.getCell(1).alignment = { horizontal: 'center', vertical: 'top', wrapText: true };
+            dataRow.getCell(2).alignment = { horizontal: 'center', vertical: 'top', wrapText: true };
+            for (let c = 3; c <= totalCols; c++) {
+                dataRow.getCell(c).alignment = {
+                    horizontal: 'left',
+                    vertical: 'top',
+                    wrapText: true,
+                };
+            }
+
+            for (let c = 1; c <= totalCols; c++) {
+                dataRow.getCell(c).border = thinBorder;
+            }
+
+            dataRow.commit();
+            currentRow++;
+        });
+
+        currentRow += 2;
+
+        worksheet.mergeCells(currentRow, 1, currentRow, 2);
+        const prepLabel = worksheet.getRow(currentRow).getCell(1);
+        prepLabel.value = 'Prepared by:';
+        prepLabel.font = { size: 10 };
+        prepLabel.alignment = { vertical: 'middle' };
+        worksheet.getRow(currentRow).commit();
+        currentRow += 2;
+
+        worksheet.mergeCells(currentRow, 1, currentRow, 2);
+        const nameCell = worksheet.getRow(currentRow).getCell(1);
+        nameCell.value = preparedByName;
+        nameCell.font = { bold: true, size: 10, underline: true };
+        nameCell.alignment = { vertical: 'middle' };
+        worksheet.getRow(currentRow).commit();
+        currentRow++;
+
+        worksheet.mergeCells(currentRow, 1, currentRow, 2);
+        const titleCell = worksheet.getRow(currentRow).getCell(1);
+        titleCell.value = preparedByTitle;
+        titleCell.font = { size: 10, color: { argb: 'FF555555' } };
+        titleCell.alignment = { vertical: 'middle' };
+        worksheet.getRow(currentRow).commit();
+
+        const filename = 'accomplishment_report.xlsx';
+        const buffer = await workbook.xlsx.writeBuffer();
+
+        res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+        res.setHeader(
+            'Content-Type',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        );
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(Buffer.from(buffer));
+    } catch (err) {
+        console.error('❌ Export Accomplishments Error:', err.message);
+        res.status(500).json({
+            error: 'Failed to export accomplishments: ' + err.message,
+        });
+    }
+});
+
+// GET /api/accomplishments/:divId - Get accomplishments by division ID
+app.get('/api/accomplishments/:divId', async (req, res) => {
+    try {
+        const { divId } = req.params;
+        const request = pool.request();
+        request.input('ar_divid', sql.Int, divId);
+
+        const result = await request.query(`
+      SELECT ar_ctrlno
+            ,ar_divid
+            ,ar_datefrom
+            ,ar_dateto
+            ,ar_place
+            ,ar_program
+            ,ar_target
+            ,ar_remarks
+            ,ar_image1
+            ,ar_image2
+            ,ar_image3
+            ,ar_image4
+            ,ar_image5
+      FROM tbl_accomplishment
+      WHERE ar_divid = @ar_divid
+      ORDER BY ar_datefrom DESC, ar_ctrlno DESC
+    `);
+
+        console.log(`✅ Fetched ${result.recordset.length} accomplishments for division ${divId}`);
+        res.json(result.recordset || []);
+    } catch (err) {
+        console.error('❌ Get Accomplishments Error:', err.message);
+        res.status(500).json({
+            error: 'Failed to fetch accomplishments: ' + err.message,
+        });
+    }
+});
+
+// POST /api/accomplishments - Create accomplishment detail
+app.post('/api/accomplishments', async (req, res) => {
+    try {
+        const {
+            ar_divid,
+            ar_datefrom,
+            ar_dateto,
+            ar_place,
+            ar_program,
+            ar_target,
+            ar_remarks,
+            ar_image1,
+            ar_image2,
+            ar_image3,
+            ar_image4,
+            ar_image5,
+        } = req.body;
+
+        const dateFromLiteral = toSqlDateLiteral(ar_datefrom);
+        const dateToLiteral = toSqlDateLiteral(ar_dateto);
+
+        if (
+            !ar_divid ||
+            !dateFromLiteral ||
+            !dateToLiteral ||
+            !String(ar_place || '').trim() ||
+            !String(ar_program || '').trim() ||
+            !String(ar_target || '').trim()
+        ) {
+            return res.status(400).json({
+                error: 'Division, Date From, Date To, Place, Program, and Target are required',
+            });
+        }
+
+        const request = pool.request();
+        request.input('ar_divid', sql.Int, ar_divid);
+        request.input('ar_datefrom', sql.NVarChar(10), dateFromLiteral);
+        request.input('ar_dateto', sql.NVarChar(10), dateToLiteral);
+        request.input('ar_place', sql.NVarChar(150), String(ar_place).trim().slice(0, 150));
+        request.input('ar_program', sql.NVarChar(200), String(ar_program).trim().slice(0, 200));
+        request.input('ar_target', sql.NVarChar(200), String(ar_target).trim().slice(0, 200));
+        request.input(
+            'ar_remarks',
+            sql.NVarChar(sql.MAX),
+            ar_remarks && String(ar_remarks).trim() ? String(ar_remarks).trim().slice(0, 500) : null
+        );
+        request.input(
+            'ar_image1',
+            sql.NVarChar(100),
+            ar_image1 && String(ar_image1).trim() ? String(ar_image1).trim() : null
+        );
+        request.input(
+            'ar_image2',
+            sql.NVarChar(100),
+            ar_image2 && String(ar_image2).trim() ? String(ar_image2).trim() : null
+        );
+        request.input(
+            'ar_image3',
+            sql.NVarChar(100),
+            ar_image3 && String(ar_image3).trim() ? String(ar_image3).trim() : null
+        );
+        request.input(
+            'ar_image4',
+            sql.NVarChar(100),
+            ar_image4 && String(ar_image4).trim() ? String(ar_image4).trim() : null
+        );
+        request.input(
+            'ar_image5',
+            sql.NVarChar(100),
+            ar_image5 && String(ar_image5).trim() ? String(ar_image5).trim() : null
+        );
+
+        const result = await request.query(`
+      INSERT INTO [tbl_accomplishment]
+           ([ar_divid]
+           ,[ar_datefrom]
+           ,[ar_dateto]
+           ,[ar_place]
+           ,[ar_program]
+           ,[ar_target]
+           ,[ar_remarks]
+           ,[ar_image1]
+           ,[ar_image2]
+           ,[ar_image3]
+           ,[ar_image4]
+           ,[ar_image5])
+      OUTPUT inserted.ar_ctrlno
+      VALUES
+           (@ar_divid
+           ,CAST(@ar_datefrom AS date)
+           ,CAST(@ar_dateto AS date)
+           ,@ar_place
+           ,@ar_program
+           ,@ar_target
+           ,@ar_remarks
+           ,@ar_image1
+           ,@ar_image2
+           ,@ar_image3
+           ,@ar_image4
+           ,@ar_image5)
+    `);
+
+        const insertedId = result.recordset[0]?.ar_ctrlno;
+
+        await logActivity(pool, req, {
+            action: 'CREATE',
+            tableName: 'tbl_accomplishment',
+            recordId: insertedId || ar_program,
+            newValues: req.body,
+        });
+
+        console.log(`✅ Accomplishment added successfully: ${insertedId}`);
+        res.json({
+            message: 'Accomplishment added successfully',
+            ar_ctrlno: insertedId,
+        });
+    } catch (err) {
+        console.error('❌ Add Accomplishment Error:', err.message);
+        res.status(500).json({ error: 'Failed to add accomplishment: ' + err.message });
+    }
+});
+
+// PUT /api/accomplishments/:id - Update accomplishment detail
+app.put('/api/accomplishments/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const {
+            ar_datefrom,
+            ar_dateto,
+            ar_place,
+            ar_program,
+            ar_target,
+            ar_remarks,
+            ar_image1,
+            ar_image2,
+            ar_image3,
+            ar_image4,
+            ar_image5,
+        } = req.body;
+
+        const dateFromLiteral = toSqlDateLiteral(ar_datefrom);
+        const dateToLiteral = toSqlDateLiteral(ar_dateto);
+
+        if (
+            !dateFromLiteral ||
+            !dateToLiteral ||
+            !String(ar_place || '').trim() ||
+            !String(ar_program || '').trim() ||
+            !String(ar_target || '').trim()
+        ) {
+            return res.status(400).json({
+                error: 'Date From, Date To, Place, Program, and Target are required',
+            });
+        }
+
+        const getReq = pool.request();
+        getReq.input('ar_ctrlno', sql.Int, id);
+        const existing = await getReq.query(
+            'SELECT * FROM tbl_accomplishment WHERE ar_ctrlno = @ar_ctrlno'
+        );
+        const oldValues = existing.recordset[0];
+
+        if (!oldValues) {
+            return res.status(404).json({ error: 'Accomplishment record not found' });
+        }
+
+        const request = pool.request();
+        request.input('ar_ctrlno', sql.Int, id);
+        request.input('ar_datefrom', sql.NVarChar(10), dateFromLiteral);
+        request.input('ar_dateto', sql.NVarChar(10), dateToLiteral);
+        request.input('ar_place', sql.NVarChar(150), String(ar_place).trim().slice(0, 150));
+        request.input('ar_program', sql.NVarChar(200), String(ar_program).trim().slice(0, 200));
+        request.input('ar_target', sql.NVarChar(200), String(ar_target).trim().slice(0, 200));
+        request.input(
+            'ar_remarks',
+            sql.NVarChar(sql.MAX),
+            ar_remarks && String(ar_remarks).trim() ? String(ar_remarks).trim().slice(0, 500) : null
+        );
+        request.input(
+            'ar_image1',
+            sql.NVarChar(100),
+            ar_image1 && String(ar_image1).trim() ? String(ar_image1).trim() : null
+        );
+        request.input(
+            'ar_image2',
+            sql.NVarChar(100),
+            ar_image2 && String(ar_image2).trim() ? String(ar_image2).trim() : null
+        );
+        request.input(
+            'ar_image3',
+            sql.NVarChar(100),
+            ar_image3 && String(ar_image3).trim() ? String(ar_image3).trim() : null
+        );
+        request.input(
+            'ar_image4',
+            sql.NVarChar(100),
+            ar_image4 && String(ar_image4).trim() ? String(ar_image4).trim() : null
+        );
+        request.input(
+            'ar_image5',
+            sql.NVarChar(100),
+            ar_image5 && String(ar_image5).trim() ? String(ar_image5).trim() : null
+        );
+
+        await request.query(`
+      UPDATE [tbl_accomplishment]
+      SET [ar_datefrom] = CAST(@ar_datefrom AS date)
+         ,[ar_dateto] = CAST(@ar_dateto AS date)
+         ,[ar_place] = @ar_place
+         ,[ar_program] = @ar_program
+         ,[ar_target] = @ar_target
+         ,[ar_remarks] = @ar_remarks
+         ,[ar_image1] = @ar_image1
+         ,[ar_image2] = @ar_image2
+         ,[ar_image3] = @ar_image3
+         ,[ar_image4] = @ar_image4
+         ,[ar_image5] = @ar_image5
+      WHERE [ar_ctrlno] = @ar_ctrlno
+    `);
+
+        await logActivity(pool, req, {
+            action: 'UPDATE',
+            tableName: 'tbl_accomplishment',
+            recordId: id,
+            oldValues: oldValues,
+            newValues: req.body,
+        });
+
+        console.log(`✅ Accomplishment ${id} updated successfully`);
+        res.json({ message: 'Accomplishment updated successfully' });
+    } catch (err) {
+        console.error('❌ Update Accomplishment Error:', err.message);
+        res.status(500).json({
+            error: 'Failed to update accomplishment: ' + err.message,
+        });
+    }
+});
+
+// DELETE /api/accomplishments/:id - Delete accomplishment detail
+app.delete('/api/accomplishments/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const getReq = pool.request();
+        getReq.input('ar_ctrlno', sql.Int, id);
+        const existing = await getReq.query(
+            'SELECT * FROM tbl_accomplishment WHERE ar_ctrlno = @ar_ctrlno'
+        );
+        const oldValues = existing.recordset[0];
+
+        if (!oldValues) {
+            return res.status(404).json({ error: 'Accomplishment record not found' });
+        }
+
+        // Remove associated image files if they exist
+        const imageFields = ['ar_image1', 'ar_image2', 'ar_image3', 'ar_image4', 'ar_image5'];
+        for (const field of imageFields) {
+            const imgName = String(oldValues[field] || '').trim();
+            if (imgName) {
+                const imgPath = path.join(IMAGES_BASE_PATH, path.basename(imgName));
+                try {
+                    await fs.promises.unlink(imgPath);
+                } catch (imgErr) {
+                    if (imgErr.code !== 'ENOENT') {
+                        console.warn(`⚠️ Failed to remove image ${imgName}:`, imgErr.message);
+                    }
+                }
+            }
+        }
+
+        const request = pool.request();
+        request.input('ar_ctrlno', sql.Int, id);
+        await request.query('DELETE FROM [tbl_accomplishment] WHERE [ar_ctrlno] = @ar_ctrlno');
+
+        await logActivity(pool, req, {
+            action: 'DELETE',
+            tableName: 'tbl_accomplishment',
+            recordId: id,
+            oldValues: oldValues,
+        });
+
+        console.log(`✅ Accomplishment ${id} deleted successfully`);
+        res.json({ message: 'Accomplishment deleted successfully' });
+    } catch (err) {
+        console.error('❌ Delete Accomplishment Error:', err.message);
+        res.status(500).json({
+            error: 'Failed to delete accomplishment: ' + err.message,
+        });
+    }
+});
+
+// POST /api/accomplishments/upload-image - Save a JPG image to IMAGES_BASE_PATH
+app.post('/api/accomplishments/upload-image', async (req, res) => {
+    try {
+        const { filename, contentBase64 } = req.body || {};
+        if (!filename || !contentBase64) {
+            return res.status(400).json({ error: 'filename and contentBase64 are required' });
+        }
+
+        const safeName = path.basename(filename);
+        if (!safeName.toLowerCase().endsWith('.jpg') && !safeName.toLowerCase().endsWith('.jpeg')) {
+            return res.status(400).json({ error: 'Only JPG/JPEG image uploads are allowed' });
+        }
+
+        const normalizedBase64 = String(contentBase64).replace(
+            /^data:image\/[a-zA-Z0-9.+-]+;base64,/,
+            ''
+        );
+        const fileBuffer = Buffer.from(normalizedBase64, 'base64');
+        if (!fileBuffer.length) {
+            return res.status(400).json({ error: 'Uploaded image file is empty' });
+        }
+
+        await fs.promises.mkdir(IMAGES_BASE_PATH, { recursive: true });
+        const fullPath = path.join(IMAGES_BASE_PATH, safeName);
+        await fs.promises.writeFile(fullPath, fileBuffer);
+
+        await logActivity(pool, req, {
+            action: 'CREATE',
+            tableName: 'accomplishment_images',
+            recordId: safeName,
+            newValues: {
+                filename: safeName,
+                path: fullPath,
+            },
+        });
+
+        res.json({ success: true, filename: safeName });
+    } catch (err) {
+        console.error('Error uploading accomplishment image:', err);
+        res.status(500).json({ error: 'Failed to upload image: ' + err.message });
+    }
+});
+
+// POST /api/accomplishments/remove-image - Remove an image from IMAGES_BASE_PATH
+app.post('/api/accomplishments/remove-image', async (req, res) => {
+    try {
+        const { filename } = req.body || {};
+        if (!filename) {
+            return res.status(400).json({ error: 'filename is required' });
+        }
+
+        const safeName = path.basename(filename);
+        const fullPath = path.join(IMAGES_BASE_PATH, safeName);
+        await fs.promises.unlink(fullPath);
+
+        await logActivity(pool, req, {
+            action: 'DELETE',
+            tableName: 'accomplishment_images',
+            recordId: safeName,
+            oldValues: {
+                filename: safeName,
+                path: fullPath,
+            },
+        });
+
+        res.json({ success: true, filename: safeName });
+    } catch (err) {
+        if (err.code === 'ENOENT') {
+            return res.status(404).json({ error: 'Image file not found' });
+        }
+        console.error('Error removing accomplishment image:', err);
+        res.status(500).json({ error: 'Failed to remove image: ' + err.message });
+    }
+});
+
+// GET /api/accomplishments/image/:filename - Stream image file from IMAGES_BASE_PATH
+app.get('/api/accomplishments/image/:filename', async (req, res) => {
+    try {
+        const { filename } = req.params;
+        if (!filename) return res.status(400).json({ error: 'Filename is required' });
+        const safeName = path.basename(filename);
+        const fullPath = path.join(IMAGES_BASE_PATH, safeName);
+
+        await fs.promises.access(fullPath, fs.constants.R_OK);
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.sendFile(fullPath);
+    } catch (err) {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.status(404).json({ error: 'Image not accessible' });
     }
 });
 

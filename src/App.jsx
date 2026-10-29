@@ -14,6 +14,7 @@ const PermitTypes = lazy(() => import('./pages/PermitTypes'));
 const PermitReqs = lazy(() => import('./pages/PermitReqs'));
 const Commodity = lazy(() => import('./pages/Commodity'));
 const NatureOfPayment = lazy(() => import('./pages/NatureOfPayment'));
+const Divisions = lazy(() => import('./pages/Divisions'));
 const AssessmentHistory = lazy(() => import('./pages/AssessmentHistory'));
 const ClientTransactions = lazy(() => import('./pages/ClientTransactions'));
 const VehicleRegistration = lazy(() => import('./pages/VehicleRegistration'));
@@ -43,6 +44,7 @@ const ActivePermitteesByMunicipalityReport = lazy(
 );
 const TaskForceMonthly = lazy(() => import('./pages/TaskForceMonthly'));
 const DailyCollection = lazy(() => import('./pages/DailyCollection'));
+const AccomplishmentReport = lazy(() => import('./pages/AccomplishmentReport'));
 const TaskForceActivityLog = lazy(() => import('./pages/TaskForceActivityLog'));
 const PersonnelTravelLogs = lazy(() => import('./pages/PersonnelTravelLogs'));
 const TravelAuthorization = lazy(() => import('./pages/TravelAuthorization'));
@@ -190,6 +192,7 @@ function App() {
                             <Route path="/permitreqs" element={<PermitReqs />} />
                             <Route path="/commodity" element={<Commodity />} />
                             <Route path="/nature-of-payment" element={<NatureOfPayment />} />
+                            <Route path="/divisions" element={<Divisions />} />
                             <Route path="/assessment-history" element={<AssessmentHistory />} />
                             <Route
                                 path="/payment"
@@ -250,6 +253,10 @@ function App() {
                                 element={<TaskForceMonthly />}
                             />
                             <Route path="/daily-collection" element={<DailyCollection />} />
+                            <Route
+                                path="/accomplishment-report"
+                                element={<AccomplishmentReport />}
+                            />
                             <Route
                                 path="/taskforce-activity-log"
                                 element={<TaskForceActivityLog />}

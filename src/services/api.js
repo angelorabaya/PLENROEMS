@@ -1229,6 +1229,45 @@ export const api = {
         return result;
     },
 
+    // Divisions
+    getDivisions: async () => {
+        const response = await fetch(`${API_BASE}/api/divisions`);
+        if (!response.ok) throw new Error('Failed to fetch divisions');
+        return response.json();
+    },
+
+    createDivision: async (data) => {
+        const response = await fetch(`${API_BASE}/api/divisions`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify(data),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to create division');
+        return result;
+    },
+
+    updateDivision: async (id, data) => {
+        const response = await fetch(`${API_BASE}/api/divisions/${encodeURIComponent(id)}`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify(data),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to update division');
+        return result;
+    },
+
+    deleteDivision: async (id) => {
+        const response = await fetch(`${API_BASE}/api/divisions/${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+            headers: getHeaders(),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to delete division');
+        return result;
+    },
+
     getEmployees: async () => {
         const response = await fetch(`${API_BASE}/api/docreceiving/employees`);
         if (!response.ok) throw new Error('Failed to fetch employees');
@@ -1337,5 +1376,85 @@ export const api = {
         );
         if (!response.ok) throw new Error('Failed to fetch apprehended vehicles summary');
         return response.json();
+    },
+
+    // Accomplishment Report
+    getAccomplishmentsByDivision: async (divId) => {
+        const response = await fetch(
+            `${API_BASE}/api/accomplishments/${encodeURIComponent(divId)}`
+        );
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to fetch accomplishments');
+        return result;
+    },
+
+    createAccomplishment: async (data) => {
+        const response = await fetch(`${API_BASE}/api/accomplishments`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify(data),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to create accomplishment');
+        return result;
+    },
+
+    updateAccomplishment: async (id, data) => {
+        const response = await fetch(`${API_BASE}/api/accomplishments/${encodeURIComponent(id)}`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify(data),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to update accomplishment');
+        return result;
+    },
+
+    deleteAccomplishment: async (id) => {
+        const response = await fetch(`${API_BASE}/api/accomplishments/${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+            headers: getHeaders(),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to delete accomplishment');
+        return result;
+    },
+
+    uploadAccomplishmentImage: async ({ filename, contentBase64 }) => {
+        const response = await fetch(`${API_BASE}/api/accomplishments/upload-image`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ filename, contentBase64 }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to upload image');
+        return result;
+    },
+
+    removeAccomplishmentImage: async (filename) => {
+        const response = await fetch(`${API_BASE}/api/accomplishments/remove-image`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ filename }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to remove image');
+        return result;
+    },
+
+    getAccomplishmentImageUrl: (filename) => {
+        return `${API_BASE}/api/accomplishments/image/${encodeURIComponent(filename)}`;
+    },
+
+    exportAccomplishments: async (divId, fromDate, toDate) => {
+        const params = new URLSearchParams();
+        if (fromDate) params.append('fromDate', fromDate);
+        if (toDate) params.append('toDate', toDate);
+        const query = params.toString() ? `?${params.toString()}` : '';
+        const response = await fetch(
+            `${API_BASE}/api/accomplishments/${encodeURIComponent(divId)}/export${query}`
+        );
+        if (!response.ok) throw new Error('Failed to export accomplishments');
+        return response.blob();
     },
 };

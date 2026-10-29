@@ -2,7 +2,15 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../services/api';
 import plenroLogo from '../plenro.png';
-import { FiRefreshCw, FiCheckCircle, FiEye, FiUpload, FiTrash2, FiPlus } from 'react-icons/fi';
+import {
+    FiRefreshCw,
+    FiCheckCircle,
+    FiEye,
+    FiUpload,
+    FiTrash2,
+    FiPlus,
+    FiPrinter,
+} from 'react-icons/fi';
 import ProcessApplicantModal from '../components/modals/ProcessApplicantModal';
 import DeleteModal from '../components/modals/DeleteModal';
 
@@ -333,6 +341,284 @@ const NewApplication = () => {
         return [client.ph_address1, client.ph_address2].filter(Boolean).join(', ');
     };
 
+    const handlePrintChecklist = () => {
+        if (!selectedClient || requirements.length === 0) return;
+
+        const completedCount = requirements.filter(
+            (req, idx) => Boolean(fileExists[idx]) || Boolean(req.pr_wsource)
+        ).length;
+        const lackingCount = requirements.length - completedCount;
+
+        const printDate = new Date().toLocaleDateString('en-US', {
+            timeZone: 'Asia/Manila',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+        });
+
+        const escapeHtml = (str) =>
+            String(str ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+
+        const rowsHtml = requirements
+            .map((req, idx) => {
+                const isCompleted = Boolean(fileExists[idx]) || Boolean(req.pr_wsource);
+                const statusText = isCompleted ? 'COMPLETED' : 'LACKING';
+                const statusColor = isCompleted ? '#15803d' : '#dc2626';
+                const statusBg = isCompleted ? '#dcfce7' : '#fee2e2';
+                const checkSymbol = isCompleted ? '&#10003;' : '&#10007;';
+
+                return `
+                    <tr>
+                        <td style="text-align: center; font-weight: 600;">${idx + 1}</td>
+                        <td>${escapeHtml(req.pr_desc)}</td>
+                        <td style="text-align: center;">
+                            <span style="display: inline-block; padding: 3px 10px; border-radius: 4px; font-weight: 700; font-size: 11px; color: ${statusColor}; background-color: ${statusBg}; border: 1px solid ${statusColor};">
+                                ${checkSymbol} ${statusText}
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            })
+            .join('');
+
+        const preparedByName = escapeHtml(
+            currentUser?.log_cname || currentUser?.log_user || 'PLENRO Staff'
+        );
+        const notedByName = escapeHtml(
+            import.meta.env.VITE_NOTED_BY_NAME || 'GERAN JOHN T. FLORES'
+        );
+        const notedByTitle = escapeHtml(import.meta.env.VITE_NOTED_BY_TITLE || 'PLENRO');
+
+        const printWindow = window.open('', '_blank', 'width=900,height=750');
+        if (!printWindow) {
+            setError('Pop-up blocked. Please allow pop-ups to print the requirements checklist.');
+            return;
+        }
+
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Requirements Checklist - ${escapeHtml(selectedClient.ph_cname)}</title>
+                <style>
+                    @page {
+                        size: A4 portrait;
+                        margin: 15mm;
+                    }
+                    * {
+                        box-sizing: border-box;
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
+                    }
+                    body {
+                        font-family: Arial, Helvetica, sans-serif;
+                        color: #111827;
+                        margin: 0;
+                        padding: 0;
+                        font-size: 12px;
+                        line-height: 1.4;
+                    }
+                    .header {
+                        text-align: center;
+                        margin-bottom: 18px;
+                        border-bottom: 2px solid #1f2937;
+                        padding-bottom: 12px;
+                    }
+                    .header h4 {
+                        margin: 2px 0;
+                        font-weight: 600;
+                        font-size: 12px;
+                    }
+                    .header h3 {
+                        margin: 4px 0;
+                        font-weight: 700;
+                        font-size: 14px;
+                    }
+                    .header p {
+                        margin: 2px 0;
+                        font-size: 11px;
+                        color: #4b5563;
+                    }
+                    .report-title {
+                        text-align: center;
+                        font-size: 16px;
+                        font-weight: 800;
+                        letter-spacing: 0.04em;
+                        margin: 14px 0 18px;
+                        text-transform: uppercase;
+                    }
+                    .client-info {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-bottom: 16px;
+                        font-size: 12px;
+                    }
+                    .client-info td {
+                        padding: 4px 8px;
+                        vertical-align: top;
+                    }
+                    .client-info .label {
+                        font-weight: 700;
+                        width: 120px;
+                        color: #374151;
+                    }
+                    .client-info .value {
+                        border-bottom: 1px solid #d1d5db;
+                        font-weight: 600;
+                    }
+                    .summary-bar {
+                        display: flex;
+                        justify-content: space-between;
+                        background: #f3f4f6;
+                        border: 1px solid #d1d5db;
+                        border-radius: 6px;
+                        padding: 8px 14px;
+                        margin-bottom: 14px;
+                        font-weight: 700;
+                        font-size: 12px;
+                    }
+                    .req-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-bottom: 20px;
+                    }
+                    .req-table th, .req-table td {
+                        border: 1px solid #9ca3af;
+                        padding: 7px 10px;
+                        font-size: 12px;
+                    }
+                    .req-table th {
+                        background-color: #2d5a27;
+                        color: #ffffff;
+                        text-transform: uppercase;
+                        font-size: 11px;
+                        letter-spacing: 0.03em;
+                    }
+                    .req-table tr:nth-child(even) td {
+                        background-color: #f9fafb;
+                    }
+                    .notice {
+                        font-size: 11px;
+                        color: #374151;
+                        font-style: italic;
+                        margin-bottom: 28px;
+                    }
+                    .signatures {
+                        display: flex;
+                        justify-content: space-between;
+                        margin-top: 36px;
+                        gap: 24px;
+                    }
+                    .sig-block {
+                        width: 30%;
+                        text-align: center;
+                    }
+                    .sig-label {
+                        text-align: left;
+                        font-size: 11px;
+                        margin-bottom: 28px;
+                    }
+                    .sig-line {
+                        border-top: 1px solid #111827;
+                        padding-top: 4px;
+                        font-weight: 700;
+                        font-size: 12px;
+                        text-transform: uppercase;
+                    }
+                    .sig-sub {
+                        font-size: 11px;
+                        color: #4b5563;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h4>REPUBLIC OF THE PHILIPPINES</h4>
+                    <h4>Province of Misamis Oriental</h4>
+                    <h3>PROVINCIAL LOCAL ENVIRONMENT AND NATURAL RESOURCES OFFICE</h3>
+                    <p>Misortel Building, A. Luna St., Cagayan de Oro City</p>
+                </div>
+
+                <div class="report-title">Application Requirements Checklist</div>
+
+                <table class="client-info">
+                    <tr>
+                        <td class="label">CLIENT NAME:</td>
+                        <td class="value">${escapeHtml(selectedClient.ph_cname)}</td>
+                        <td class="label">PERMIT NO.:</td>
+                        <td class="value">${escapeHtml(selectedClient.ph_tpermit || 'N/A')}</td>
+                    </tr>
+                    <tr>
+                        <td class="label">ADDRESS:</td>
+                        <td class="value">${escapeHtml(getFullAddress(selectedClient) || 'N/A')}</td>
+                        <td class="label">DATE PRINTED:</td>
+                        <td class="value">${escapeHtml(printDate)}</td>
+                    </tr>
+                    <tr>
+                        <td class="label">TIN:</td>
+                        <td class="value">${escapeHtml(selectedClient.ph_TIN || 'N/A')}</td>
+                        <td class="label">CONTACT NO.:</td>
+                        <td class="value">${escapeHtml(selectedClient.ph_contact || 'N/A')}</td>
+                    </tr>
+                </table>
+
+                <div class="summary-bar">
+                    <span>Total Requirements: ${requirements.length}</span>
+                    <span style="color: #15803d;">Completed: ${completedCount}</span>
+                    <span style="color: #dc2626;">Lacking / Incomplete: ${lackingCount}</span>
+                </div>
+
+                <table class="req-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 50px; text-align: center;">No.</th>
+                            <th style="text-align: left;">Requirement Description</th>
+                            <th style="width: 140px; text-align: center;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                    </tbody>
+                </table>
+
+                <div class="notice">
+                    Note: Please submit all lacking requirements listed above to proceed with the processing and approval of your application.
+                </div>
+
+                <div class="signatures">
+                    <div class="sig-block">
+                        <div class="sig-label">Prepared by:</div>
+                        <div class="sig-line">${preparedByName}</div>
+                        <div class="sig-sub">PLENRO Staff</div>
+                    </div>
+                    <div class="sig-block">
+                        <div class="sig-label">Acknowledged by:</div>
+                        <div class="sig-line">${escapeHtml(selectedClient.ph_cname)}</div>
+                        <div class="sig-sub">Applicant / Authorized Representative</div>
+                    </div>
+                    <div class="sig-block">
+                        <div class="sig-label">Noted by:</div>
+                        <div class="sig-line">${notedByName}</div>
+                        <div class="sig-sub">${notedByTitle}</div>
+                    </div>
+                </div>
+
+                <script>
+                    window.onload = function () {
+                        window.focus();
+                        window.print();
+                    };
+                </script>
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
+    };
+
     const handleDeleteApplication = async () => {
         const permitNo = (selectedClient?.ph_tpermit || '').trim();
         const clientName = (selectedClient?.ph_cname || '').trim();
@@ -386,6 +672,17 @@ const NewApplication = () => {
                     <h2 className="page-title">New Application</h2>
                 </div>
                 <div className="page-actions">
+                    {selectedClientId && (
+                        <button
+                            className="btn btn-secondary"
+                            type="button"
+                            onClick={handlePrintChecklist}
+                            disabled={loading || requirements.length === 0}
+                            title="Print Requirements Checklist"
+                        >
+                            <FiPrinter /> Print Checklist
+                        </button>
+                    )}
                     {isAdmin && (
                         <>
                             <button

@@ -25,7 +25,7 @@ To maintain the visual aesthetic of the PLENROEMSC application, rely exclusively
   - `animate-dialogContentShow`, `animate-dialogOverlayShow`
   - `animate-accordionOpen`, `animate-accordionClose`
 
-## 4. Code Style & Formatting
+## 4. Code Style & Formatting 
 - **Linting & Formatting:** ESLint (v9) and Prettier.
 - **File Extensions:** Use `.jsx` for React components.
 - **Component Structure:** Use functional components and React Hooks.
