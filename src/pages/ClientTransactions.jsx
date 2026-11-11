@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import { createPortal } from 'react-dom';
-import { FiTrash2 } from 'react-icons/fi';
+import { FiEye, FiTrash2 } from 'react-icons/fi';
 import { api } from '../services/api';
 import DeleteModal from '../components/modals/DeleteModal';
 import plenroLogo from '../plenro.png';
@@ -19,6 +19,7 @@ const ClientTransactions = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [previewLoading, setPreviewLoading] = useState('');
 
     // Delete modal state
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -30,37 +31,12 @@ const ClientTransactions = () => {
     const [dropdownPosition, setDropdownPosition] = useState({});
     const inputRef = useRef(null);
 
-    // Admin check
+    // Admin check & navigation
+    const navigate = useNavigate();
     const { currentUser } = useOutletContext();
     const permissions = useMemo(() => getUserPermissions(currentUser), [currentUser]);
 
-    useEffect(() => {
-        fetchTransactionClients();
-    }, []);
-
-    useEffect(() => {
-        if (!error) return undefined;
-
-        const timer = setTimeout(() => setError(''), 3000);
-        return () => clearTimeout(timer);
-    }, [error]);
-
-    const fetchTransactionClients = async () => {
-        try {
-            const data = await api.getTransactionClients();
-            setClients(data);
-        } catch (err) {
-            setError('Failed to fetch transaction clients: ' + err.message);
-        }
-    };
-
-    const clientSuggestions = useMemo(() => {
-        const query = (clientSearch || '').trim().toLowerCase();
-        if (!query) return [];
-        return clients.filter((c) => (c.ph_cname || '').toLowerCase().includes(query)).slice(0, 10);
-    }, [clientSearch, clients]);
-
-    const selectClient = async (clientId) => {
+    const selectClient = async (clientId, clientList = clients) => {
         setSelectedClientId(clientId);
         setTransactions([]);
         setAllTransactions([]);
@@ -73,11 +49,14 @@ const ClientTransactions = () => {
         if (!clientId) {
             setSelectedClient(null);
             setClientSearch('');
+            sessionStorage.removeItem('client_transactions_selected_client_id');
             return;
         }
 
-        const client = clients.find((c) => c.ph_ctrlno == clientId);
-        setSelectedClient(client);
+        sessionStorage.setItem('client_transactions_selected_client_id', String(clientId));
+
+        const client = clientList.find((c) => String(c.ph_ctrlno) === String(clientId));
+        setSelectedClient(client || null);
         setClientSearch(client?.ph_cname || '');
 
         setLoading(true);
@@ -86,8 +65,8 @@ const ClientTransactions = () => {
                 api.getTransactionDetails(clientId),
                 api.getNatureOfPayment(clientId),
             ]);
-            setAllTransactions(details);
-            setTransactions(details);
+            setAllTransactions(details || []);
+            setTransactions(details || []);
             setNatureOptions(natures || []);
         } catch (err) {
             setError('Failed to fetch assessment details: ' + err.message);
@@ -95,6 +74,130 @@ const ClientTransactions = () => {
             setLoading(false);
         }
     };
+
+    useEffect(() => {
+        const initClients = async () => {
+            try {
+                const data = await api.getTransactionClients();
+                setClients(data || []);
+
+                const savedClientId = sessionStorage.getItem('client_transactions_selected_client_id');
+                if (savedClientId && data?.some((c) => String(c.ph_ctrlno) === String(savedClientId))) {
+                    const client = data.find((c) => String(c.ph_ctrlno) === String(savedClientId));
+                    setSelectedClientId(savedClientId);
+                    setSelectedClient(client || null);
+                    setClientSearch(client?.ph_cname || '');
+                    setLoading(true);
+                    try {
+                        const [details, natures] = await Promise.all([
+                            api.getTransactionDetails(savedClientId),
+                            api.getNatureOfPayment(savedClientId),
+                        ]);
+                        setAllTransactions(details || []);
+                        setTransactions(details || []);
+                        setNatureOptions(natures || []);
+                    } catch (err) {
+                        setError('Failed to fetch assessment details: ' + err.message);
+                    } finally {
+                        setLoading(false);
+                    }
+                }
+            } catch (err) {
+                setError('Failed to fetch transaction clients: ' + err.message);
+            }
+        };
+
+        initClients();
+    }, []);
+
+    useEffect(() => {
+        if (!error) return undefined;
+
+        const timer = setTimeout(() => setError(''), 3000);
+        return () => clearTimeout(timer);
+    }, [error]);
+
+    const buildPreviewData = (header, details) => {
+        const address = [header.ph_address1, header.ph_address2].filter(Boolean).join(', ');
+        const barangayText =
+            header.aop_brgycombo != null && header.aop_brgycombo !== ''
+                ? header.aop_brgycombo
+                : header.aop_brgy || '';
+        const location = [barangayText, header.aop_mun].filter(Boolean).join(', ');
+        const totalAmount = Number(header.aop_total) || 0;
+        const preparedBy = (
+            currentUser?.log_cname ||
+            currentUser?.log_name ||
+            'ADMINISTRATOR'
+        ).toUpperCase();
+        const shareBreakdown = (() => {
+            const isGovShare = (header.aop_nature || '').toLowerCase().includes('government share');
+            if (!isGovShare) return null;
+            const shares = [
+                { label: 'Prov. of Misamis Oriental', percent: 0.3 },
+                {
+                    label: header.aop_mun ? `Mun. of ${header.aop_mun}` : 'Municipality',
+                    percent: 0.3,
+                },
+                { label: barangayText ? `Brgy. of ${barangayText}` : 'Barangay', percent: 0.4 },
+            ];
+            return {
+                total: totalAmount,
+                shares: shares.map((s) => ({
+                    ...s,
+                    amount: +(totalAmount * s.percent).toFixed(2),
+                })),
+            };
+        })();
+
+        return {
+            clientName: header.ph_cname || '',
+            tin: header.ph_TIN || 'N/A',
+            address: address || 'N/A',
+            projectLocation: location || 'N/A',
+            natureOfPayment: header.aop_nature || '',
+            assessmentDate: header.aop_date,
+            controlNo: header.aop_control,
+            totalAmount,
+            remarks: header.aop_remarks || '',
+            preparedBy,
+            shareBreakdown,
+            items: (details || []).map((item) => ({
+                item: item.aop_item,
+                volume: item.aop_volume,
+                measurement: item.aop_measure,
+                charge: item.aop_charge,
+                total: item.aop_total,
+                volumeLocked: (item.aop_measure || '').toLowerCase() === 'n/a',
+            })),
+        };
+    };
+
+    const handlePreview = async (detail) => {
+        if (!detail?.aop_control) return;
+        try {
+            setPreviewLoading(detail.aop_control);
+            const data = await api.getAssessmentByControl(detail.aop_control);
+            const previewData = buildPreviewData(data.header, data.details);
+            const isGovShare = (previewData.natureOfPayment || '')
+                .toLowerCase()
+                .includes('government share');
+            navigate(isGovShare ? '/assessment/share' : '/assessment/preview', {
+                state: { previewData },
+            });
+        } catch (err) {
+            setError(err.message || 'Failed to load assessment preview');
+            setTimeout(() => setError(''), 3000);
+        } finally {
+            setPreviewLoading('');
+        }
+    };
+
+    const clientSuggestions = useMemo(() => {
+        const query = (clientSearch || '').trim().toLowerCase();
+        if (!query) return [];
+        return clients.filter((c) => (c.ph_cname || '').toLowerCase().includes(query)).slice(0, 10);
+    }, [clientSearch, clients]);
 
     const clearClient = () => {
         setSelectedClientId('');
@@ -106,8 +209,8 @@ const ClientTransactions = () => {
         setNatureOfPayment('');
         setNatureOptions([]);
         setSearchTerm('');
-
         setShowClientSuggestions(false);
+        sessionStorage.removeItem('client_transactions_selected_client_id');
     };
 
     const handleNatureChange = (e) => {
@@ -522,20 +625,18 @@ const ClientTransactions = () => {
                                         >
                                             Remarks
                                         </th>
-                                        {permissions.canDelete && (
-                                            <th
-                                                style={{
-                                                    width: '60px',
-                                                    textAlign: 'center',
-                                                    position: 'sticky',
-                                                    top: 0,
-                                                    zIndex: 10,
-                                                    backgroundColor: 'var(--secondary)',
-                                                }}
-                                            >
-                                                Actions
-                                            </th>
-                                        )}
+                                        <th
+                                            style={{
+                                                width: permissions.canDelete ? '80px' : '50px',
+                                                textAlign: 'center',
+                                                position: 'sticky',
+                                                top: 0,
+                                                zIndex: 10,
+                                                backgroundColor: 'var(--secondary)',
+                                            }}
+                                        >
+                                            Actions
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -584,19 +685,43 @@ const ClientTransactions = () => {
                                                     {total}
                                                 </td>
                                                 <td>{detail.aop_remarks}</td>
-                                                {permissions.canDelete && (
-                                                    <td style={{ textAlign: 'center' }}>
+                                                <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                                    <div
+                                                        style={{
+                                                            display: 'inline-flex',
+                                                            gap: '4px',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                        }}
+                                                    >
                                                         <button
-                                                            className="btn-delete"
-                                                            title="Delete"
-                                                            onClick={() =>
-                                                                handleDeleteClick(detail)
-                                                            }
+                                                            className="btn-view"
+                                                            title="Preview Assessment"
+                                                            onClick={() => handlePreview(detail)}
+                                                            disabled={previewLoading === detail.aop_control}
                                                         >
-                                                            <FiTrash2 className="icon-sm" />
+                                                            {previewLoading === detail.aop_control ? (
+                                                                <span
+                                                                    className="spinner spinner-sm"
+                                                                    style={{ width: '12px', height: '12px' }}
+                                                                />
+                                                            ) : (
+                                                                <FiEye className="icon-sm" />
+                                                            )}
                                                         </button>
-                                                    </td>
-                                                )}
+                                                        {permissions.canDelete && (
+                                                            <button
+                                                                className="btn-delete"
+                                                                title="Delete"
+                                                                onClick={() =>
+                                                                    handleDeleteClick(detail)
+                                                                }
+                                                            >
+                                                                <FiTrash2 className="icon-sm" />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </td>
                                             </tr>
                                         );
                                     })}

@@ -64,6 +64,13 @@ const config = {
     password: process.env.DB_PASSWORD || 'YourPassword123',
     server: process.env.DB_SERVER || 'localhost',
     database: process.env.DB_NAME || 'PLENRO',
+    connectionTimeout: 30000,
+    requestTimeout: 30000,
+    pool: {
+        max: 20,
+        min: 0,
+        idleTimeoutMillis: 30000,
+    },
     authentication: {
         type: 'default',
     },
@@ -71,7 +78,7 @@ const config = {
         encrypt: false,
         trustServerCertificate: true,
         enableKeepAlive: true,
-        connectionTimeout: 30000,
+        connectTimeout: 30000,
         requestTimeout: 30000,
     },
 };
@@ -124,7 +131,17 @@ console.log('📄 Effective DB env:', {
 // Initialize SQL Pool
 async function initializePool() {
     try {
+        if (pool) {
+            try {
+                await pool.close();
+            } catch {
+                // ignore
+            }
+        }
         pool = new sql.ConnectionPool(config);
+        pool.on('error', (err) => {
+            console.error('⚠️ SQL Pool Error:', err.message);
+        });
         await pool.connect();
         console.log('✅ SQL Server Connected Successfully!');
         console.log(`📊 Connected to: ${config.server}/${config.database}`);
