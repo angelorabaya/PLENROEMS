@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { FiUpload, FiTrash2, FiX } from 'react-icons/fi';
+import { FiUpload, FiTrash2, FiX, FiPrinter } from 'react-icons/fi';
 import { api } from '../../services/api';
 import { getEffectiveNow } from '../../utils/dateUtils';
 import './Modal.css';
@@ -222,9 +222,9 @@ const DocOutgoingModal = ({ isOpen, onClose, onSave, onPrint, record }) => {
     return (
         <Dialog.Root open={isOpen}>
             <Dialog.Portal>
-                <Dialog.Overlay className="dialog-overlay" />
+                <Dialog.Overlay className="dialog-overlay hide-on-print" />
                 <Dialog.Content
-                    className="dialog-content dialog-content-lg"
+                    className="dialog-content dialog-content-lg hide-on-print"
                     onPointerDownOutside={(e) => e.preventDefault()}
                     onInteractOutside={(e) => e.preventDefault()}
                     onEscapeKeyDown={(e) => e.preventDefault()}
@@ -408,7 +408,7 @@ const DocOutgoingModal = ({ isOpen, onClose, onSave, onPrint, record }) => {
                                     loading
                                 }
                             >
-                                Print QR
+                                <FiPrinter size={15} /> Print QR
                             </button>
                             <div style={{ flex: 1 }}></div>
                             <button

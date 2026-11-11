@@ -630,3 +630,285 @@
     font-size: 0.75rem;
     color: var(--muted-foreground);
 }
+
+/* ==========================================================================
+   QR CODE DRAGGABLE PLACEMENT MODAL
+   ========================================================================== */
+
+.dialog-content-qr {
+    max-width: 900px !important;
+    width: 95vw !important;
+    height: 90vh !important;
+    max-height: 720px !important;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.qr-placement-container {
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+@media (max-width: 768px) {
+    .qr-placement-container {
+        flex-direction: column;
+    }
+}
+
+.qr-stage-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #f1f5f9;
+    padding: 1.5rem;
+    overflow: auto;
+    position: relative;
+    user-select: none;
+}
+
+.dark .qr-stage-wrapper {
+    background: #0f172a;
+}
+
+.qr-stage-hint {
+    margin-bottom: 0.75rem;
+    font-size: 0.75rem;
+    color: var(--muted-foreground);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.qr-paper-sheet {
+    position: relative;
+    background: #ffffff;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    border: 1px solid #cbd5e1;
+    border-radius: 2px;
+    overflow: hidden;
+    user-select: none;
+    transition: width 0.2s ease, height 0.2s ease;
+}
+
+.dark .qr-paper-sheet {
+    border-color: #334155;
+}
+
+.qr-paper-margins {
+    position: absolute;
+    inset: 14px;
+    border: 1px dashed rgba(148, 163, 184, 0.6);
+    pointer-events: none;
+    border-radius: 1px;
+}
+
+.qr-paper-watermark {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: rgba(148, 163, 184, 0.3);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    text-align: center;
+    pointer-events: none;
+    line-height: 1.4;
+    padding: 0 1rem;
+}
+
+.qr-paper-doc-header {
+    position: absolute;
+    top: 18px;
+    left: 20px;
+    right: 20px;
+    font-size: 0.65rem;
+    color: rgba(100, 116, 139, 0.75);
+    border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+    padding-bottom: 4px;
+    pointer-events: none;
+    display: flex;
+    justify-content: space-between;
+}
+
+.qr-draggable-stamp {
+    position: absolute;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #ffffff;
+    border: 2px dashed #2563eb;
+    border-radius: 4px;
+    box-sizing: border-box;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+    touch-action: none;
+    user-select: none;
+    z-index: 10;
+    cursor: grab;
+    transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.qr-draggable-stamp.is-dragging {
+    cursor: grabbing;
+    box-shadow: 0 10px 25px rgba(37, 99, 235, 0.4);
+    border-color: #1d4ed8;
+    z-index: 20;
+}
+
+.qr-draggable-stamp svg {
+    display: block;
+    width: 100% !important;
+    height: auto !important;
+}
+
+.qr-drag-badge {
+    position: absolute;
+    top: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #2563eb;
+    color: #ffffff;
+    font-size: 0.6rem;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 9999px;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    pointer-events: none;
+}
+
+.qr-drag-handle {
+    display: none;
+}
+
+.qr-stamp-label-preview {
+    font-size: 8px;
+    font-family: monospace;
+    font-weight: 700;
+    color: #0f172a;
+    margin-top: 2px;
+    letter-spacing: 0.5px;
+    text-align: center;
+    pointer-events: none;
+    line-height: 1.1;
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.qr-controls-sidebar {
+    width: 310px;
+    border-left: 1px solid var(--border);
+    background: var(--card);
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.15rem;
+    overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+    .qr-controls-sidebar {
+        width: 100%;
+        border-left: none;
+        border-top: 1px solid var(--border);
+        max-height: 250px;
+    }
+}
+
+.qr-control-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.qr-control-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted-foreground);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.qr-btn-grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.4rem;
+}
+
+.qr-btn-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.4rem;
+}
+
+.qr-btn-pill {
+    padding: 0.45rem 0.5rem;
+    font-size: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+    color: var(--foreground);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    transition: all 0.15s ease;
+    text-align: center;
+}
+
+.qr-btn-pill:hover {
+    background: var(--accent);
+    border-color: var(--border);
+}
+
+.qr-btn-pill.active {
+    background: var(--primary);
+    color: #ffffff;
+    border-color: var(--primary);
+    font-weight: 600;
+}
+
+.qr-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--foreground);
+    cursor: pointer;
+}
+
+.qr-pos-indicator {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: var(--muted-foreground);
+    padding: 0.35rem 0.5rem;
+    background: var(--muted);
+    border-radius: var(--radius-sm);
+}
+
+.qr-info-callout {
+    font-size: 0.75rem;
+    color: var(--muted-foreground);
+    background: rgba(37, 99, 235, 0.06);
+    border-left: 3px solid #2563eb;
+    padding: 0.5rem 0.65rem;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    line-height: 1.4;
+}
+

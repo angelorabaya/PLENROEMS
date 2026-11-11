@@ -13,6 +13,7 @@ const ClientTransactions = () => {
     const [selectedClient, setSelectedClient] = useState(null);
     const [natureOfPayment, setNatureOfPayment] = useState('');
     const [natureOptions, setNatureOptions] = useState([]);
+    const [searchTerm, setSearchTerm] = useState('');
     const [allTransactions, setAllTransactions] = useState([]);
     const [transactions, setTransactions] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -66,6 +67,7 @@ const ClientTransactions = () => {
         setError('');
         setNatureOfPayment('');
         setNatureOptions([]);
+        setSearchTerm('');
         setShowClientSuggestions(false);
 
         if (!clientId) {
@@ -103,20 +105,87 @@ const ClientTransactions = () => {
         setError('');
         setNatureOfPayment('');
         setNatureOptions([]);
+        setSearchTerm('');
 
         setShowClientSuggestions(false);
     };
 
+    const handleNatureChange = (e) => {
+        const val = e.target.value;
+        setNatureOfPayment(val);
+        setSearchTerm('');
+    };
+
+    const handleSearchChange = (e) => {
+        const val = e.target.value;
+        setSearchTerm(val);
+        setNatureOfPayment('');
+    };
+
     useEffect(() => {
-        if (!natureOfPayment) {
-            setTransactions(allTransactions);
-        } else {
+        if (natureOfPayment) {
             const filtered = allTransactions.filter(
                 (tx) => (tx.aop_nature || '').trim() === natureOfPayment
             );
             setTransactions(filtered);
+        } else if (searchTerm.trim()) {
+            const q = searchTerm.trim().toLowerCase();
+            const filtered = allTransactions.filter((tx) => {
+                const item = (tx.aop_item || '').toLowerCase();
+                const control = (tx.aop_control || '').toString().toLowerCase();
+                const orNo = (tx.aop_orno || '').toString().toLowerCase();
+                const remarks = (tx.aop_remarks || '').toLowerCase();
+                const volume = (tx.aop_volume || '').toString().toLowerCase();
+                const chargeRaw = (tx.aop_charge || '').toString().toLowerCase();
+                const totalRaw = (tx.aop_total || '').toString().toLowerCase();
+                const chargeFormatted = parseFloat(tx.aop_charge || 0)
+                    .toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                    })
+                    .toLowerCase();
+                const totalFormatted = parseFloat(tx.aop_total || 0)
+                    .toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                    })
+                    .toLowerCase();
+                const nature = (tx.aop_nature || '').toLowerCase();
+
+                let dateStr = '';
+                if (tx.aop_ordate) {
+                    const dateObj = new Date(tx.aop_ordate);
+                    if (!isNaN(dateObj.getTime())) {
+                        dateStr = dateObj
+                            .toLocaleDateString('en-US', {
+                                timeZone: 'Asia/Manila',
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                            })
+                            .toLowerCase();
+                    }
+                }
+
+                return (
+                    item.includes(q) ||
+                    control.includes(q) ||
+                    orNo.includes(q) ||
+                    remarks.includes(q) ||
+                    volume.includes(q) ||
+                    chargeRaw.includes(q) ||
+                    chargeFormatted.includes(q) ||
+                    totalRaw.includes(q) ||
+                    totalFormatted.includes(q) ||
+                    nature.includes(q) ||
+                    dateStr.includes(q)
+                );
+            });
+            setTransactions(filtered);
+        } else {
+            setTransactions(allTransactions);
         }
-    }, [natureOfPayment, allTransactions]);
+    }, [natureOfPayment, searchTerm, allTransactions]);
 
     const getFullAddress = (client) => {
         if (!client) return '';
@@ -139,11 +208,6 @@ const ClientTransactions = () => {
             if (selectedClientId) {
                 const details = await api.getTransactionDetails(selectedClientId);
                 setAllTransactions(details);
-                setTransactions(
-                    natureOfPayment
-                        ? details.filter((tx) => (tx.aop_nature || '').trim() === natureOfPayment)
-                        : details
-                );
             }
             setTimeout(() => setSuccess(''), 3000);
         } catch (err) {
@@ -301,7 +365,8 @@ const ClientTransactions = () => {
                         <select
                             className="transactions-compact-input"
                             value={natureOfPayment}
-                            onChange={(e) => setNatureOfPayment(e.target.value)}
+                            onChange={handleNatureChange}
+                            disabled={!selectedClientId}
                         >
                             <option value="">-- Select Nature --</option>
                             {natureOptions.map((option) => (
@@ -313,6 +378,35 @@ const ClientTransactions = () => {
                                 </option>
                             ))}
                         </select>
+                    </div>
+                    <div className="transactions-compact-group">
+                        <label className="transactions-compact-label">Search Details / Item</label>
+                        <div style={{ display: 'flex', gap: '4px', position: 'relative' }}>
+                            <input
+                                type="text"
+                                className="transactions-compact-input"
+                                value={searchTerm}
+                                placeholder={selectedClientId ? "Search details or item..." : "Select client first"}
+                                onChange={handleSearchChange}
+                                disabled={!selectedClientId}
+                            />
+                            {searchTerm && (
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    style={{
+                                        padding: '4px 8px',
+                                        fontSize: '11px',
+                                        height: '100%',
+                                        aspectRatio: '1',
+                                    }}
+                                    onClick={() => setSearchTerm('')}
+                                    title="Clear search"
+                                >
+                                    ✕
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -514,7 +608,11 @@ const ClientTransactions = () => {
                             className="table-container"
                             style={{ padding: '24px', textAlign: 'center', color: '#999' }}
                         >
-                            <p>No transaction details found for this client</p>
+                            <p>
+                                {searchTerm || natureOfPayment
+                                    ? 'No transaction details found matching your filter'
+                                    : 'No transaction details found for this client'}
+                            </p>
                         </div>
                     )
                 ) : (

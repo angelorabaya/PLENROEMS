@@ -93,8 +93,11 @@ const normalizeImagesBasePath = (value) => {
     const sanitized = base.replace(/[\\/]*$/, '');
     return `${sanitized}\\`;
 };
+// Support VITE_IMAGE_BASE_PATH (root .env), IMAGES_BASE_PATH (backend), and VITE_IMAGES_BASE_PATH
 const IMAGES_BASE_PATH = normalizeImagesBasePath(
-    process.env.IMAGES_BASE_PATH || process.env.VITE_IMAGES_BASE_PATH
+    process.env.VITE_IMAGE_BASE_PATH ||
+    process.env.IMAGES_BASE_PATH ||
+    process.env.VITE_IMAGES_BASE_PATH
 );
 const SQL_MANILA_TIME_ZONE = 'Singapore Standard Time';
 const SQL_MANILA_NOW_EXPR = `CAST(SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE '${SQL_MANILA_TIME_ZONE}' AS datetime2(3))`;
@@ -104,6 +107,11 @@ console.log('📁 Attachments env:', {
     backendEnv: process.env.ATTACHMENTS_BASE_PATH || null,
     rootEnvFallback: process.env.VITE_ATTACHMENTS_BASE_PATH || null,
     effectivePath: ATTACHMENTS_BASE_PATH,
+});
+console.log('📁 Images env:', {
+    rootEnv: process.env.VITE_IMAGE_BASE_PATH || null,
+    backendEnv: process.env.IMAGES_BASE_PATH || null,
+    effectivePath: IMAGES_BASE_PATH,
 });
 
 // eslint-disable-next-line no-console
@@ -2583,6 +2591,21 @@ app.get('/api/productionaudit/production/:permitNo', async (req, res) => {
           WHERE cp.ph_permitno = @permitNo
             AND cp.ph_lnkctrl = @clientId
       ),
+      RecentAreaAssessment AS (
+          SELECT
+              DATEFROMPARTS(
+                  YEAR(MAX(h.aop_ordate)),
+                  MONTH(MAX(h.aop_ordate)),
+                  1
+              ) AS area_start_month
+          FROM tbl_assessmenthdr h
+          INNER JOIN tbl_assessmentdtl d
+              ON h.aop_control = d.aop_control
+          CROSS JOIN PermitWindow pw
+          WHERE h.aop_clientid = @clientId
+            AND d.aop_item LIKE 'Area Occupation%'
+            AND h.aop_ordate <= DATEADD(MONTH, 1, pw.start_month)
+      ),
       Months AS (
           SELECT start_month AS month_start
           FROM PermitWindow
@@ -2620,6 +2643,7 @@ app.get('/api/productionaudit/production/:permitNo', async (req, res) => {
           ISNULL(a.total_volume, 0) AS pr_vpaid,
           ISNULL(t.tf_volume, 0) AS pr_taskforce
       FROM RankedMonths rm
+      CROSS JOIN RecentAreaAssessment raa
       LEFT JOIN ProductionByMonth pbm
           ON pbm.month_start = rm.pr_date
       OUTER APPLY (
@@ -2632,9 +2656,8 @@ app.get('/api/productionaudit/production/:permitNo', async (req, res) => {
             AND h.aop_nature LIKE '%Government Share%'
             AND (
               (rm.rn = 1 AND (
-                  (YEAR(h.aop_ordate) = YEAR(rm.pr_date)
-                   AND MONTH(h.aop_ordate) = MONTH(rm.pr_date))
-                  OR h.aop_ordate < rm.pr_date
+                  h.aop_ordate >= ISNULL(raa.area_start_month, rm.pr_date)
+                  AND h.aop_ordate < DATEADD(MONTH, 1, rm.pr_date)
               ))
               OR (rm.rn > 1
                   AND YEAR(h.aop_ordate) = YEAR(rm.pr_date)

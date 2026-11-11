@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { FiEye, FiEdit2, FiTrash2 } from 'react-icons/fi';
+import { FiEye, FiEdit2, FiTrash2, FiPrinter } from 'react-icons/fi';
 import { api } from '../services/api';
 import plenroLogo from '../plenro.png';
 import DocOutgoingModal from '../components/modals/DocOutgoingModal';
@@ -23,7 +23,7 @@ const formatDateTime = (value) => {
         processedValue = value.replace(' ', 'T');
         if (processedValue.endsWith('Z')) {
             processedValue = processedValue.replace('Z', '+08:00');
-        } else if (!/[\+\-]\d{2}:\d{2}$/.test(processedValue)) {
+        } else if (!/[+-]\d{2}:\d{2}$/.test(processedValue)) {
             processedValue = processedValue + '+08:00';
         }
     }
@@ -185,7 +185,7 @@ const DocumentOutgoing = () => {
                     returnPath: '/doc-outgoing',
                 },
             });
-        } catch (err) {
+        } catch {
             setError(`Attachment not found: ${fullPath}`);
             setTimeout(() => setError(''), 3000);
         }
@@ -281,6 +281,13 @@ const DocumentOutgoing = () => {
                                                 title="Preview"
                                             >
                                                 <FiEye size={14} />
+                                            </button>
+                                            <button
+                                                className="btn-icon btn-icon-sm"
+                                                onClick={() => handlePrintQR(record)}
+                                                title="Print QR Code"
+                                            >
+                                                <FiPrinter size={14} />
                                             </button>
                                             {permissions.canUpdate && (
                                                 <button
